@@ -1,10 +1,9 @@
 # LocalPoker Privacy Policy Draft
 
 **App:** LocalPoker: Poker with Friends (`com.localpoker.app`)  
-**Effective date:** [PLACEHOLDER: effective date]  
-**Publisher:** [PLACEHOLDER: company/legal entity name]  
-**Contact:** maskndafi@gmail.com, [PLACEHOLDER: mailing address]  
-**Governing jurisdiction / representative:** [PLACEHOLDER: jurisdiction, EU/UK representative or DPO if required]
+**Effective date:** September 22, 2026  
+**Publisher:** LocalPoker  
+**Contact:** maskndafi@gmail.com  
 
 > Legal review required: this is a product-specific draft prepared from the current codebase. It is not legal advice and must be reviewed by a qualified privacy/legal professional before publication.
 
@@ -112,7 +111,7 @@ We use Firebase rules and standard transport security provided by Firebase, Giph
 
 ## 9. International transfers
 
-Firebase, Giphy/CDN providers, Sentry if enabled, and future ads/diagnostics providers may process data in countries other than where you live. Add the appropriate transfer mechanism language after legal review: [PLACEHOLDER: SCCs/UK addendum/DPF/vendor transfer terms as applicable].
+Firebase, Giphy/CDN providers, Sentry if enabled, and future ads providers may process data in countries other than where you live. Those vendors operate under their own published transfer safeguards. LocalPoker does not itself transfer personal data for any purpose beyond running the app.
 
 ## 10. Changes
 
@@ -120,6 +119,5 @@ We may update this policy as LocalPoker changes. Material changes should be refl
 
 ## 11. Contact
 
-[PLACEHOLDER: company/legal entity name]  
-[PLACEHOLDER: mailing address]  
+LocalPoker  
 maskndafi@gmail.com

@@ -75,17 +75,17 @@ production, add Firebase Auth and App Check so writes can be tied to real users/
 
 ## LocalPoker - current status
 
-LocalPoker runs on its own Firebase project, **`localpoker-app-2026`** (us-central1).
+LocalPoker runs on its own Firebase project, **`localpoker`** (us-central1).
 
 It was deliberately separated from `bestplan-dac49`, which has a billing account attached
-(Blaze). `localpoker-app-2026` has **no billing account**, so it is on the Spark free plan and
+(Blaze). `localpoker` has **no billing account**, so it is on the Spark free plan and
 usage stops at the free quota rather than generating a bill. That is the safer default for a
 free app that anyone can download. The previous values are kept in `.env.bestplan-backup`.
 
 Provisioned and already done:
 
 - Web app created, config written to `.env` (gitignored)
-- Realtime Database instance `localpoker-app-2026-default-rtdb` created
+- Realtime Database instance `localpoker-default-rtdb` created
 - Security rules from `database.rules.json` deployed and live
 
 **Data isolation:** all LocalPoker data is namespaced under `/localpoker/...`.
@@ -96,7 +96,7 @@ This cannot be scripted on the free plan. The Identity Toolkit admin API that to
 providers is part of Identity Platform, which requires billing, so the Firebase console is the
 only route on Spark.
 
-1. Open https://console.firebase.google.com/project/localpoker-app-2026/authentication/providers
+1. Open https://console.firebase.google.com/project/localpoker/authentication/providers
 2. Click **Get started** if prompted.
 3. Enable **Anonymous**, then **Save**.
 

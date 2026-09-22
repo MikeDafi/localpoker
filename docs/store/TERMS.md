@@ -1,10 +1,9 @@
 # LocalPoker Terms of Service Draft
 
 **App:** LocalPoker: Poker with Friends (`com.localpoker.app`)  
-**Effective date:** [PLACEHOLDER: effective date]  
-**Publisher:** [PLACEHOLDER: company/legal entity name]  
+**Effective date:** September 22, 2026  
+**Publisher:** LocalPoker  
 **Contact:** maskndafi@gmail.com  
-**Governing law / venue:** [PLACEHOLDER: jurisdiction]
 
 > Legal review required: this is a product-specific draft prepared from the current codebase. It is not legal advice and must be reviewed by a qualified professional before publication.
 
@@ -80,7 +79,7 @@ Sections that by nature should survive termination continue to apply, including 
 
 ## 11. Intellectual property
 
-LocalPoker, including its software, artwork, UI, game assets, and trademarks, is owned by [PLACEHOLDER: company/legal entity name] or its licensors. You receive a limited, revocable, non-exclusive, non-transferable license to use the app for personal entertainment according to these Terms.
+LocalPoker, including its software, artwork, UI, game assets, and trademarks, is owned by LocalPoker or its licensors. You receive a limited, revocable, non-exclusive, non-transferable license to use the app for personal entertainment according to these Terms.
 
 You retain rights you have in your own display names or submitted content, but you grant us a worldwide, non-exclusive, royalty-free license to host, display, transmit, moderate, and use that content to operate and improve LocalPoker.
 
@@ -92,17 +91,17 @@ No LocalPoker feature creates gambling, betting, financial, investment, or profe
 
 ## 13. Limitation of liability
 
-To the fullest extent allowed by law, [PLACEHOLDER: company/legal entity name] will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost data, lost virtual items, lost profits, or service interruption. Our total liability will not exceed [PLACEHOLDER: liability cap] or the minimum amount required by applicable law.
+To the fullest extent allowed by law, LocalPoker will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost data, lost virtual items, lost profits, or service interruption. LocalPoker is free and accepts no payment, so to the extent a cap applies, our total liability will not exceed the amount you paid to use the app, which is zero, or the minimum amount required by applicable law.
 
 Some jurisdictions do not allow certain limits, so some limits may not apply.
 
 ## 14. Indemnity
 
-To the extent allowed by law, you agree to defend and indemnify [PLACEHOLDER: company/legal entity name] from claims arising out of your misuse of LocalPoker, violation of these Terms, unlawful conduct, or infringement of others' rights.
+To the extent allowed by law, you agree to defend and indemnify LocalPoker from claims arising out of your misuse of LocalPoker, violation of these Terms, unlawful conduct, or infringement of others' rights.
 
 ## 15. Governing law and disputes
 
-These Terms are governed by [PLACEHOLDER: governing law]. Disputes will be resolved in [PLACEHOLDER: courts/arbitration venue], unless applicable consumer law requires otherwise.
+These Terms are governed by the law of the place where you reside, to the extent your local consumer law requires. Nothing in these Terms removes any right you have under mandatory local consumer law.
 
 ## 16. Changes
 
@@ -110,6 +109,5 @@ We may update these Terms. Material changes should be reflected in the hosted te
 
 ## 17. Contact
 
-[PLACEHOLDER: company/legal entity name]  
-[PLACEHOLDER: mailing address]  
+LocalPoker  
 maskndafi@gmail.com
