@@ -72,3 +72,7 @@ docs/qa/*.log
 # Built output of the legal site (docs/site/build-legal-site.mjs). CI builds it
 # fresh; a local run must never be committed.
 _site/
+
+# Xcode test result bundles from QA runs. The screenshots in docs/qa are worth
+# keeping; the .xcresult bundles are 200MB of build artifacts.
+*.xcresult/
