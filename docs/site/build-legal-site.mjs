@@ -25,7 +25,7 @@ if (allowPlaceholders && process.env.GITHUB_ACTIONS === 'true') {
 const outDir = resolve(root, readFlag('--out') ?? 'docs/online/_site');
 const sourceStoreDir = resolve(root, readFlag('--source-store-dir') ?? 'docs/store');
 
-const siteBase = 'https://mikedafi.github.io/bestplan/';
+const siteBase = 'https://mikedafi.github.io/localpoker/';
 const pages = [
   {
     source: join(sourceStoreDir, 'PRIVACY-POLICY.md'),

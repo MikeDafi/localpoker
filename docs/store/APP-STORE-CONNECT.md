@@ -84,25 +84,25 @@ Welcome to LocalPoker 1.0.0.
 
 Use the GitHub Actions Pages workflow added in `.github/workflows/pages.yml`. It builds styled HTML from the Markdown sources in `docs/store` with `docs/site/build-legal-site.mjs`, then deploys only from the LocalPoker branch `i-want-to-build-a-poker-ios-ap` to the `github-pages` environment.
 
-This is the cleanest setup because `origin/main` is unrelated to LocalPoker. It does not require putting generated HTML or a `docs/` Pages folder on `main`. Tradeoff: GitHub Pages is still one site per repository. If `MikeDafi/bestplan` already needs Pages for the unrelated `main` project, or if Pages is unavailable for this private repo on the account plan, use a separate public repo such as `localpoker-legal` or another static host, then replace the same URL fields below with that host's URLs.
+This is the cleanest setup because `origin/main` is unrelated to LocalPoker. It does not require putting generated HTML or a `docs/` Pages folder on `main`. Tradeoff: GitHub Pages is still one site per repository. If `MikeDafi/localpoker` already needs Pages for the unrelated `main` project, or if Pages is unavailable for this private repo on the account plan, use a separate public repo such as `localpoker-legal` or another static host, then replace the same URL fields below with that host's URLs.
 
 Expected public site base after Pages is enabled:
 
-`https://mikedafi.github.io/bestplan/`
+`https://mikedafi.github.io/localpoker/`
 
 Use these App Store Connect URLs:
 
 | App Store Connect field | URL |
 |---|---|
-| Privacy Policy URL | `https://mikedafi.github.io/bestplan/privacy/` |
-| Support URL | `https://mikedafi.github.io/bestplan/support/` |
-| Marketing URL, optional | `https://mikedafi.github.io/bestplan/` |
-| Terms URL, if requested outside ASC metadata | `https://mikedafi.github.io/bestplan/terms/` |
+| Privacy Policy URL | `https://mikedafi.github.io/localpoker/privacy/` |
+| Support URL | `https://mikedafi.github.io/localpoker/support/` |
+| Marketing URL, optional | `https://mikedafi.github.io/localpoker/` |
+| Terms URL, if requested outside ASC metadata | `https://mikedafi.github.io/localpoker/terms/` |
 
 GitHub Pages steps:
 
 1. Push the LocalPoker branch with `.github/workflows/pages.yml`.
-2. In GitHub, open `MikeDafi/bestplan`.
+2. In GitHub, open `MikeDafi/localpoker`.
 3. Go to **Settings**.
 4. Go to **Pages**.
 5. Under **Build and deployment**, set **Source** to **GitHub Actions**.
@@ -111,7 +111,7 @@ GitHub Pages steps:
 8. Open **Legal Pages**.
 9. Click **Run workflow** and choose branch `i-want-to-build-a-poker-ios-ap`, or push a docs change to that branch.
 10. Wait for the deployment to the `github-pages` environment.
-11. Open `https://mikedafi.github.io/bestplan/privacy/`, `https://mikedafi.github.io/bestplan/terms/`, and `https://mikedafi.github.io/bestplan/support/` in a private browser window.
+11. Open `https://mikedafi.github.io/localpoker/privacy/`, `https://mikedafi.github.io/localpoker/terms/`, and `https://mikedafi.github.io/localpoker/support/` in a private browser window.
 
 These URLs are not live until the user enables Pages in repository settings and the Legal Pages workflow completes successfully.
 

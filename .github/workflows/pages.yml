@@ -3,7 +3,7 @@ name: Legal Pages
 on:
   push:
     branches:
-      - i-want-to-build-a-poker-ios-ap
+      - main
     paths:
       - docs/store/PRIVACY-POLICY.md
       - docs/store/TERMS.md
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/i-want-to-build-a-poker-ios-ap'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -21,8 +21,8 @@ For privacy questions or deletion requests, email [maskndafi@gmail.com](mailto:m
 
 ## Legal pages
 
-- [Privacy Policy](https://mikedafi.github.io/bestplan/privacy/)
-- [Terms of Service](https://mikedafi.github.io/bestplan/terms/)
+- [Privacy Policy](https://mikedafi.github.io/localpoker/privacy/)
+- [Terms of Service](https://mikedafi.github.io/localpoker/terms/)
 
 ## App Store review note
 
