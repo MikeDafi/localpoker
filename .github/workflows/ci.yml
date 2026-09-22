@@ -32,7 +32,11 @@ jobs:
         run: npx tsc --noEmit
       - name: Unit tests
         run: npx vitest run
-      # Lint placeholder: add an ESLint step here once an ESLint config exists.
+      - name: Lint
+        # Errors fail the build. The React Compiler rules are configured as
+        # warnings in eslint.config.js (see the rationale there), so they show
+        # up in the log without blocking.
+        run: npx eslint . --max-warnings 60
       - name: Firebase security rules tests
         shell: bash
         run: |

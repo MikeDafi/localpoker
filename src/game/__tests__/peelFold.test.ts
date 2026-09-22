@@ -69,7 +69,7 @@ function diagonalFrom(corner: Pt): [number, number] {
 }
 
 /** Every way you might start a peel: four corners and four edge midpoints. */
-const GRABS: Array<{ name: string; anchor: Pt; dir: [number, number] }> = [
+const GRABS: { name: string; anchor: Pt; dir: [number, number] }[] = [
   ...Object.entries(CORNERS).map(([name, anchor]) => ({
     name: `${name} corner`,
     anchor,
@@ -414,7 +414,7 @@ describe('keeping the peel in the bottom half', () => {
   const KEEP = H / 2;
 
   /** Every way the gesture can grab, now that the top half is out of bounds. */
-  const LEGAL: Array<{ name: string; anchor: Pt; dir: [number, number] }> = [
+  const LEGAL: { name: string; anchor: Pt; dir: [number, number] }[] = [
     { name: 'bottom-left corner', anchor: { x: 0, y: H }, dir: unit(1, -1) },
     { name: 'bottom-right corner', anchor: { x: W, y: H }, dir: unit(-1, -1) },
     { name: 'bottom edge, up', anchor: { x: W / 2, y: H }, dir: [0, -1] },

@@ -65,7 +65,7 @@ export interface Pip {
 }
 
 /** Column and row (in eighteenths of card height) for every pip of each rank. */
-const LAYOUT: Record<number, Array<[number, number]>> = {
+const LAYOUT: Record<number, [number, number][]> = {
   2: [[COL.mid, 3], [COL.mid, 15]],
   3: [[COL.mid, 3], [COL.mid, 9], [COL.mid, 15]],
   4: [[COL.left, 3], [COL.right, 3], [COL.left, 15], [COL.right, 15]],

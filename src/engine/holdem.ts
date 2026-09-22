@@ -1,4 +1,4 @@
-import { createDeck, formatCard, shuffleDeck, type Card, type Seed } from './cards';
+import { createDeck, shuffleDeck, type Card, type Seed } from './cards';
 import { compareHands, evaluateHand } from './handEvaluator';
 import type {
   ActionResult,

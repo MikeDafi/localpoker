@@ -233,7 +233,7 @@ export function roundRectPoly(x: number, y: number, w: number, h: number, r: num
   'worklet';
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
   const pts: Poly = [];
-  const corners: Array<[number, number, number]> = [
+  const corners: [number, number, number][] = [
     [x + w - rr, y + rr, -Math.PI / 2],
     [x + w - rr, y + h - rr, 0],
     [x + rr, y + h - rr, Math.PI / 2],

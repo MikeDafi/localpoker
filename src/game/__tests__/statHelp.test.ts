@@ -9,7 +9,7 @@ import {
   type StatKey,
 } from '../statHelp';
 
-const ALL_SURFACES: Array<[string, StatKey[]]> = [
+const ALL_SURFACES: [string, StatKey[]][] = [
   ['live stats overlay', LIVE_STAT_KEYS],
   ['profile stats screen', PROFILE_STAT_KEYS],
   ['opponent read', OPPONENT_STAT_KEYS],

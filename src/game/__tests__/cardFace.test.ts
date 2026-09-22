@@ -87,7 +87,7 @@ describe('card face layout', () => {
     // scripts/measure-ref-card.py, not recalled. Rows are eighteenths of card
     // height. The seven is the interesting one: its odd pip really does sit in
     // the upper half, making it the only rank that is not symmetric.
-    const REFERENCE: Record<number, Array<[number, number]>> = {
+    const REFERENCE: Record<number, [number, number][]> = {
       2: [[0.5, 3], [0.5, 15]],
       3: [[0.5, 3], [0.5, 9], [0.5, 15]],
       4: [[0.25, 3], [0.75, 3], [0.25, 15], [0.75, 15]],

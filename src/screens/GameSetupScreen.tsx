@@ -11,7 +11,6 @@ import {
   SETTINGS_SCHEMA,
   DEFAULT_GAME_SETTINGS,
   normalizeSettings,
-  countSettings,
   type GameSettings,
   type SettingsSection,
   type SettingField,
@@ -241,13 +240,6 @@ function shouldShowField(field: SettingField, isFriends: boolean): boolean {
   return !(isFriends && field.key === 'numOpponents');
 }
 
-function countVisibleSettings(isFriends: boolean): number {
-  return SETTINGS_SCHEMA.reduce(
-    (sum, section) => sum + section.fields.filter((field) => shouldShowField(field, isFriends)).length,
-    0,
-  );
-}
-
 function SectionTab({ section, active, count, onPress }: {
   section: SettingsSection;
   active: boolean;
@@ -269,15 +261,6 @@ function SectionTab({ section, active, count, onPress }: {
       </Text>
       <Text style={[styles.tabCount, active && styles.tabCountActive]}>{count}</Text>
     </Pressable>
-  );
-}
-
-function SummaryChip({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.summaryChip}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
-    </View>
   );
 }
 

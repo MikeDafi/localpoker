@@ -9,7 +9,6 @@ import { ShowdownReveal } from '../components/ShowdownReveal';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
 import { HoleCards } from '../components/HoleCards';
-import { PlayingCard } from '../components/PlayingCard';
 import type { Suit } from '../game/cardFace';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Seat } from '../components/Seat';

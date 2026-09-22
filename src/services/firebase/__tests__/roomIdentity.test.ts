@@ -16,7 +16,7 @@ const LOCAL_PROFILE_ID = 'localprofilezzz999';
 
 const writes: { path: string; value: unknown }[] = [];
 const disconnectWrites: { path: string; value: unknown }[] = [];
-const valueHandlers: Array<(snapshot: { val: () => unknown }) => void> = [];
+const valueHandlers: ((snapshot: { val: () => unknown }) => void)[] = [];
 const ensureSignedIn = vi.fn<() => Promise<string | null>>(async () => AUTH_UID);
 const readValues = new Map<string, unknown>();
 let updateError: Error | null = null;

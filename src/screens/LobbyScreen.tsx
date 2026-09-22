@@ -46,7 +46,6 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [status, setStatus] = useState<string>(online ? 'Connecting…' : 'Offline');
-  const joinedRef = useRef(false);
   const navigatedRef = useRef(false);
 
   const goToTable = () => {

@@ -276,13 +276,6 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   disconnectProtection: true,
 };
 
-const speedOpts = [
-  { value: 'slow', label: 'Slow' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'turbo', label: 'Turbo' },
-  { value: 'hyper', label: 'Hyper' },
-];
-
 export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'table', title: 'Table', icon: '🎲',
