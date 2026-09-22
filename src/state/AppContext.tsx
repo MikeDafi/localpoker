@@ -7,6 +7,19 @@ import {
 } from '../game/stats';
 import { sound } from '../services/sound';
 import { captureError } from '../services/telemetry';
+import {
+  acceptFriendRequest as acceptFirebaseFriendRequest,
+  declineFriendRequest as declineFirebaseFriendRequest,
+  isFirebaseConfigured,
+  normalizeHandle,
+  publishUserDirectory,
+  removeFriendship,
+  sendFriendRequest,
+  subscribeSocialGraph,
+  type FriendEdgeRecord,
+  type FriendRequestRecord,
+  type SocialSnapshot,
+} from '../services/firebase';
 
 export interface Profile {
   id: string;
@@ -16,6 +29,52 @@ export interface Profile {
   xp: number;
 }
 
+const profileHandleFallback = (profile: Profile): string => friendCodeFor(profile.id).toLowerCase();
+
+const handleForDirectory = (auth: AuthState, profile: Profile): string =>
+  normalizeHandle(auth.handle ?? '') ?? normalizeHandle(profile.name) ?? profileHandleFallback(profile);
+
+const friendFromEdge = (edge: FriendEdgeRecord): Friend => ({
+  id: edge.uid,
+  uid: edge.uid,
+  handle: edge.handle,
+  name: edge.displayName,
+  palSeed: edge.handle || edge.uid,
+  online: false,
+  status: 'Friends',
+  friendshipStatus: 'accepted',
+});
+
+const friendFromRequest = (request: FriendRequestRecord): Friend => ({
+  id: request.fromUid,
+  uid: request.fromUid,
+  handle: request.fromHandle,
+  name: request.fromName,
+  palSeed: request.fromHandle || request.fromUid,
+  online: false,
+  status: 'Friend request received',
+  friendshipStatus: 'incoming',
+});
+
+const mergeSocialFriends = (current: Friend[], snapshot: SocialSnapshot): Friend[] => {
+  const accepted = snapshot.accepted.map(friendFromEdge);
+  const incoming = snapshot.incoming
+    .filter((request) => !accepted.some((friend) => friend.uid === request.fromUid))
+    .map(friendFromRequest);
+  const remoteUids = new Set([
+    ...accepted.map((friend) => friend.uid ?? friend.id),
+    ...incoming.map((friend) => friend.uid ?? friend.id),
+  ]);
+  const pending = current.filter((friend) => {
+    if (friend.friendshipStatus !== 'pending_outgoing') {
+      return false;
+    }
+    return !remoteUids.has(friend.uid ?? friend.id);
+  });
+
+  return [...incoming, ...accepted, ...pending];
+};
+
 export interface AuthState {
   loggedIn: boolean;
   provider: 'guest' | 'apple' | 'google' | 'email' | null;
@@ -24,10 +83,13 @@ export interface AuthState {
 
 export interface Friend {
   id: string;
+  uid?: string;
+  handle?: string;
   name: string;
   palSeed: string;
   online: boolean;
   status?: string;
+  friendshipStatus?: 'accepted' | 'pending_outgoing' | 'incoming' | 'local';
 }
 
 export type { Stats, HandResult } from '../game/stats';
@@ -91,7 +153,9 @@ interface AppContextValue {
   setPal: (pal: PalConfig) => void;
   addCoins: (n: number) => void;
   recordHand: (r: HandResult) => number;
-  addFriend: (name: string) => { ok: boolean; reason?: string };
+  addFriend: (name: string) => Promise<{ ok: boolean; reason?: string }>;
+  acceptFriendRequest: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  declineFriendRequest: (id: string) => Promise<{ ok: boolean; reason?: string }>;
   removeFriend: (id: string) => void;
   updateSettings: (patch: Partial<GameSettings>) => void;
   resetStats: () => void;
@@ -160,12 +224,61 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const persistAuth = useCallback((next: AuthState) => { setAuth(next); persist(AUTH_KEY, next); }, [persist]);
   const persistFriends = useCallback((next: Friend[]) => { setFriends(next); persist(FRIENDS_KEY, next); }, [persist]);
 
+  const publishDirectory = useCallback(async (nextAuth: AuthState, nextProfile: Profile): Promise<string | null> => {
+    if (!nextAuth.loggedIn || !isFirebaseConfigured()) {
+      return null;
+    }
+
+    const desiredHandle = handleForDirectory(nextAuth, nextProfile);
+    let result = await publishUserDirectory(desiredHandle, nextProfile.name);
+    if (!result.ok && desiredHandle !== profileHandleFallback(nextProfile)) {
+      result = await publishUserDirectory(profileHandleFallback(nextProfile), nextProfile.name);
+    }
+    if (result.ok && result.handle && nextAuth.handle !== result.handle) {
+      persistAuth({ ...nextAuth, handle: result.handle });
+    }
+    return result.ok ? result.handle : null;
+  }, [persistAuth]);
+
   const login = useCallback((provider: AuthState['provider'], handle?: string, name?: string) => {
-    persistAuth({ loggedIn: true, provider, handle: handle ?? null });
+    const nextProfile = name && name.trim() ? { ...profile, name: name.trim() } : profile;
+    const nextAuth = {
+      loggedIn: true,
+      provider,
+      handle: normalizeHandle(handle ?? '') ?? normalizeHandle(nextProfile.name) ?? profileHandleFallback(nextProfile),
+    };
+    persistAuth(nextAuth);
     // Commit the current device identity (id, pal, coins) so signing in — including
     // "Play as Guest" with no name — always resolves to the same persisted user.
-    persistProfile(name && name.trim() ? { ...profile, name: name.trim() } : profile);
-  }, [persistAuth, persistProfile, profile]);
+    persistProfile(nextProfile);
+    publishDirectory(nextAuth, nextProfile).catch((error) => {
+      captureError(error, { tags: { area: 'firebase-friends', operation: 'login-publish-directory' } });
+    });
+  }, [persistAuth, persistProfile, profile, publishDirectory]);
+
+  useEffect(() => {
+    if (!ready || !auth.loggedIn) {
+      return;
+    }
+
+    publishDirectory(auth, profile).catch((error) => {
+      captureError(error, { tags: { area: 'firebase-friends', operation: 'profile-publish-directory' } });
+    });
+  }, [auth, profile, publishDirectory, ready]);
+
+  useEffect(() => {
+    if (!ready || !auth.loggedIn || !isFirebaseConfigured()) {
+      return undefined;
+    }
+
+    return subscribeSocialGraph((snapshot) => {
+      setFriends((prev) => {
+        const next = mergeSocialFriends(prev, snapshot);
+        persist(FRIENDS_KEY, next);
+        return next;
+      });
+    });
+  }, [auth.loggedIn, persist, ready]);
 
   const verifyAge = useCallback((birthYear: number): { ok: boolean; reason?: string } => {
     const year = Number(birthYear);
@@ -200,32 +313,86 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return coinsEarned;
   }, [stats, profile, persistStats, persistProfile]);
 
-  const addFriend = useCallback((name: string): { ok: boolean; reason?: string } => {
+  const addFriend = useCallback(async (name: string): Promise<{ ok: boolean; reason?: string }> => {
     const trimmed = name.trim().replace(/\s+/g, ' ');
     if (trimmed.length < 2) {
-      return { ok: false, reason: "Enter your friend's display name." };
+      return { ok: false, reason: "Enter your friend's handle." };
     }
     if (trimmed.length > 24) {
-      return { ok: false, reason: 'That name is too long.' };
+      return { ok: false, reason: 'That handle is too long.' };
     }
     if (trimmed.toLowerCase() === profile.name.trim().toLowerCase()) {
       return { ok: false, reason: "That's you!" };
     }
-    if (friends.some((f) => f.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+    const handle = normalizeHandle(trimmed);
+    if (!handle) {
+      return { ok: false, reason: 'Handles use 3 to 20 letters, numbers, or underscores.' };
+    }
+    if (handle === handleForDirectory(auth, profile)) {
+      return { ok: false, reason: "That's you!" };
+    }
+    if (friends.some((f) => f.name.trim().toLowerCase() === trimmed.toLowerCase() || f.handle === handle)) {
       return { ok: false, reason: `${trimmed} is already in your crew.` };
     }
+    if (!auth.loggedIn) {
+      return { ok: false, reason: 'Sign in or play as guest before adding online friends.' };
+    }
+    if (!isFirebaseConfigured()) {
+      return {
+        ok: false,
+        reason: 'Online friend requests need Firebase setup. Share room codes manually for now.',
+      };
+    }
+
+    const ownHandle = await publishDirectory(auth, profile);
+    if (!ownHandle) {
+      return { ok: false, reason: 'Could not publish your handle. Try again in a moment.' };
+    }
+    const result = await sendFriendRequest(handle, profile.name, ownHandle);
+    if (!result.ok || !result.toUid || !result.handle || !result.displayName) {
+      return { ok: false, reason: result.reason || 'Could not send that friend request.' };
+    }
+
     const friend: Friend = {
-      id: `friend-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      name: trimmed,
-      palSeed: trimmed.toLowerCase(),
+      id: result.toUid,
+      uid: result.toUid,
+      handle: result.handle,
+      name: result.displayName,
+      palSeed: result.handle,
       online: false,
-      status: 'Invite sent · pending',
+      status: 'Request sent · pending',
+      friendshipStatus: 'pending_outgoing',
     };
     persistFriends([friend, ...friends]);
     return { ok: true };
-  }, [friends, persistFriends, profile.name]);
+  }, [auth, friends, persistFriends, profile, publishDirectory]);
 
-  const removeFriend = useCallback((id: string) => persistFriends(friends.filter((f) => f.id !== id)), [friends, persistFriends]);
+  const acceptFriendRequest = useCallback(async (id: string): Promise<{ ok: boolean; reason?: string }> => {
+    const result = await acceptFirebaseFriendRequest(id);
+    if (!result.ok) {
+      return { ok: false, reason: result.reason || 'Could not accept that friend request.' };
+    }
+    return { ok: true };
+  }, []);
+
+  const declineFriendRequest = useCallback(async (id: string): Promise<{ ok: boolean; reason?: string }> => {
+    const result = await declineFirebaseFriendRequest(id);
+    if (!result.ok) {
+      return { ok: false, reason: result.reason || 'Could not decline that friend request.' };
+    }
+    persistFriends(friends.filter((friend) => friend.id !== id));
+    return { ok: true };
+  }, [friends, persistFriends]);
+
+  const removeFriend = useCallback((id: string) => {
+    const friend = friends.find((candidate) => candidate.id === id);
+    persistFriends(friends.filter((f) => f.id !== id));
+    if (friend?.friendshipStatus === 'accepted' && friend.uid) {
+      removeFriendship(friend.uid).catch((error) => {
+        captureError(error, { tags: { area: 'firebase-friends', operation: 'remove-friendship' } });
+      });
+    }
+  }, [friends, persistFriends]);
 
   const updateSettings = useCallback((patch: Partial<GameSettings>) => {
     const next = normalizeSettings({ ...settings, ...patch });
@@ -249,8 +416,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({
     ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame,
-    login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, removeFriend, updateSettings, resetStats, saveGame, clearSavedGame,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, removeFriend, updateSettings, resetStats, saveGame, clearSavedGame]);
+    login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, updateSettings, resetStats, saveGame, clearSavedGame,
+  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, updateSettings, resetStats, saveGame, clearSavedGame]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

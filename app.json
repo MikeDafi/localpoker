@@ -11,7 +11,7 @@
       "policy": "appVersion"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.localpoker.app",
       "buildNumber": "1",
       "infoPlist": {
@@ -51,15 +51,7 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "expo-asset",
-      [
-        "@sentry/react-native/expo",
-        {
-          "url": "https://sentry.io/",
-          "organization": "[PLACEHOLDER: sentry-org-slug]",
-          "project": "[PLACEHOLDER: sentry-project-slug]"
-        }
-      ]
+      "expo-asset"
     ]
   }
 }

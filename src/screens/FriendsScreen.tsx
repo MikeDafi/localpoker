@@ -19,13 +19,14 @@ import { RootStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
 export function FriendsScreen({ navigation }: Props) {
-  const { friends, addFriend, removeFriend } = useApp();
+  const { auth, friends, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend } = useApp();
   const [friendText, setFriendText] = useState('');
   const [inputError, setInputError] = useState<string | null>(null);
+  const [addingFriend, setAddingFriend] = useState(false);
 
   const { onlineFriends, offlineFriends } = useMemo(() => {
-    const online = friends.filter((friend) => friend.online);
-    const offline = friends.filter((friend) => !friend.online);
+    const online = friends.filter((friend) => friend.online && friend.friendshipStatus === 'accepted');
+    const offline = friends.filter((friend) => !friend.online || friend.friendshipStatus !== 'accepted');
     return { onlineFriends: online, offlineFriends: offline };
   }, [friends]);
 
@@ -37,13 +38,15 @@ export function FriendsScreen({ navigation }: Props) {
     if (inputError && text.trim()) setInputError(null);
   };
 
-  const handleAddFriend = () => {
+  const handleAddFriend = async () => {
     const trimmed = friendText.trim();
     if (!trimmed) {
-      setInputError("Enter your friend's display name.");
+      setInputError("Enter your friend's handle.");
       return;
     }
-    const res = addFriend(trimmed);
+    setAddingFriend(true);
+    const res = await addFriend(trimmed);
+    setAddingFriend(false);
     if (!res.ok) {
       setInputError(res.reason || 'Could not add that friend.');
       sound.play('error');
@@ -70,6 +73,26 @@ export function FriendsScreen({ navigation }: Props) {
     ]);
   };
 
+  const handleAcceptFriend = async (friend: Friend) => {
+    const res = await acceptFriendRequest(friend.uid ?? friend.id);
+    if (!res.ok) {
+      Alert.alert('Could not accept', res.reason || 'Try again in a moment.');
+      sound.play('error');
+      return;
+    }
+    sound.play('select');
+  };
+
+  const handleDeclineFriend = async (friend: Friend) => {
+    const res = await declineFriendRequest(friend.uid ?? friend.id);
+    if (!res.ok) {
+      Alert.alert('Could not decline', res.reason || 'Try again in a moment.');
+      sound.play('error');
+      return;
+    }
+    sound.play('select');
+  };
+
   return (
     <ScreenBackground variant="menu">
       <ScreenHeader title="Friends" onBack={() => navigation.goBack()} />
@@ -82,7 +105,9 @@ export function FriendsScreen({ navigation }: Props) {
               </View>
               <View style={styles.titleCopy}>
                 <Text style={styles.panelTitle}>Add friend</Text>
-                <Text style={styles.panelSubtitle}>Just type your friend's display name to add them.</Text>
+                <Text style={styles.panelSubtitle}>
+                  {auth.handle ? `Your handle is @${auth.handle}. Add friends by exact handle.` : 'Add friends by exact handle.'}
+                </Text>
               </View>
             </View>
 
@@ -91,15 +116,15 @@ export function FriendsScreen({ navigation }: Props) {
                 value={friendText}
                 onChangeText={handleChangeFriendText}
                 onSubmitEditing={handleAddFriend}
-                placeholder="Friend's display name"
+                placeholder="friend_handle"
                 placeholderTextColor={colors.inkMuted}
-                autoCapitalize="words"
+                autoCapitalize="none"
                 autoCorrect={false}
                 maxLength={24}
                 returnKeyType="done"
                 style={[styles.input, inputError ? styles.inputError : null]}
               />
-              <WiiButton label="Add" variant="blue" size="sm" onPress={handleAddFriend} />
+              <WiiButton label={addingFriend ? 'Sending…' : 'Add'} variant="blue" size="sm" disabled={addingFriend} onPress={handleAddFriend} />
             </View>
             {inputError ? <Text style={styles.errorText}>{inputError}</Text> : null}
           </WiiPanel>
@@ -133,7 +158,7 @@ export function FriendsScreen({ navigation }: Props) {
                   <FriendsIcon size={38} color={colors.blueDeep} />
                 </View>
                 <Text style={styles.emptyTitle}>Add friends to play together</Text>
-                <Text style={styles.emptyText}>Your social hub will show online pals, statuses, and quick invites for private games.</Text>
+                <Text style={styles.emptyText}>Friend requests are sent only after an exact handle match. The other player must accept before they join your crew.</Text>
                 <WiiButton label="Create invite room" variant="green" size="md" fullWidth onPress={() => navigation.navigate('CreateJoin')} />
               </View>
             </WiiPanel>
@@ -146,6 +171,8 @@ export function FriendsScreen({ navigation }: Props) {
               startDelay={140}
               onInvite={inviteFriend}
               onRemove={confirmRemoveFriend}
+              onAccept={handleAcceptFriend}
+              onDecline={handleDeclineFriend}
             />
             <FriendSection
               title="Offline"
@@ -153,6 +180,8 @@ export function FriendsScreen({ navigation }: Props) {
               startDelay={140 + onlineFriends.length * 58}
               onInvite={inviteFriend}
               onRemove={confirmRemoveFriend}
+              onAccept={handleAcceptFriend}
+              onDecline={handleDeclineFriend}
             />
           </View>
         )}
@@ -171,12 +200,16 @@ function FriendSection({
   startDelay,
   onInvite,
   onRemove,
+  onAccept,
+  onDecline,
 }: {
   title: 'Online' | 'Offline';
   friends: Friend[];
   startDelay: number;
   onInvite: (friend: Friend) => void;
   onRemove: (friend: Friend) => void;
+  onAccept: (friend: Friend) => void;
+  onDecline: (friend: Friend) => void;
 }) {
   if (friends.length === 0) return null;
 
@@ -191,15 +224,35 @@ function FriendSection({
           key={friend.id}
           entering={FadeInDown.delay(startDelay + index * 58).duration(390).easing(Easing.bezier(...easings.out))}
         >
-          <FriendRow friend={friend} onInvite={() => onInvite(friend)} onRemove={() => onRemove(friend)} />
+          <FriendRow
+            friend={friend}
+            onInvite={() => onInvite(friend)}
+            onRemove={() => onRemove(friend)}
+            onAccept={() => onAccept(friend)}
+            onDecline={() => onDecline(friend)}
+          />
         </Animated.View>
       ))}
     </View>
   );
 }
 
-function FriendRow({ friend, onInvite, onRemove }: { friend: Friend; onInvite: () => void; onRemove: () => void }) {
+function FriendRow({
+  friend,
+  onInvite,
+  onRemove,
+  onAccept,
+  onDecline,
+}: {
+  friend: Friend;
+  onInvite: () => void;
+  onRemove: () => void;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
   const statusText = friend.status?.trim() || (friend.online ? 'Online now' : 'Offline');
+  const pending = friend.friendshipStatus === 'pending_outgoing';
+  const incoming = friend.friendshipStatus === 'incoming';
 
   return (
     <WiiPanel padding={0} style={styles.friendCard}>
@@ -219,8 +272,17 @@ function FriendRow({ friend, onInvite, onRemove }: { friend: Friend; onInvite: (
           </View>
         </View>
         <View style={styles.actions}>
-          <WiiButton label="Invite" variant="green" size="sm" onPress={onInvite} />
-          <WiiButton label="✕" variant="white" size="sm" round onPress={onRemove} />
+          {incoming ? (
+            <>
+              <WiiButton label="Accept" variant="green" size="sm" onPress={onAccept} />
+              <WiiButton label="Decline" variant="white" size="sm" onPress={onDecline} />
+            </>
+          ) : (
+            <>
+              <WiiButton label={pending ? 'Pending' : 'Invite'} variant={pending ? 'white' : 'green'} size="sm" disabled={pending} onPress={onInvite} />
+              <WiiButton label="✕" variant="white" size="sm" round onPress={onRemove} />
+            </>
+          )}
         </View>
       </View>
     </WiiPanel>

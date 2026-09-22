@@ -34,6 +34,7 @@ export interface SeatProps {
   dealStep?: number;
   /** Whether to animate the deal at all (off when resuming or anims disabled). */
   dealAnimate?: boolean;
+  showBet?: boolean;
   /**
    * Avatar diameter for a compact pod. A short-handed table has room to spare,
    * so faces get bigger the fewer opponents there are - at six-plus they have to
@@ -48,7 +49,7 @@ export interface SeatProps {
 }
 
 /** A player pod around the felt: animated Pal, name, stack, status, and cards. */
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, handOff = false, avatarSize = 42 }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -148,7 +149,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
           <Text style={styles.cChips}>{player.chips.toLocaleString()}</Text>
         </View>
         {player.allIn && <View style={styles.allIn}><Text style={styles.allInText}>ALL IN</Text></View>}
-        {player.currentBet > 0 && !dimmed && (
+        {showBet && player.currentBet > 0 && !player.sittingOut && (
           <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
         )}
         {/* On the dark felt a dimmed pod alone reads as "not rendered" rather
@@ -195,7 +196,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
         </View>
       </View>
 
-      {player.currentBet > 0 && !dimmed && (
+      {showBet && player.currentBet > 0 && !player.sittingOut && (
         <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
       )}
     </View>

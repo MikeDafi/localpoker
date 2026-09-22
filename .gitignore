@@ -58,3 +58,13 @@ __pycache__/
 # Xcode build output from the XCUITest harness. The harness source itself
 # (.maestro/xctest) is checked in; DerivedData is 150MB+ of build artifacts.
 .maestro/DerivedData/
+
+# Firebase emulator output from `npm run test:rules`
+database-debug.log
+firebase-debug.log
+ui-debug.log
+
+# Agent tooling logs and QA run logs. The QA screenshots and JSON captures in
+# docs/qa are worth keeping; the raw xctest console dumps are not.
+.claude/logs/
+docs/qa/*.log

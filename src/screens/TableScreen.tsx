@@ -20,6 +20,7 @@ import { AdBanner } from '../components/AdBanner';
 import { TurnTimer } from '../components/TurnTimer';
 import { LiveStatsPanel } from '../components/LiveStatsPanel';
 import { EmoteBar, type Emote } from '../components/EmoteBar';
+import { FlyingChipStack } from '../components/FlyingChipStack';
 import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
@@ -29,6 +30,20 @@ import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
 import { boardDealDelay } from '../game/boardDeal';
+import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
+import {
+  actionReadDelayMs,
+  chipMotionEvents,
+  chipMotionPath,
+  displayedPotAmount,
+  heroBetChipPoint,
+  heroSeatChipPoint,
+  opponentBetChipPoint,
+  opponentSeatChipPoint,
+  potChipPoint,
+  totalCommittedChips,
+  type ChipPoint,
+} from '../game/chipMotion';
 import { applyHostIntent, hydrateGameState } from '../game/onlineSync';
 import type { Difficulty } from '../engine/bot';
 import {
@@ -60,8 +75,13 @@ const BOT_FOLD_EMOTES: Emote[] = [{ type: 'emoji', value: '😤' }, { type: 'tex
 const BOT_AGGRO_EMOTES: Emote[] = [{ type: 'emoji', value: '😎' }, { type: 'text', value: 'All in!' }, { type: 'emoji', value: '🔥' }];
 const BOT_NEUTRAL_EMOTES: Emote[] = [{ type: 'emoji', value: '🤔' }, { type: 'emoji', value: '👍' }, { type: 'text', value: 'Hmm…' }];
 
-function totalPot(state: GameState): number {
-  return Object.values(state.contributions).reduce((s, a) => s + a, 0);
+interface RenderedChipFlight {
+  id: number;
+  amount: number;
+  from: ChipPoint;
+  to: ChipPoint;
+  delayMs: number;
+  durationMs: number;
 }
 
 export function TableScreen({ navigation, route }: Props) {
@@ -102,6 +122,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   const botSpeedMs = settings.botSpeed === 'fast' ? 550 : settings.botSpeed === 'slow' ? 1700 : 1050;
   const animsOff = settings.animationSpeed === 'off' || settings.reduceMotion;
+  const botActionDelayMs = botSpeedMs + actionReadDelayMs(animsOff);
 
   const pals = useMemo<Record<string, PalConfig>>(() => {
     const map: Record<string, PalConfig> = { [HUMAN_ID]: profile.pal, [localPlayerId]: profile.pal };
@@ -271,6 +292,12 @@ export function TableScreen({ navigation, route }: Props) {
   const growPod = useCallback((h: number) => setPodH((prev) => (h > prev ? h : prev)), []);
   const growHero = useCallback((h: number) => setHeroH((prev) => (h > prev ? h : prev)), []);
   const [boardBox, setBoardBox] = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [chipFlights, setChipFlights] = useState<RenderedChipFlight[]>([]);
+  const chipMotionFrom = useRef<GameState | null>(null);
+  const chipFlightSeq = useRef(0);
+  const removeChipFlight = useCallback((id: number) => {
+    setChipFlights((flights) => flights.filter((flight) => flight.id !== id));
+  }, []);
   const [emotes, setEmotes] = useState<Record<string, Emote>>({});
   const emoteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -304,7 +331,8 @@ export function TableScreen({ navigation, route }: Props) {
   const isHumanTurn = current?.id === human?.id && state.street !== 'showdown' && !isAwaitingOnlineState;
   const isShowdown = state.street === 'showdown';
   const legal = useMemo(() => (isHumanTurn && human ? legalActions(state, human.id) : null), [state, isHumanTurn, human]);
-  const pot = totalPot(state);
+  const displayedPot = displayedPotAmount(state);
+  const wageringPot = totalCommittedChips(state);
 
   // Track when the current turn's countdown began so leaving/resuming carries
   // over the remaining time instead of resetting the timer to full.
@@ -408,22 +436,52 @@ export function TableScreen({ navigation, route }: Props) {
       Haptics.impactAsync(action === 'fold' ? Haptics.ImpactFeedbackStyle.Rigid : Haptics.ImpactFeedbackStyle.Medium);
     }
     actionSound(action);
-    if (state.street === 'preflop') {
+
+    // Only count the hand toward VPIP/PFR once the action has actually landed.
+    // Online the write can be refused (a stale sequence, a lost connection), and
+    // recording stats for an action nobody else ever saw would quietly corrupt
+    // the player's numbers.
+    const markActionStats = () => {
+      if (state.street !== 'preflop') return;
       if (action === 'call' || action === 'bet' || action === 'raise' || action === 'allin') handFlags.current.vpip = true;
       if (action === 'bet' || action === 'raise') handFlags.current.pfr = true;
-    }
+    };
+
     if (roomCode && firebaseOnline) {
+      const warnFailed = (reason: string) => {
+        Alert.alert('Action not sent', reason, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry', onPress: () => doHumanAction(action, amount) },
+        ]);
+      };
+
       pushAction(roomCode, {
         playerId: human.id,
         type: action,
         ...(typeof amount === 'number' ? { amount } : {}),
         seq: Date.now(),
         ts: Date.now(),
-      }).catch((error) => {
-        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'push-online-action' } });
-      });
+      })
+        .then((result) => {
+          if (result.ok) {
+            markActionStats();
+            return;
+          }
+          // A refused write means the tap did nothing. Without this the table
+          // just sits there looking frozen and the player taps again.
+          captureError(new Error(result.reason ?? 'push-action-refused'), {
+            tags: { area: 'firebase-room-sync', operation: 'push-online-action' },
+          });
+          warnFailed(result.reason ?? 'Your action could not be sent. Check your connection and try again.');
+        })
+        .catch((error) => {
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'push-online-action' } });
+          warnFailed('Your action could not be sent. Check your connection and try again.');
+        });
       return;
     }
+
+    markActionStats();
     step(action, amount, human.id);
   };
 
@@ -537,11 +595,11 @@ export function TableScreen({ navigation, route }: Props) {
         showEmote(actor.id, pool[Math.floor(emoteRoll * 997) % pool.length]);
       }
       step(decision.action, decision.amount, actor.id);
-    }, botSpeedMs);
+    }, botActionDelayMs);
     return () => {
       if (botTimer.current) clearTimeout(botTimer.current);
     };
-  }, [state, isShowdown, step, botDiff, settings.difficulty, botSpeedMs, showEmote, seed]);
+  }, [state, isShowdown, step, botDiff, settings.difficulty, botActionDelayMs, showEmote, seed]);
 
   // Record stats + award coins once per hand at showdown.
   useEffect(() => {
@@ -729,8 +787,8 @@ export function TableScreen({ navigation, route }: Props) {
   // dealt *after* that is a real deal and gets the real animation — gating on
   // `resuming` alone killed the deal for the rest of the session, which is a
   // long time to go without one.
-  const restoredHand = useRef(resuming ? state.handNumber : -1);
-  const dealAnimate = !animsOff && state.handNumber !== restoredHand.current;
+  const restoredHand = useRef(restoredDealHandNumber(resuming, state.handNumber));
+  const dealAnimate = shouldAnimateDeal(animsOff, state.handNumber, restoredHand.current);
 
   // --- Showdown lay-out -------------------------------------------------------
   // At showdown the community row grows from five slots to seven so the winner's
@@ -807,6 +865,68 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const boardDelay = (i: number) => boardDealDelay(i);
 
+  useEffect(() => {
+    if (animsOff) {
+      chipMotionFrom.current = state;
+      setChipFlights((flights) => (flights.length > 0 ? [] : flights));
+      return;
+    }
+    if (area.h <= 0) return;
+
+    const prev = chipMotionFrom.current;
+    if (prev === state) return;
+    const events = prev ? chipMotionEvents(prev, state) : resuming ? [] : chipMotionEvents(null, state);
+    chipMotionFrom.current = state;
+    if (events.length === 0) return;
+
+    const potPoint = potChipPoint({ areaWidth: area.w, laneTop, boardBox });
+    const flights: RenderedChipFlight[] = [];
+    for (const event of events) {
+      const isHero = event.playerId === human.id;
+      let seatPoint: ChipPoint | null = null;
+      let betPoint: ChipPoint | null = null;
+      if (isHero) {
+        seatPoint = heroSeatChipPoint(area.w, stageH, heroH);
+        betPoint = heroBetChipPoint(area.w, stageH);
+      } else {
+        const opponentIndex = opponents.findIndex((player) => player.id === event.playerId);
+        if (opponentIndex >= 0) {
+          const pos = seatPos(opponentIndex, opponents.length);
+          seatPoint = opponentSeatChipPoint(pos, SEAT_W, podH);
+          betPoint = opponentBetChipPoint(pos, SEAT_W, podH);
+        }
+      }
+      if (!seatPoint || !betPoint) continue;
+      const path = chipMotionPath(event.phase, seatPoint, betPoint, potPoint);
+      chipFlightSeq.current += 1;
+      flights.push({
+        id: chipFlightSeq.current,
+        amount: event.amount,
+        from: path.from,
+        to: path.to,
+        delayMs: event.delayMs,
+        durationMs: event.durationMs,
+      });
+    }
+    if (flights.length > 0) {
+      setChipFlights((currentFlights) => [...currentFlights, ...flights]);
+    }
+  }, [
+    animsOff,
+    area.h,
+    area.w,
+    boardBox,
+    heroH,
+    human.id,
+    laneTop,
+    opponents,
+    podH,
+    resuming,
+    seatPos,
+    SEAT_W,
+    stageH,
+    state,
+  ]);
 
   return (
     <ScreenBackground variant="felt" edges={['top', 'bottom']}>
@@ -913,11 +1033,11 @@ export function TableScreen({ navigation, route }: Props) {
             })}
           </View>
 
-          {pot > 0 && (
+          {displayedPot > 0 && (
             <View style={styles.potWrap}>
               <View style={styles.potCenter}>
                 <Text style={styles.potCenterLabel}>Pot</Text>
-                <AnimatedNumber value={pot} style={styles.potCenterValue} />
+                <AnimatedNumber value={displayedPot} style={styles.potCenterValue} />
               </View>
             </View>
           )}
@@ -939,6 +1059,18 @@ export function TableScreen({ navigation, route }: Props) {
           />
         )}
 
+        {chipFlights.map((flight) => (
+          <FlyingChipStack
+            key={flight.id}
+            amount={flight.amount}
+            from={flight.from}
+            to={flight.to}
+            delayMs={flight.delayMs}
+            durationMs={flight.durationMs}
+            onDone={() => removeChipFlight(flight.id)}
+          />
+        ))}
+
         {/* opponents around the outside of the circle */}
         {opponents.map((p, idx) => {
           const pos = seatPos(idx, opponents.length);
@@ -951,6 +1083,7 @@ export function TableScreen({ navigation, route }: Props) {
                 compact
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
+                showBet={!isShowdown}
                 showCards={isShowdown && !p.folded && remainingAtEnd > 1}
                 handOff={showdownHand?.playerId === p.id}
                 avatarSize={avatarSize}
@@ -977,6 +1110,7 @@ export function TableScreen({ navigation, route }: Props) {
               isHuman
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
+              showBet={!isShowdown}
               won={humanWon}
               reaction={reactionFor(human.id)}
               idleMotion={settings.avatarIdleMotion && !animsOff}
@@ -1144,7 +1278,7 @@ export function TableScreen({ navigation, route }: Props) {
               onExpire={onTimerExpire}
               warn
             />
-            <ActionBar legal={legal} potSize={pot} step={settings.bigBlind} onAction={onHumanAction} />
+            <ActionBar legal={legal} potSize={wageringPot} step={settings.bigBlind} onAction={onHumanAction} />
           </View>
         ) : (
           <View style={styles.waiting}>

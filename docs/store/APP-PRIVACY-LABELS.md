@@ -1,103 +1,119 @@
-# App Privacy Labels and Google Play Data Safety Draft
+# App Privacy Labels and Google Play Data Safety, LocalPoker
 
-> **Legal review required:** This is a code-traced disclosure draft, not legal advice. Store-console answers must be reviewed against the exact binary submitted and each SDK vendor's current disclosure guidance.
+> Legal review required: this is a code-traced disclosure draft, not legal advice. Store-console answers must match the exact binary, environment variables, SDK configuration, and vendor disclosures submitted.
 
-## Scope and evidence reviewed
+## Scope and current code evidence
 
-Current build evidence:
+Reviewed evidence:
 
-- Age gate and in-app placeholder legal copy: `src/screens/AgeGateScreen.tsx`.
+- Age gate and legal modal copy: `src/screens/AgeGateScreen.tsx`.
 - Local persistence: `src/state/AppContext.tsx`, `src/screens/StoreScreen.tsx`.
-- Firebase config/auth/Realtime Database services: `src/services/firebase/config.ts`, `auth.ts`, `roomSync.ts`, `types.ts`, `database.rules.json`.
-- Friends lobby using Firebase presence: `src/screens/LobbyScreen.tsx`.
-- Local table play and saved game snapshots: `src/screens/TableScreen.tsx`.
+- Firebase config, anonymous auth, room sync, and rules: `src/services/firebase/config.ts`, `auth.ts`, `roomSync.ts`, `types.ts`, `database.rules.json`.
+- Friends lobby using Firebase identities: `src/screens/LobbyScreen.tsx`.
+- Online table sync: `src/screens/TableScreen.tsx`, `src/game/onlineSync.ts`.
+- Telemetry: `src/services/telemetry.ts`, `App.tsx`, `src/components/ErrorBoundary.tsx`, `src/services/sound.ts`.
+- GIF CDN usage: `src/services/gifs.ts`, `src/components/EmoteBar.tsx`, `src/components/Seat.tsx`.
 - Ads placeholder: `src/components/AdBanner.tsx`.
-- GIF CDN usage: `src/services/gifs.ts`, `src/components/EmoteBar.tsx`.
-- Login screen: `src/screens/LoginScreen.tsx`.
 - Store config: `app.json`, `eas.json`, `package.json`.
 
 Key current-state findings:
 
-- Real ads are not integrated; `AdBanner` is a static placeholder.
-- No crash-reporting or analytics SDK is integrated.
-- Firebase anonymous auth is attempted, but real OAuth is not implemented.
-- Online/friends play is partially built: lobby presence exists; gameplay sync is not wired into the table.
-- Giphy GIFs load from public CDN URLs.
+- Real ads are **not** integrated. There is no `react-native-google-mobile-ads` dependency, no AdMob app ID, no ATT string, and no `SKAdNetworkItems` list. `AdBanner` is a static placeholder.
+- Sentry is installed and the app calls `initTelemetry()`, but telemetry is disabled unless `EXPO_PUBLIC_SENTRY_DSN` is set. Production `eas.json` does not set a placeholder DSN.
+- Firebase is optional at runtime. If `EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_DATABASE_URL`, and `EXPO_PUBLIC_FIREBASE_PROJECT_ID` are present, the app initializes Firebase, signs in anonymously, and can sync private room data.
+- The old auth-ID mismatch is fixed. `roomSync.ts` resolves `auth.uid` internally for create, join, actions, presence, host game state, and private views. `LobbyScreen.tsx` still builds a local `profile.id` for offline display, but Firebase writes are rewritten to `auth.uid` before reaching the database.
+- Online gameplay sync is now partially wired into `TableScreen.tsx`: hosts publish redacted public game state and private hole-card views, and players push action records. Emote messages and GIF reactions are local only today.
+- Giphy GIFs load from public CDN URLs. The app does not use a Giphy API key and does not send search terms to Giphy.
 
-## Apple App Privacy Nutrition Label — current build (no ads SDK)
+## Apple App Privacy, recommended current 1.0 answers
 
-Recommended answer for **tracking** today: **No**. There is no IDFA/ATT flow, no advertising SDK, no data broker integration, and no cross-app tracking code in the current build.
+Assumption for this answer sheet: Firebase online rooms are enabled for the submitted binary, real ads are not shipped, and no real Sentry DSN is set.
+
+Recommended **Tracking** answer: **No**. The current 1.0 path has no IDFA access, no ATT prompt, no advertising SDK, no data broker integration, and no cross-app tracking code.
 
 | Apple data type | Collected today? | Linked to user? | Used for tracking? | Purpose | Code evidence and notes |
 |---|---:|---:|---:|---|---|
-| Contact Info — Email Address | **No** | No | No | N/A | `LoginScreen.tsx` accepts an email-or-username string, but `AppContext.login()` persists it only to AsyncStorage as `@pokerpals/auth`; no Firebase write path sends it. |
-| Contact Info — Name | **No, if display names are treated as usernames/nicknames** | N/A | No | N/A | The app uses display names/nicknames, not legal first/last names. Disclose those under User ID / Gameplay Content below. If legal review or App Store Connect treats the nickname as Contact Info Name, change this row to **Yes / linked / not tracking**. |
-| Identifiers — User ID | **Yes, when Firebase/online is used** | **Yes** | No | App functionality, account management, security | `ensureSignedIn()` calls Firebase anonymous auth and receives `auth.uid`; `roomSync.ts` writes `hostId`/player `id`; `database.rules.json` scopes writes to `auth.uid`. `AppContext.tsx` also creates a local random `profile.id` used by lobby code today. |
-| Identifiers — Device ID | **No today** | No | No | N/A | No IDFA/IDFV/AAID access, no `react-native-google-mobile-ads`, no ATT prompt. Firebase Auth/Database SDKs may use service/session data, but the app code does not access advertising/device IDs. Update if vendor disclosure requires it. |
-| User Content — Gameplay Content / Other User Content | **Yes, limited to online lobby metadata** | **Yes** | No | App functionality | `LobbyScreen.tsx` builds `RoomPlayer` from `profile.id`, `profile.name`, `palSeed`, seat, chips, connected, host; `roomSync.createRoom()`/`joinRoom()` write room code, settings JSON, player metadata, presence to Firebase. `pushAction()` exists but is not called by `TableScreen.tsx`, so gameplay actions are not collected today. |
-| Usage Data — Product Interaction | **No analytics today** | No | No | N/A | Stats, coins, settings, saved games, cosmetics are stored locally via `AppContext.tsx`, `StoreScreen.tsx`, and `TableScreen.tsx`; no analytics SDK sends product-interaction events. Firebase presence above is disclosed as Gameplay Content. |
-| Diagnostics — Crash Data / Performance Data | **No today** | No | No | N/A | `ErrorBoundary.tsx` logs locally and has a TODO for Sentry/Crashlytics. No crash SDK is installed. Update when crash reporting ships. |
-| Location — Precise or Coarse | **No today** | No | No | N/A | No location APIs. Firebase/Giphy receive ordinary network requests; no app code requests or sends GPS/location. |
-| Purchases / Financial Info | **No** | No | No | N/A | No IAP dependency/config; StoreScreen cosmetics use play-money coins only via `addCoins(-price)`. |
-| Contacts, Photos/Videos, Audio, Files, Health/Fitness, Sensitive Info, Browsing/Search History | **No** | No | No | N/A | No code paths or permissions for these categories. `app.json` configures `expo-audio` with microphone/recording disabled. |
-| Other Data — Giphy CDN request metadata | **Yes, by third-party CDN request** | Not linked by LocalPoker | No by LocalPoker | App functionality | `gifs.ts` builds `https://media.giphy.com/...` URLs and `EmoteBar.tsx` loads them in React Native `Image`. Giphy/CDN may receive IP/user agent and requested GIF URL; LocalPoker does not attach account IDs or search terms. |
+| Contact Info, Email Address | **No** | No | No | N/A | `LoginScreen.tsx` accepts an email-or-username string, but `AppContext.login()` persists it only to AsyncStorage as `@pokerpals/auth`. No Firebase write path sends it. |
+| Contact Info, Name | **No, if display names are treated as screen names** | N/A | No | N/A | The app uses nicknames/display names, not legal first or last names. Disclose screen names under User ID and Gameplay Content. If counsel treats nicknames as Name, change this to Yes, linked, App Functionality. |
+| Identifiers, User ID | **Yes, when Firebase is enabled** | **Yes** | No | App Functionality, security | Firebase anonymous `auth.uid`; room `hostId`; `players/$uid`; action `playerId`; private view `playerId`; display name as a screen name. |
+| Identifiers, Device ID | **No for current no-ads, no-Sentry binary** | No | No | N/A | No advertising ID access, no AdMob SDK, no ATT prompt. Re-evaluate if Sentry vendor guidance or another SDK requires Device ID disclosure. |
+| User Content, Gameplay Content | **Yes, when Firebase rooms are used** | **Yes** | No | App Functionality | Room code, settings JSON, room status, players, connected state, chip counts, public game state, redacted player metadata, action records, and private hole-card views. |
+| User Content, Other User Content | **No for current networked behavior** | No | No | N/A | Custom text reactions, emojis, stickers, and GIF choices are local table UI today and are not pushed to Firebase. Change this if reactions become networked. |
+| Usage Data, Product Interaction | **No analytics today** | No | No | N/A | Stats, settings, cosmetics, coins, local saved games, and local hand history stay in AsyncStorage. Firebase gameplay data is disclosed as Gameplay Content, not analytics. |
+| Diagnostics, Crash Data or Other Diagnostic Data | **No unless Sentry DSN is set** | No | No | N/A | `telemetry.ts` no-ops without `EXPO_PUBLIC_SENTRY_DSN`. If a real DSN is set, disclose crash and diagnostic data according to Sentry's current privacy manifest and your Sentry settings. |
+| Location, Precise or Coarse | **No from app code** | No | No | N/A | No location APIs. Firebase, Giphy, and Sentry if enabled receive ordinary network requests. If a vendor uses IP-derived location and requires disclosure, update. |
+| Purchases or Financial Info | **No** | No | No | N/A | No IAP dependency, no StoreKit products, no real-money gambling, and no purchases. Virtual coins are local play-money state. |
+| Contacts, Photos or Videos, Audio, Files, Health, Fitness, Sensitive Info, Browsing History, Search History | **No** | No | No | N/A | No code paths or permissions for these categories. `expo-audio` is configured with microphone and recording disabled. |
+| Other Data Types, Giphy CDN request metadata | **Conservative Yes** | Not linked by LocalPoker | No | App Functionality | `gifs.ts` builds `https://media.giphy.com/...` URLs and React Native `Image` loads them. Giphy/CDN may receive IP address, user agent, and requested GIF URL. LocalPoker sends no account ID, API key, or search terms. Legal may decide this is optional if it is only transient CDN delivery. |
 
-### Apple notes for current submission
+### Apple notes for the current submission
 
-- Do **not** answer that the app collects email addresses unless the submitted binary actually sends the email/handle off-device.
-- Do **not** enable tracking/IDFA answers for the current placeholder-ad build.
-- Do disclose Firebase anonymous/user IDs and online lobby metadata if the Firebase-enabled binary is submitted.
-- If submitting with Firebase disabled and no online rooms, the label can be narrower, but the store build should match the app's actual runtime configuration.
+- Do not say the app collects email addresses unless the submitted binary sends the email-or-username off-device.
+- Do not answer Yes to tracking, IDFA, or advertising data for the current placeholder-ad build.
+- Do disclose Firebase user IDs and gameplay content if online rooms are enabled.
+- If Sentry is enabled with a real DSN, add diagnostics before submission.
+- If Firebase is not configured for production, either narrow the privacy label or do not advertise online rooms.
 
-## Apple App Privacy — after AdMob ships
+## Apple App Privacy, if Sentry is enabled
 
-Update the label before submitting an AdMob build. Expected additions, subject to Google's current AdMob disclosure guidance and your configuration:
+If you set `EXPO_PUBLIC_SENTRY_DSN` for the submitted build, update the label before submission. Expected additions, subject to Sentry's current Apple privacy manifest and your configuration:
 
-| Apple data type | Collected after AdMob? | Linked to user? | Used for tracking? | Purpose | Notes |
+| Apple data type | Collected after Sentry is enabled? | Linked to user? | Used for tracking? | Purpose | Notes |
 |---|---:|---:|---:|---|---|
-| Identifiers — Device ID | **Yes** | Likely yes | **Yes if personalized ads / IDFA cross-app tracking is enabled** | Third-party advertising, analytics, fraud prevention | Requires ATT prompt before IDFA access on iOS. If using only contextual/non-personalized ads with no tracking, tracking answer may differ. |
-| Usage Data — Advertising Data / Product Interaction | **Yes** | Likely yes | Yes if used across apps/sites for ads | Third-party advertising, analytics | Ad impressions, clicks, ad requests, frequency/fraud signals. |
-| Location — Coarse Location | **Likely yes** | Likely yes | Possible | Advertising, fraud prevention | Often inferred from IP by ad networks. Verify with vendor docs. |
-| Diagnostics — Crash/Performance | **Possible** | Possible | No/possible depending SDK use | App functionality, analytics | If AdMob or crash SDK collects diagnostics, disclose. |
-| Contact Info / Financial Info | Not from AdMob alone | N/A | N/A | N/A | Still no real-money purchases unless future IAP is added. |
+| Diagnostics, Crash Data | **Yes** | Usually not linked unless you add user context | No | App Functionality | ErrorBoundary, startup, storage, sound, and Firebase error capture can send exceptions. |
+| Diagnostics, Other Diagnostic Data | **Likely yes** | Usually not linked unless configured | No | App Functionality | May include stack traces, OS/app/device context, breadcrumbs, and event metadata. |
+| Identifiers, Device ID | **Verify with Sentry vendor guidance** | Verify | No | App Functionality | Do not guess. Use Sentry's current SDK privacy manifest for the exact answer. |
 
-Required before AdMob submission:
+The code sets `sendDefaultPii: false` and `tracesSampleRate: 0`, so it is not configured for product analytics or performance tracing today.
 
-- Add/verify ATT purpose string and prompt timing.
-- Add Google UMP or equivalent consent flow for EEA/UK and other required regions.
-- Mark Google Play listing as **Contains ads**.
-- Update privacy policy and Data Safety answers.
+## Apple App Privacy, after real ads ship
 
-## Google Play Data Safety — current build (no ads SDK)
+Do not use this section until a real ad SDK is in the binary.
 
-Recommended high-level current answers:
+Expected additions for an AdMob-style build, subject to Google's current SDK guidance and your consent configuration:
 
-- **Does the app collect user data?** Yes, if Firebase/online lobby is enabled.
-- **Is all collected data encrypted in transit?** Yes for Firebase/Giphy HTTPS traffic, assuming standard SDK/CDN transport.
-- **Can users request deletion?** Yes, via the privacy contact placeholder; add an in-app/account deletion flow before production if possible.
-- **Is data sharing declared?** Firebase as service provider may fall under Google's service-provider exception; Giphy receives CDN request metadata; AdMob sharing does not apply until ads ship. Confirm Play Console interpretation with counsel.
+| Apple data type | Collected after ads? | Linked to user? | Used for tracking? | Purpose | Notes |
+|---|---:|---:|---:|---|---|
+| Identifiers, Device ID | **Yes** | Likely yes | Yes if personalized ads, IDFA, or cross-app measurement is enabled | Third-Party Advertising, Analytics, fraud prevention | Requires ATT before IDFA access. |
+| Usage Data, Advertising Data | **Yes** | Likely yes | Yes if used across apps or sites | Third-Party Advertising, Analytics | Ad impressions, clicks, ad requests, frequency, and measurement. |
+| Usage Data, Product Interaction | **Likely yes** | Likely yes | Possible | Third-Party Advertising, Analytics | Ad SDKs often collect app interaction signals for ads and measurement. |
+| Location, Coarse Location | **Likely yes** | Likely yes | Possible | Third-Party Advertising, fraud prevention | Often inferred from IP. Verify with vendor docs. |
+| Diagnostics | **Possible** | Possible | No or possible depending on SDK use | App Functionality, Analytics | Verify with vendor docs. |
+
+Required before any real ad-supported submission:
+
+- Add the ad SDK and native config through an EAS development or production build.
+- Add real iOS and Android app IDs.
+- Add `NSUserTrackingUsageDescription` only if tracking or IDFA access is actually requested.
+- Add ATT prompt timing only if tracking is requested.
+- Add Google's current `SKAdNetworkItems` list or the list required by the chosen ad network.
+- Add Google UMP or equivalent consent flow for EEA, UK, and other required regions.
+- Update Privacy Policy, App Privacy labels, Play Data Safety, and store age-rating Advertising answer.
+
+## Google Play Data Safety, recommended current 1.0 answers
+
+Assumption: Firebase online rooms are enabled, no real ads, no Sentry DSN.
+
+Recommended high-level answers:
+
+- **Does the app collect user data?** Yes, when online rooms are enabled.
+- **Is all collected data encrypted in transit?** Yes for Firebase and HTTPS CDN traffic, assuming standard SDK/CDN transport.
+- **Can users request deletion?** Yes via the privacy contact. Add an in-app deletion flow later if accounts become persistent.
+- **Does the app share user data?** Firebase processing may be service-provider processing. Giphy/CDN receives request metadata. Real ad sharing does not apply until ads ship. Confirm final Play Console interpretation with counsel.
 
 | Google data category | Collected today? | Shared? | Required or optional? | Purpose | Code evidence and notes |
 |---|---:|---:|---|---|---|
-| Personal info — Name | **Yes, for display name in online lobby** | No, except service provider processing | Optional/feature-dependent | App functionality | `profile.name` stored locally in `AppContext.tsx`; `LobbyScreen.tsx` sends it in `RoomPlayer`; `roomSync.ts` writes it to Firebase. It is a nickname/display name, not verified legal name. |
-| Personal info — Email address | **No** | No | N/A | N/A | Email-or-username handle stays in AsyncStorage via `AppContext.tsx`; no Firebase write path. |
-| User IDs | **Yes** | No, except service provider processing | Required for online rooms; local play can work without Firebase | App functionality, security/fraud prevention | Firebase anonymous `auth.uid`; app local `profile.id`; room rules and player paths. |
-| App activity — App interactions / other actions | **Yes, limited online lobby presence/room metadata** | No, except service provider processing | Optional/feature-dependent | App functionality | Room code, status, settings JSON, seat/chip/presence data via `LobbyScreen.tsx` and `roomSync.ts`. `pushAction()` is not used by table gameplay today. |
-| Device or other IDs | **No today from app code** | No | N/A | N/A | No ad SDK or advertising ID access. Re-evaluate Firebase vendor requirements and future AdMob. |
-| Approximate location | **No today from app code** | No | N/A | N/A | No location APIs. Network services may process IP for delivery/security. |
-| Diagnostics | **No today** | No | N/A | N/A | No crash-reporting SDK; `ErrorBoundary` only logs. |
-| Financial info / Purchases | **No** | No | N/A | N/A | No IAP, no real-money gambling, virtual coins only. |
-| Photos/Videos, Audio, Files/docs, Contacts, Calendar, Health/Fitness, Web browsing | **No** | No | N/A | N/A | No code paths or permissions. |
+| Personal info, Name | **Yes for display name in online rooms** | Service-provider processing through Firebase | Optional for local play, required for named online presence | App functionality | `profile.name` is stored locally and written as `RoomPlayer.name` when joining a room. It is a nickname, not a verified legal name. |
+| Personal info, Email address | **No** | No | N/A | N/A | Email-or-username stays local in AsyncStorage. |
+| User IDs | **Yes** | Service-provider processing through Firebase | Required for online rooms | App functionality, security | Firebase anonymous `auth.uid`, room `hostId`, player paths, action IDs, and private views. |
+| App activity, App interactions or other actions | **Yes, for online gameplay** | Service-provider processing through Firebase | Required for online rooms | App functionality | Room creation/join, presence, action records, public game state, and private views. |
+| Device or other IDs | **No for current no-ads, no-Sentry binary** | No | N/A | N/A | No ad SDK. Re-evaluate Sentry or any future SDK. |
+| Approximate location | **No from app code** | No | N/A | N/A | No location APIs. Network services may process IP for delivery/security. |
+| Diagnostics | **No unless Sentry DSN is set** | No unless Sentry enabled | N/A | N/A | Telemetry no-ops without DSN. |
+| Financial info, Purchases | **No** | No | N/A | N/A | No IAP, no real-money gambling, virtual coins only. |
+| Photos/Videos, Audio, Files, Contacts, Calendar, Health/Fitness, Web browsing | **No** | No | N/A | N/A | No code paths or permissions. |
 
-## Google Play Data Safety — after AdMob ships
+## Google Play Data Safety, after Sentry or ads ship
 
-Expected additions for an AdMob build, subject to Google's current SDK guidance:
-
-| Google data category | Collected? | Shared? | Purpose | Notes |
-|---|---:|---:|---|---|
-| Device or other IDs | Yes | **Yes** with Google/advertising partners | Advertising/marketing, analytics, fraud prevention | AAID/IDFA or similar identifiers where available. |
-| App activity | Yes | Yes | Advertising/marketing, analytics | Ad interactions, ad views, app interactions used for ad measurement. |
-| Approximate location | Likely yes | Yes | Advertising/marketing, fraud prevention | Usually inferred from IP. |
-| Diagnostics | Possible | Possible | Analytics, crash prevention, fraud/security | Verify SDK behavior. |
-
-Also update the Play Console **Contains ads** flag to **Yes** when any real ad SDK/ad serving is present.
+- If Sentry is enabled, add diagnostics according to Sentry's current Google Play Data Safety guidance.
+- If real ads ship, mark **Contains ads** Yes and add data categories required by the ad SDK, commonly Device or other IDs, App activity, Advertising ID or device IDs, Approximate location, diagnostics, sharing with Google/advertising partners, and Advertising/marketing purpose.

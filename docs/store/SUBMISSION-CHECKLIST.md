@@ -1,164 +1,124 @@
-# Store Submission Checklist — LocalPoker
+# Store Submission Checklist, LocalPoker
 
-> **Legal/compliance review required:** This checklist is based on the current codebase and public store-process norms. Apple/Google console wording changes often; verify every answer in the live consoles before submission.
+> Legal/compliance review required: this checklist is based on the current codebase and public store-process norms. Apple and Google console wording changes often. Verify every answer in the live consoles before submission.
 
-## 1. Identity and build readiness
+Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
-- App name: **LocalPoker: Poker with Friends**.
-- Bundle/package: `com.localpoker.app` (`app.json`).
-- Store-facing app version: `1.0.0` (`app.json`).
-- iOS build number: `1`; Android version code: `1` (`app.json`).
-- EAS config exists (`eas.json`) with production build/submit placeholders.
-- Export compliance: current `app.json` sets `ios.infoPlist.ITSAppUsesNonExemptEncryption = false`. Confirm the app uses only standard HTTPS/TLS and no non-exempt custom encryption.
-- Do not submit until Firebase console setup below is complete or online-room UI is hidden/disabled.
+## 1. Current submission blockers
 
-## 2. Human-only console and hosting steps
+1. **Ads decision required.** The app is positioned as free with ads, but `AdBanner` is only a static placeholder and no ad SDK is installed. The visible fake ad slot is an App Review rejection risk as placeholder content, separate from the privacy-label issue. For 1.0, either hide ad placeholders and submit as no-ads, or integrate real ads and complete ATT, consent, SKAdNetwork, and privacy disclosures.
+2. **Legal URLs are not live yet.** Host `PRIVACY-POLICY.md` and `TERMS.md` through GitHub Pages, then fill the legal placeholders.
+3. **Online rooms need production Firebase setup.** Enable Anonymous Authentication, publish `database.rules.json`, add production EAS Firebase env vars, and define room cleanup.
+4. **EAS submit values are placeholders.** Replace Apple ID email, App Store Connect app ID, and Apple team ID before running `eas submit`.
+5. **Sentry is off by default.** If you want Sentry in the release, add a real DSN, restore real Expo plugin org/project config, and update diagnostics disclosures.
+6. **Screenshots are captured but blocked by ad placeholders.** `docs/store/screenshots/` has a real `1320 x 2868` iPhone 6.9-inch set. Do not upload the four screenshots that show `Reserved banner slot` until that placeholder is hidden or replaced by real disclosed ads.
 
-- Host final legal URLs:
-  - Privacy Policy URL: `[PLACEHOLDER: https://.../privacy]`
-  - Terms URL: `[PLACEHOLDER: https://.../terms]`
-  - Support URL: `[PLACEHOLDER: https://.../support]`
-- Replace in-app placeholder legal modal copy or ensure it links to/summarizes the final hosted policy and terms.
-- Firebase console:
-  - Enable **Anonymous** sign-in provider.
-  - Publish the current `database.rules.json`.
-  - Fix the current auth-ID mismatch before relying on online rooms: `LobbyScreen.tsx` uses `profile.id`, while rules require `auth.uid`.
-  - Add a room cleanup/retention process before production.
-- App Store Connect:
-  - Create app record with bundle id `com.localpoker.app`.
-  - Add privacy policy URL, support URL, marketing URL if any.
-  - Complete App Privacy answers from `docs/store/APP-PRIVACY-LABELS.md`.
-  - Complete age rating questionnaire as below.
-- Google Play Console:
-  - Create app with package `com.localpoker.app`.
-  - Complete Data Safety from `docs/store/APP-PRIVACY-LABELS.md`.
-  - Complete IARC/content rating as below.
-  - Complete Target audience and content; choose adults only / 18+ positioning.
+## 2. Identity and build readiness
 
-## 3. Age rating questionnaire guidance
+- App name: **LocalPoker: Poker with Friends**. Count: 30 of 30 characters.
+- Bundle/package: `com.localpoker.app` in `app.json`.
+- Store-facing app version: `1.0.0` in `app.json`.
+- iOS build number: `1`; Android version code: `1` in `app.json`.
+- Expo SDK: `~57.0.23` in `package.json`.
+- EAS config exists with production build and submit profiles.
+- iOS is now phone-only by deliberate product decision: `ios.supportsTablet = false` in `app.json`. The table UI is phone-tuned, so there is no iPad support at launch.
+- Export compliance: `ios.infoPlist.ITSAppUsesNonExemptEncryption = false`. Confirm the app uses only standard HTTPS/TLS and no custom non-exempt encryption.
+- Sentry is optional. Production EAS does not set a placeholder DSN, and `app.json` has no placeholder Sentry plugin config. If a real DSN is added, update App Privacy for diagnostics.
 
-### Apple App Store Connect
+## 3. Online rooms status
 
-Recommended answers for the current LocalPoker concept:
+The prior checklist said there was an auth-ID mismatch where `LobbyScreen.tsx` used `profile.id` while rules required `auth.uid`. That specific issue is fixed.
 
-- **Simulated Gambling:** **Frequent/Intense**. Poker with play-money chips is the core gameplay loop, not incidental content.
-- **Gambling:** **No**. The app has no real-money wagering, no deposits, no withdrawals, no cash prizes, and no items of real-world value.
-- **Contests:** **No** unless tournaments with prizes/rankings are added later.
-- **In-App Purchases:** **No today**. No IAP code/config is present. If chip packs, remove-ads, subscriptions, or cosmetics for money are added, update this.
-- **Unrestricted Web Access:** **No**. The app loads curated Giphy CDN images but does not provide a browser or arbitrary web access.
-- **User Generated Content / Messaging:** Treat as **No for networked UGC today** if submitting the current bot/local gameplay and lobby-only build. If custom text emotes/display names are synced between real users, answer according to Apple's UGC/messaging questions and add moderation, reporting, blocking, and safety controls.
-- Other content categories (violence, sexual content, drugs, profanity, medical, horror): **None** unless store screenshots/copy introduce such content.
+Current code evidence:
 
-Reasoning: Apple distinguishes simulated gambling from real gambling. LocalPoker is a poker game with virtual chips, so simulated gambling must be disclosed even though the Terms/Privacy and age gate correctly say there is no real-money gambling.
+- `roomSync.ts` resolves Firebase `auth.uid` with `authedPlayerId()` before create, join, action, presence, host state, and private view writes.
+- `database.rules.json` requires room owner, player path, action `playerId`, and private view `playerId` to match `auth.uid`.
+- `LobbyScreen.tsx` still constructs a local `RoomPlayer` from `profile.id`, but Firebase writes override the ID with `auth.uid` before database writes.
+- `TableScreen.tsx` now uses Firebase online sync for room state, private views, action records, and host-published redacted game state.
 
-Expected result: likely a high age rating (often 17+) because simulated gambling is frequent/intense. Keep the app's own 18+ gate and listing copy consistent with that.
+Do not submit friend-room claims until the Firebase console steps and EAS production environment variables are done.
 
-### Google Play / IARC
+## 4. Privacy and data collection summary
 
-Recommended answers:
+Current no-ads, no-Sentry build behavior:
 
-- Game category: card/casino-style game / poker.
-- **Simulated gambling:** **Yes**. Users play Texas Hold'em with virtual chips.
-- **Real-money gambling / gambling for prizes of value:** **No**.
-- **Can users win cash, prizes, or anything redeemable/transferable for value?** **No**.
-- **In-app purchases:** **No today**; update if monetization is added.
-- **Ads:** **No today** for the placeholder-only build. Mark **Yes** once AdMob or any real ad serving is integrated.
-- **User interaction / UGC:** answer based on the submitted binary. Current friend lobby shows display names/presence; full chat/multiplayer UGC is not production-ready. If network text/emotes ship, add moderation/report/block flows and disclose UGC.
-- Target audience: Adults / 18+ only.
+- Local-only storage: age verification flag, local profile ID, display name, Pal/avatar, virtual coins, XP, stats, settings, friends list, cosmetics, login provider label, local email-or-username handle, and saved game snapshots.
+- Firebase, when configured: anonymous `auth.uid`, room code, host ID, room status, settings JSON, display name, Pal seed, seat, chips, connected state, action records, redacted public game state, and private player views.
+- Giphy CDN: curated GIF thumbnail/full image URLs from `media.giphy.com`; no API key and no search terms.
+- Sentry: installed but inactive unless `EXPO_PUBLIC_SENTRY_DSN` is set.
+- Ads: no real ad SDK, no IDFA, no ATT, no SKAdNetwork list, and no ad data collection.
+- Purchases: no IAP and no real-money gambling.
 
-Reasoning: Google/IARC also treats play-money poker as simulated gambling even without real-money gambling. Ratings vary by region; the app's own 18+ gate should remain.
+Use `APP-PRIVACY-LABELS.md` for the full App Privacy and Play Data Safety answer key.
 
-## 4. Screenshots and store assets
+## 5. Age rating guidance
 
-### Apple
+Use the literal answer sheet in `APP-STORE-CONNECT.md`.
 
-- Screenshots: upload **1–10 screenshots per required device display** and localization in App Store Connect.
-- Because `ios.supportsTablet` is `true`, prepare both iPhone and iPad screenshot sets.
-- Practical portrait set to prepare first (confirm the exact slots shown in App Store Connect, because Apple updates device classes):
-  - iPhone large display: 6.9-inch class (commonly 1320×2868 portrait) and/or the 6.7/6.5-inch class requested by ASC (for example 1290×2796, 1284×2778, or 1242×2688 portrait).
-  - iPhone 5.5-inch fallback if ASC requests it: 1242×2208 portrait.
-  - iPad because `supportsTablet` is enabled: 13-inch iPad Pro class (commonly 2064×2752 portrait) and/or 12.9-inch class (2048×2732 portrait).
-- Use PNG/JPEG, RGB, no alpha; generate directly from simulators/devices where possible instead of upscaling marketing art.
-- Recommended screenshot sequence:
-  1. Age gate / play-money 18+ messaging.
-  2. Home lobby channel grid.
-  3. Poker table with play-money chips.
-  4. Friends room/lobby (only if the submitted build works with Firebase rules).
-  5. Pal/avatar customization.
-  6. Stats/profile.
-- Avoid showing real ads until AdMob is actually integrated. Placeholder ad slots are acceptable only if they match the submitted UI and do not imply a real advertiser.
+High-confidence answers for the current concept:
 
-### Google Play
+- Simulated Gambling: **Frequent/Intense**.
+- Real-money Gambling: **No**.
+- Contests with prizes: **No**.
+- In-App Purchases: **No**.
+- Advertising: **No** for the placeholder build, **Yes** only after real ads ship.
+- Unrestricted Web Access: **No**.
+- Messaging and Chat: **No** for current networked behavior. Re-answer if text/GIF reactions are synced between users later.
+- User-Generated Content: **No** for current networked behavior. Re-answer if public or broadly distributed UGC is added.
+- Kids category: **No**. Keep adults-only 18+ positioning.
 
-- Phone screenshots: at least **2**, up to **8**.
-- Recommended: also provide tablet screenshots (7-inch and 10-inch categories) if distributing to tablets.
-- Common Play asset constraints: PNG or JPEG, 320–3840 px per side, max 2:1 aspect ratio, no transparent background for many graphic assets. Verify in the Play Console.
-- Feature graphic: prepare 1024×500 px.
-- App icon: 512×512 px Play icon, matching the production icon.
+Expected Apple result: likely 17+ because simulated gambling is frequent. Keep the in-app 18+ gate.
 
-## 5. Store listing copy draft
+## 6. Screenshots and store assets
 
-### App name
+Apple current phone-only requirement, checked 2026-09-21:
 
-LocalPoker: Poker with Friends
+- Upload 1 to 10 screenshots per required display size and localization.
+- For iPhone apps, provide 6.9-inch screenshots at `1260 x 2736`, `1290 x 2796`, or `1320 x 2868` portrait. If those are provided, App Store Connect scales smaller iPhone sizes.
+- 6.5-inch screenshots, `1284 x 2778` or `1242 x 2688`, are required only if 6.9-inch screenshots are not provided.
+- Use PNG, JPG, or JPEG, RGB, no alpha channel or transparency.
+- Since `ios.supportsTablet` is false by launch decision, iPad screenshots should not be required and LocalPoker should not claim iPad support. If tablet support is re-enabled, prepare 13-inch iPad screenshots too.
 
-### Apple subtitle (30 characters max)
+Shot list:
 
-Play-money Texas Hold'em
+1. Home screen.
+2. Difficulty/table setup.
+3. Table mid-hand.
+4. Peeled hole cards.
+5. Showdown or hand result.
+6. Stats.
+7. Friends lobby, only after online rooms are production-ready.
+8. Pal customization or Store.
 
-### Apple promotional text
+Do not show placeholder ads in final screenshots. Apple's placeholder-content review risk applies even before considering ad privacy. Upload screenshots only after the placeholder slot is hidden or after real ads are integrated and disclosed.
 
-Friendly play-money poker with custom Pals, smart bots, private room codes, and zero real-money gambling.
-
-### Short description / tagline
-
-Play free Texas Hold'em with friends or bots. Play-money only. 18+.
-
-### Full description draft
-
-LocalPoker is a friendly play-money Texas Hold'em table built for quick games at home or on the go.
-
-Create a Pal, sit down with free virtual chips, and play against difficulty-tuned bots while private friend-room play is being built out. LocalPoker is designed for casual poker fans who want the cards, chips, reactions, and table atmosphere without real-money gambling.
-
-Features:
-
-- Free play-money Texas Hold'em.
-- No deposits, withdrawals, cash prizes, or real-world value.
-- Blocking 18+ age gate.
-- Custom Pal avatars and cosmetics earned with virtual coins.
-- Smart bot opponents using real poker equity calculations.
-- Stats, settings, saved games, and quick reactions.
-- Private room-code lobby scaffold for friends.
-
-LocalPoker is for entertainment only. Virtual coins have no monetary value and cannot be redeemed, sold, or transferred for value.
-
-### Keywords draft (Apple, keep under 100 characters)
-
-poker,texas holdem,holdem,cards,friends,play money,table,bots,casino
-
-## 6. Pre-submit technical checks
-
-- Run `npx tsc --noEmit`.
-- Run `npm test -- --reporter=dot`.
-- Build a production EAS binary for each platform.
-- Install the production build on real devices.
-- Verify:
-  - age gate blocks under-18 birth years and invalid years;
-  - Terms/Privacy links/copy match hosted docs;
-  - guest/email local login is not represented as real OAuth;
-  - Firebase anonymous auth works, rules are published, and online-room writes use `auth.uid`;
-  - no placeholder Apple/Google sign-in buttons exist;
-  - no real ads appear unless AdMob/consent/ATT are fully implemented;
-  - Giphy GIFs load and failure states do not break gameplay;
-  - no hidden real-money/IAP copy appears in screenshots or listings.
-
-## 7. Conditional AdMob checklist
+## 7. Conditional real ads checklist
 
 Before shipping a real ad-supported binary:
 
-- Add `react-native-google-mobile-ads` and native config through EAS/dev build.
-- Add real iOS and Android AdMob app IDs.
-- Add ATT purpose string and prompt only when tracking/IDFA is actually requested.
-- Add Google UMP consent flow for GDPR/UK/EU and other required regions.
-- Update Privacy Policy, Apple App Privacy labels, Google Data Safety, and Google Play **Contains ads**.
-- Test with test ad unit IDs first; never ship test IDs in production.
+1. Add an ad SDK, for example `react-native-google-mobile-ads`, and native config through EAS.
+2. Add real iOS and Android ad app IDs.
+3. Use test ad unit IDs during validation, then production IDs for release.
+4. Add Google UMP or equivalent consent flow where required.
+5. Add `NSUserTrackingUsageDescription` and an ATT prompt only if tracking/IDFA is actually requested.
+6. Add Google's current `SKAdNetworkItems` list or the chosen network's list.
+7. Update Privacy Policy, App Privacy labels, Play Data Safety, age-rating Advertising answer, and Play Console **Contains ads**.
+8. Re-run App Review screenshots so no placeholder ad slots remain.
+
+## 8. Pre-submit technical checks
+
+- Run `npx tsc --noEmit`.
+- Run `npx vitest run` if code changed or before final release.
+- Build a production EAS binary.
+- Install the production build on a real iPhone.
+- Verify:
+  - age gate blocks under-18 birth years and invalid years;
+  - hosted Terms and Privacy links are live;
+  - guest/email local login is not represented as real OAuth;
+  - Firebase anonymous auth works and rules are published;
+  - online-room writes use `auth.uid`;
+  - no placeholder Apple/Google sign-in buttons exist;
+  - no real ads appear unless the ad disclosure path is complete;
+  - no placeholder ad UI appears in a no-ads submission;
+  - Giphy GIFs load and failure states do not break gameplay;
+  - screenshots and copy never imply real-money gambling, cash prizes, deposits, withdrawals, or value transfer.

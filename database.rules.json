@@ -4,7 +4,7 @@
       "rooms": {
         "$code": {
           ".read": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
-          ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid) || (data.exists() && data.child('hostId').val() === auth.uid))",
+          ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid) || (data.exists() && data.child('hostId').val() === auth.uid) || (data.exists() && data.child('status').val() === 'ended' && data.child('endedAt').isNumber() && data.child('endedAt').val() < now - 86400000 && newData.child('hostId').val() === auth.uid))",
           ".validate": "newData.hasChildren(['code','hostId']) || !newData.exists()",
           "code": {
             ".validate": "newData.isString() && newData.val().length <= 12"
@@ -22,6 +22,7 @@
             ".validate": "newData.isString() && newData.val().length < 4000"
           },
           "actionSeq": {
+            ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists() && newData.isNumber() && newData.val() > data.val() && newData.val() <= 9007199254740990",
             ".validate": "newData.isNumber()"
           },
           "endedReason": {
@@ -41,7 +42,7 @@
           },
           "publicState": {
             ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid",
-            ".validate": "!newData.exists() || (newData.hasChildren(['version','config','players','playerOrder','board','street','handNumber','contributions','currentPlayerIndex','dealerIndex','currentBet','minRaise']) && newData.child('version').val() === 1 && !newData.child('deck').exists() && !newData.child('seed').exists())",
+            ".validate": "!newData.exists() || (newData.hasChildren(['version','config','players','playerOrder','street','handNumber','contributions','currentPlayerIndex','dealerIndex','currentBet','minRaise']) && newData.child('version').val() === 1 && !newData.child('deck').exists() && !newData.child('seed').exists())",
             "version": {
               ".validate": "newData.isNumber() && newData.val() === 1"
             },
@@ -152,7 +153,7 @@
           "actions": {
             "$id": {
               ".write": "auth != null && newData.child('playerId').val() === auth.uid",
-              ".validate": "newData.hasChildren(['playerId','type','seq','ts']) && newData.child('playerId').val() === auth.uid && newData.child('type').isString() && (newData.child('type').val() === 'fold' || newData.child('type').val() === 'check' || newData.child('type').val() === 'call' || newData.child('type').val() === 'bet' || newData.child('type').val() === 'raise' || newData.child('type').val() === 'allin') && newData.child('seq').isNumber() && newData.child('ts').isNumber() && (!newData.child('amount').exists() || newData.child('amount').isNumber())"
+              ".validate": "newData.hasChildren(['playerId','type','seq','ts']) && newData.child('playerId').val() === auth.uid && newData.child('type').isString() && (newData.child('type').val() === 'fold' || newData.child('type').val() === 'check' || newData.child('type').val() === 'call' || newData.child('type').val() === 'bet' || newData.child('type').val() === 'raise' || newData.child('type').val() === 'allin') && newData.child('seq').isNumber() && root.child('localpoker').child('rooms').child($code).child('actionSeq').isNumber() && newData.child('seq').val() > root.child('localpoker').child('rooms').child($code).child('actionSeq').val() && newData.child('seq').val() <= 9007199254740990 && newData.child('ts').isNumber() && (!newData.child('amount').exists() || newData.child('amount').isNumber())"
             }
           }
         }
@@ -190,6 +191,39 @@
                 }
               }
             }
+          }
+        }
+      },
+      "users": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "!newData.exists() || (newData.hasChildren(['handle','displayName','updatedAt']) && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && root.child('localpoker').child('handles').child(newData.child('handle').val()).val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && newData.child('updatedAt').isNumber())"
+        }
+      },
+      "handles": {
+        "$handle": {
+          ".read": "auth != null",
+          ".write": "auth != null && !data.exists() && newData.isString() && newData.val() === auth.uid && $handle.matches(/^[a-z0-9_]{3,20}$/)",
+          ".validate": "newData.isString() && newData.val() === auth.uid"
+        }
+      },
+      "friendRequests": {
+        "$toUid": {
+          ".read": "auth != null && auth.uid === $toUid",
+          "$fromUid": {
+            ".read": "auth != null && (auth.uid === $toUid || auth.uid === $fromUid)",
+            ".write": "auth != null && ((!data.exists() && auth.uid === $fromUid && $toUid !== auth.uid && newData.child('fromUid').val() === auth.uid && newData.child('status').val() === 'pending') || (data.exists() && auth.uid === $toUid && data.child('status').val() === 'pending' && (newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined')))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','fromHandle','fromName','createdAt','status']) && newData.child('fromUid').val() === $fromUid && newData.child('fromHandle').isString() && newData.child('fromHandle').val().matches(/^[a-z0-9_]{3,20}$/) && newData.child('fromName').isString() && newData.child('fromName').val().length >= 1 && newData.child('fromName').val().length <= 24 && newData.child('createdAt').isNumber() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined') && (!data.exists() || (newData.child('fromUid').val() === data.child('fromUid').val() && newData.child('fromHandle').val() === data.child('fromHandle').val() && newData.child('fromName').val() === data.child('fromName').val() && newData.child('createdAt').val() === data.child('createdAt').val())))"
+          }
+        }
+      },
+      "friends": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          "$friendUid": {
+            ".write": "auth != null && ((!newData.exists() && data.exists() && (auth.uid === $uid || auth.uid === $friendUid)) || (newData.exists() && ((auth.uid === $uid && (root.child('localpoker').child('friendRequests').child($uid).child($friendUid).child('status').val() === 'pending' || root.child('localpoker').child('friendRequests').child($uid).child($friendUid).child('status').val() === 'accepted')) || (auth.uid === $friendUid && (root.child('localpoker').child('friendRequests').child($friendUid).child($uid).child('status').val() === 'pending' || root.child('localpoker').child('friendRequests').child($friendUid).child($uid).child('status').val() === 'accepted')))))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['uid','handle','displayName','status','updatedAt']) && newData.child('uid').val() === $friendUid && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && newData.child('status').val() === 'accepted' && newData.child('updatedAt').isNumber())"
           }
         }
       }

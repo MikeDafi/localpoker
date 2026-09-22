@@ -10,11 +10,7 @@
     "preview": {
       "distribution": "internal"
     },
-    "production": {
-      "env": {
-        "EXPO_PUBLIC_SENTRY_DSN": "[PLACEHOLDER: sentry public DSN]"
-      }
-    }
+    "production": {}
   },
   "submit": {
     "production": {

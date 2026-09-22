@@ -6,7 +6,7 @@
 **Contact:** [PLACEHOLDER: support/legal contact email]  
 **Governing law / venue:** [PLACEHOLDER: jurisdiction]
 
-> **Legal review required:** This is a product-specific draft prepared from the current codebase. It is not legal advice and must be reviewed by a qualified professional before publication.
+> Legal review required: this is a product-specific draft prepared from the current codebase. It is not legal advice and must be reviewed by a qualified professional before publication.
 
 ## 1. Acceptance
 
@@ -38,13 +38,13 @@ We may change, reset, rebalance, revoke, or discontinue virtual coins/items if n
 
 ## 5. Account and identity
 
-The current build supports guest play, local email-or-username labeling, and best-effort anonymous Firebase authentication for online room infrastructure. The current email option is not a verified email login, and real Apple/Google/OAuth login is not yet implemented.
+The current build supports guest play, local email-or-username labeling, and anonymous Firebase authentication for online room infrastructure when Firebase is configured. The current email option is not a verified email login, and real Apple/Google/OAuth login is not yet implemented.
 
 You are responsible for activity from your app profile or anonymous account. Do not impersonate others or choose display names that are unlawful, misleading, hateful, harassing, or infringing.
 
 ## 6. Friends, rooms, and user content
 
-LocalPoker includes private room codes, display names, Pal/avatar choices, emotes, canned text, custom short text, and curated GIF reactions. Online friend-room gameplay synchronization is still under development; the current lobby can show presence, while table play remains local against bots.
+LocalPoker includes private room codes, display names, Pal/avatar choices, gameplay actions, and local table reactions such as emojis, canned text, custom short text, stickers, and curated GIFs. Firebase-backed friend rooms can sync private room presence and gameplay state when production Firebase setup is enabled.
 
 You agree not to submit or share content that is abusive, harassing, threatening, hateful, sexually explicit, unlawful, infringing, deceptive, spam, or otherwise harmful. Do not share a private room code with anyone you do not want to join.
 
@@ -66,7 +66,7 @@ You may not:
 
 Current ad placements are placeholders. **Conditional on ads shipping**, LocalPoker may show ads through AdMob or another ad partner, subject to consent and platform requirements.
 
-LocalPoker also uses Firebase for online infrastructure and Giphy's public CDN for curated GIF images. Third-party services have their own terms and privacy practices.
+LocalPoker also uses Firebase for online infrastructure, Giphy's public CDN for curated GIF images, and optional Sentry diagnostics if enabled. Third-party services have their own terms and privacy practices.
 
 ## 9. Updates and availability
 

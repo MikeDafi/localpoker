@@ -16,6 +16,7 @@ import {
 export type OnlineIntent = {
   type: PlayerAction;
   amount?: number;
+  seq?: number;
 };
 
 export type PublicPlayerState = Pick<
@@ -82,14 +83,38 @@ export type RedactedGameState = {
 type HostValidationFailure = { ok: false; error: string; state: GameState };
 type HostValidationSuccess = { ok: true; action: PlayerAction; amount?: number };
 export type HostValidationResult = HostValidationFailure | HostValidationSuccess;
+export type HostIntentValidationOptions = {
+  actorId?: string;
+  lastAppliedSeq?: number;
+};
+export type ConnectionSyncResult = { state: GameState; changed: boolean };
 
 const ACTIONS: readonly PlayerAction[] = ['fold', 'check', 'call', 'bet', 'raise', 'allin'];
 
 const cloneCard = (card: Card): Card => ({ rank: card.rank, suit: card.suit });
 const cloneCards = (cards: readonly Card[]): Card[] => cards.map(cloneCard);
+const clonePlayer = (player: Player): Player => ({ ...player, holeCards: cloneCards(player.holeCards) });
+const cloneGameState = (state: GameState): GameState => ({
+  ...state,
+  config: { ...state.config },
+  players: state.players.map(clonePlayer),
+  board: cloneCards(state.board),
+  deck: cloneCards(state.deck),
+  pots: state.pots.map((pot) => ({ amount: pot.amount, eligiblePlayerIds: [...pot.eligiblePlayerIds] })),
+  winners: state.winners.map((winner) => ({
+    playerId: winner.playerId,
+    amount: winner.amount,
+    ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards), ranks: [...winner.hand.ranks] } } : {}),
+  })),
+  log: [...state.log],
+  contributions: { ...state.contributions },
+});
 
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value > 0;
+
+const isValidActionSeq = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 
 const playersWhoReachedShowdown = (state: GameState): number =>
   state.players.filter((player) => !player.folded && !player.sittingOut).length;
@@ -207,17 +232,17 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
         sittingOut: player.sittingOut,
       };
     }),
-    board: cloneCards(publicState.board),
+    board: cloneCards(publicState.board ?? []),
     deck: [],
     street: publicState.street,
-    pots: publicState.pots.map((pot) => ({ amount: pot.amount, eligiblePlayerIds: [...pot.eligiblePlayerIds] })),
+    pots: (publicState.pots ?? []).map((pot) => ({ amount: pot.amount, eligiblePlayerIds: [...pot.eligiblePlayerIds] })),
     currentPlayerIndex: publicState.currentPlayerIndex,
     dealerIndex: publicState.dealerIndex,
     currentBet: publicState.currentBet,
     minRaise: publicState.minRaise,
     lastAggressorIndex: null,
     handNumber: publicState.handNumber,
-    winners: publicState.winners.map((winner) => ({
+    winners: (publicState.winners ?? []).map((winner) => ({
       playerId: winner.playerId,
       amount: winner.amount,
       ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
@@ -232,7 +257,21 @@ export function validateHostIntent(
   state: GameState,
   playerId: string,
   intent: OnlineIntent,
+  options: HostIntentValidationOptions = {},
 ): HostValidationResult {
+  if (options.actorId && options.actorId !== playerId) {
+    return { ok: false, error: `Action rejected: ${options.actorId} cannot act for ${playerId}`, state };
+  }
+
+  if (typeof intent.seq !== 'undefined') {
+    if (!isValidActionSeq(intent.seq)) {
+      return { ok: false, error: 'Action rejected: action sequence must be a positive safe integer', state };
+    }
+    if (typeof options.lastAppliedSeq === 'number' && intent.seq <= options.lastAppliedSeq) {
+      return { ok: false, error: 'Action rejected: stale action sequence', state };
+    }
+  }
+
   const action = intent.type;
   if (!ACTIONS.includes(action)) {
     return { ok: false, error: `Unknown action: ${String(action)}`, state };
@@ -282,11 +321,71 @@ export function validateHostIntent(
   return { ok: true, action };
 }
 
-export function applyHostIntent(state: GameState, playerId: string, intent: OnlineIntent): ActionResult {
-  const validation = validateHostIntent(state, playerId, intent);
+export function applyHostIntent(
+  state: GameState,
+  playerId: string,
+  intent: OnlineIntent,
+  options: HostIntentValidationOptions = {},
+): ActionResult {
+  const validation = validateHostIntent(state, playerId, intent, options);
   if (!validation.ok) {
     return validation;
   }
 
   return applyAction(state, playerId, validation.action, validation.amount);
+}
+
+export function applyConnectionStatusToGameState(
+  state: GameState,
+  connectedByPlayerId: Record<string, boolean | undefined>,
+): ConnectionSyncResult {
+  let next = cloneGameState(state);
+  let changed = false;
+
+  const isDisconnected = (player: Player): boolean => connectedByPlayerId[player.id] === false;
+
+  if (next.street !== 'showdown') {
+    for (let guard = 0; guard < next.players.length; guard += 1) {
+      const current = next.players[next.currentPlayerIndex];
+      if (!current || !isDisconnected(current) || current.folded || current.allIn || current.sittingOut) {
+        break;
+      }
+
+      const result = applyAction(next, current.id, 'fold');
+      if (!result.ok) {
+        break;
+      }
+      next = result.state;
+      const folded = next.players.find((player) => player.id === current.id);
+      if (folded && !folded.sittingOut) {
+        folded.sittingOut = true;
+      }
+      changed = true;
+    }
+  }
+
+  for (const player of next.players) {
+    if (isDisconnected(player)) {
+      if (player.allIn && next.street !== 'showdown') {
+        continue;
+      }
+      if (!player.folded && next.street !== 'showdown') {
+        player.folded = true;
+        changed = true;
+      }
+      if (!player.hasActed && next.street !== 'showdown') {
+        player.hasActed = true;
+        changed = true;
+      }
+      if (!player.sittingOut) {
+        player.sittingOut = true;
+        changed = true;
+      }
+    } else if (player.sittingOut) {
+      player.sittingOut = false;
+      changed = true;
+    }
+  }
+
+  return { state: changed ? next : state, changed };
 }
