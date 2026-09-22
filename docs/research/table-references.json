@@ -1,0 +1,121 @@
+{
+  "references": [
+    {
+      "slug": "prominence-poker",
+      "game": "Prominence Poker",
+      "studio": "Pipeworks Studios / 505 Games",
+      "year": "2016",
+      "file": "prominence-poker-2.jpg",
+      "store": "https://store.steampowered.com/app/384180/",
+      "box": [
+        700,
+        618,
+        770,
+        640
+      ],
+      "read": "Near-black felt with a cool violet cast, gold line-art inlay, and a thick black padded rail over a wooden base.",
+      "takeaways": [
+        "Felt is essentially black \u2014 the colour comes from the lighting, not the cloth.",
+        "Ornament lives in a single metallic accent (gold) on an otherwise dead-flat surface.",
+        "A wide matte rail separates the felt from the room and grounds the table."
+      ],
+      "hex": "#212025",
+      "h": 252,
+      "s": 7,
+      "l": 14,
+      "swatch": "swatch-prominence-poker-2.jpg"
+    },
+    {
+      "slug": "poker-club",
+      "game": "Poker Club",
+      "studio": "Ripstone",
+      "year": "2020",
+      "file": "poker-club-3.jpg",
+      "store": "https://store.steampowered.com/app/1174460/",
+      "box": [
+        1500,
+        450,
+        1850,
+        650
+      ],
+      "read": "Matte desaturated navy felt carrying a tonal suit-pattern watermark, lit evenly with no specular sheen.",
+      "takeaways": [
+        "Texture is tonal \u2014 the suit motif is only a few percent lighter than the base.",
+        "Blue reads as 'premium casino' without the toy-green association.",
+        "Cards and chips are the only saturated objects; the cloth never competes."
+      ],
+      "hex": "#2D475E",
+      "h": 208,
+      "s": 35,
+      "l": 27,
+      "swatch": "swatch-poker-club-3.jpg"
+    },
+    {
+      "slug": "pure-holdem",
+      "game": "Pure Hold'em",
+      "studio": "VooFoo Studios",
+      "year": "2015",
+      "file": "pure-holdem-1.jpg",
+      "store": "https://store.steampowered.com/app/322950/",
+      "box": [
+        1150,
+        780,
+        1500,
+        950
+      ],
+      "read": "Warm near-black charcoal felt with a visible fabric weave and a subtle damask swirl, lit by a single warm overhead source.",
+      "takeaways": [
+        "Visible cloth weave at close range is what sells 'felt' rather than 'flat colour'.",
+        "One warm light source with a strong falloff creates all the depth.",
+        "The darker the cloth, the more the cards pop as the focal point."
+      ],
+      "hex": "#2E2528",
+      "h": 340,
+      "s": 11,
+      "l": 16,
+      "swatch": "swatch-pure-holdem-1.jpg"
+    }
+  ],
+  "ours": [
+    {
+      "name": "feltLight",
+      "hex": "#1E2C27",
+      "h": 159,
+      "s": 19,
+      "l": 15,
+      "note": "lit top of the table"
+    },
+    {
+      "name": "felt",
+      "hex": "#16211D",
+      "h": 158,
+      "s": 20,
+      "l": 11,
+      "note": "table surface"
+    },
+    {
+      "name": "feltDeep",
+      "hex": "#111A17",
+      "h": 160,
+      "s": 21,
+      "l": 8,
+      "note": "shaded bottom"
+    },
+    {
+      "name": "feltRail",
+      "hex": "#161D1A",
+      "h": 154,
+      "s": 14,
+      "l": 10,
+      "note": "rail"
+    },
+    {
+      "name": "feltRoom",
+      "hex": "#080C0B",
+      "h": 165,
+      "s": 20,
+      "l": 4,
+      "note": "room around the table"
+    }
+  ]
+}

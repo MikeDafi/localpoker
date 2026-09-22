@@ -1,0 +1,198 @@
+{
+  "rules": {
+    "localpoker": {
+      "rooms": {
+        "$code": {
+          ".read": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
+          ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid) || (data.exists() && data.child('hostId').val() === auth.uid))",
+          ".validate": "newData.hasChildren(['code','hostId']) || !newData.exists()",
+          "code": {
+            ".validate": "newData.isString() && newData.val().length <= 12"
+          },
+          "hostId": {
+            ".validate": "newData.isString() && newData.val() === auth.uid"
+          },
+          "status": {
+            ".validate": "newData.isString() && newData.val().length <= 16"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "settingsJson": {
+            ".validate": "newData.isString() && newData.val().length < 4000"
+          },
+          "actionSeq": {
+            ".validate": "newData.isNumber()"
+          },
+          "endedReason": {
+            ".validate": "newData.isString() && newData.val().length <= 120"
+          },
+          "endedAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "players": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid",
+              ".validate": "(newData.hasChildren(['id','name']) && newData.child('id').val() === auth.uid) || !newData.exists()",
+              "name": {
+                ".validate": "newData.isString() && newData.val().length <= 24"
+              }
+            }
+          },
+          "publicState": {
+            ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid",
+            ".validate": "!newData.exists() || (newData.hasChildren(['version','config','players','playerOrder','board','street','handNumber','contributions','currentPlayerIndex','dealerIndex','currentBet','minRaise']) && newData.child('version').val() === 1 && !newData.child('deck').exists() && !newData.child('seed').exists())",
+            "version": {
+              ".validate": "newData.isNumber() && newData.val() === 1"
+            },
+            "street": {
+              ".validate": "newData.isString() && newData.val().length <= 16"
+            },
+            "handNumber": {
+              ".validate": "newData.isNumber()"
+            },
+            "currentPlayerIndex": {
+              ".validate": "newData.isNumber()"
+            },
+            "currentPlayerId": {
+              ".validate": "newData.isString() && newData.val().length <= 128"
+            },
+            "dealerIndex": {
+              ".validate": "newData.isNumber()"
+            },
+            "dealerId": {
+              ".validate": "newData.isString() && newData.val().length <= 128"
+            },
+            "currentBet": {
+              ".validate": "newData.isNumber()"
+            },
+            "minRaise": {
+              ".validate": "newData.isNumber()"
+            },
+            "updatedAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "config": {
+              ".validate": "newData.hasChildren(['smallBlind','bigBlind','startingStack','maxPlayers','turnTimerSec'])",
+              "$key": {
+                ".validate": "newData.isNumber()"
+              }
+            },
+            "board": {
+              "$i": {
+                ".validate": "$i.matches(/^[0-4]$/) && newData.hasChildren(['rank','suit'])",
+                "rank": {
+                  ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 14"
+                },
+                "suit": {
+                  ".validate": "newData.isString() && (newData.val() === 'c' || newData.val() === 'd' || newData.val() === 'h' || newData.val() === 's')"
+                }
+              }
+            },
+            "players": {
+              "$uid": {
+                ".validate": "newData.hasChildren(['id','name','seatIndex','chips','folded','allIn','currentBet','hasActed','sittingOut','holeCardCount']) && newData.child('id').val() === $uid && !newData.child('deck').exists()",
+                "id": {
+                  ".validate": "newData.isString() && newData.val().length <= 128"
+                },
+                "name": {
+                  ".validate": "newData.isString() && newData.val().length <= 24"
+                },
+                "seatIndex": {
+                  ".validate": "newData.isNumber()"
+                },
+                "chips": {
+                  ".validate": "newData.isNumber()"
+                },
+                "folded": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "allIn": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "currentBet": {
+                  ".validate": "newData.isNumber()"
+                },
+                "hasActed": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "isBot": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "sittingOut": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "connected": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "isHost": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "palSeed": {
+                  ".validate": "newData.isString() && newData.val().length <= 128"
+                },
+                "holeCardCount": {
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 2"
+                },
+                "holeCards": {
+                  ".validate": "newData.hasChildren(['0','1'])",
+                  "$i": {
+                    ".validate": "$i.matches(/^[01]$/) && newData.hasChildren(['rank','suit'])",
+                    "rank": {
+                      ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 14"
+                    },
+                    "suit": {
+                      ".validate": "newData.isString() && (newData.val() === 'c' || newData.val() === 'd' || newData.val() === 'h' || newData.val() === 's')"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "actions": {
+            "$id": {
+              ".write": "auth != null && newData.child('playerId').val() === auth.uid",
+              ".validate": "newData.hasChildren(['playerId','type','seq','ts']) && newData.child('playerId').val() === auth.uid && newData.child('type').isString() && (newData.child('type').val() === 'fold' || newData.child('type').val() === 'check' || newData.child('type').val() === 'call' || newData.child('type').val() === 'bet' || newData.child('type').val() === 'raise' || newData.child('type').val() === 'allin') && newData.child('seq').isNumber() && newData.child('ts').isNumber() && (!newData.child('amount').exists() || newData.child('amount').isNumber())"
+            }
+          }
+        }
+      },
+      "views": {
+        "$code": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && root.child('localpoker').child('rooms').child($code).child('players').child($uid).exists()",
+            ".validate": "!newData.exists() || (newData.hasChildren(['version','playerId','handNumber','holeCards']) && newData.child('version').val() === 1 && newData.child('playerId').val() === $uid && !newData.child('deck').exists() && !newData.child('seed').exists())",
+            "version": {
+              ".validate": "newData.isNumber() && newData.val() === 1"
+            },
+            "code": {
+              ".validate": "newData.isString() && newData.val() === $code"
+            },
+            "playerId": {
+              ".validate": "newData.isString() && newData.val() === $uid"
+            },
+            "handNumber": {
+              ".validate": "newData.isNumber()"
+            },
+            "updatedAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "holeCards": {
+              ".validate": "newData.hasChildren(['0','1'])",
+              "$i": {
+                ".validate": "$i.matches(/^[01]$/) && newData.hasChildren(['rank','suit'])",
+                "rank": {
+                  ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 14"
+                },
+                "suit": {
+                  ".validate": "newData.isString() && (newData.val() === 'c' || newData.val() === 'd' || newData.val() === 'h' || newData.val() === 's')"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

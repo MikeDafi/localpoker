@@ -1,5 +1,12 @@
 # 🃏 Poker iOS App — Design Document
 
+> **Implementation note (update):** The shipped local prototype pivoted from
+> native SwiftUI to **React Native + Expo (SDK 57)** for a faster cross-platform
+> MVP that runs in **Expo Go**, and adopted a **Nintendo Wii / Mii** visual
+> identity. See `README.md` for how to run it and `docs/uiux-spec.md` for the
+> Wii UI/UX spec. The product/monetization/architecture principles below still
+> apply; substitute SwiftUI → React Native and SwiftData → AsyncStorage.
+
 ## 1. Product Concept
 
 A **free, ad-supported social poker app** for playing Texas Hold'em (and later

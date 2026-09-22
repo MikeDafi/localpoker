@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalPoker — character icon variations</title>
+<style>
+  :root{--bg:#0e1113;--panel:#171b1e;--line:rgba(255,255,255,.12);--ink:#eef3f1;
+        --soft:rgba(238,243,241,.74);--muted:rgba(238,243,241,.5);--gold:#D6B45C;--red:#E0796B}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);padding:48px 28px 96px;
+    font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0 0 22px}
+  .note{color:var(--soft);background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:15px 17px;margin-bottom:38px;font-size:14.5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:26px;margin-bottom:26px}
+  .head{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  .hero{width:200px;height:200px;border-radius:22.37%;overflow:hidden;flex:none;
+    box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  .hero img{width:100%;height:100%;display:block}
+  .meta{flex:1;min-width:300px}
+  .rank{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--gold);
+    margin-bottom:6px}
+  .meta h2{margin:0 0 4px;font-size:22px;letter-spacing:-.01em}
+  .angle{color:var(--muted);font-size:13.5px;margin-bottom:12px}
+  .meta p{margin:0 0 10px;color:var(--soft);font-size:15px}
+  .crit{font-size:14.2px;margin-top:14px;padding:12px 15px;border-radius:10px;
+    border-left:3px solid var(--red);background:rgba(224,121,107,.09);color:var(--soft)}
+  .crit b{color:var(--ink)}
+  .win{border-left-color:var(--gold);background:rgba(214,180,92,.09)}
+  .ladder{margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+  .ladder h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--muted);margin:0 0 14px;font-weight:600}
+  .sizes{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap}
+  .size{text-align:center}
+  .size div{border-radius:22.37%;overflow:hidden;margin:0 auto 7px;
+    box-shadow:0 3px 10px rgba(0,0,0,.4)}
+  .size img{width:100%;height:100%;display:block}
+  .size span{font-size:11px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.06em;
+    text-transform:uppercase}
+  td.s{color:var(--gold);font-variant-numeric:tabular-nums}
+  footer{color:var(--muted);font-size:13.5px;margin-top:38px;border-top:1px solid var(--line);
+    padding-top:20px}
+  code{background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Character + poker — five variations</h1>
+  <p class="sub">Five different <em>relationships</em> between the player and the game, not five re-colourings of one layout.</p>
+
+  <div class="note">
+    <strong>These went through two critique passes before you saw them.</strong>
+    First pass: the peek's cards never actually covered the face (so the gesture wasn't happening), the sunglasses read as a VR headset, and the medallion read as a life preserver. Those are fixed. The critiques below are what's <em>still</em> wrong after fixing — every one of these has a real flaw.
+  </div>
+
+  <!-- B -->
+  <div class="card">
+    <div class="head">
+      <div class="hero"><img src="B-pokerface.svg" alt="Poker face"></div>
+      <div class="meta">
+        <div class="rank">Ranked 1 of 5</div>
+        <h2>B · The Poker Face</h2>
+        <div class="angle">Angle: the <em>bluff</em> — unreadable, deadpan, shades on.</div>
+        <p>Wayfarers and a perfectly flat mouth. The joke is that the character has no expression at all, which is the one facial expression poker is actually about. Two aces sit below.</p>
+        <div class="crit win"><b>Critique.</b> Best small-size survivor by a distance — a dark bar across a light face is a strong primitive that still reads at 40&nbsp;px. But <b>strip the cards and this is just a cool guy in sunglasses</b>; the poker meaning is carried entirely by two white rectangles that become blobs below 87&nbsp;px. The brow bar also flirts with looking like a visor.</div>
+      </div>
+    </div>
+    <div class="ladder"><h3>Size ladder</h3><div class="sizes">
+      <div class="size"><div style="width:180px;height:180px"><img src="B-pokerface.svg"></div><span>180</span></div>
+      <div class="size"><div style="width:120px;height:120px"><img src="B-pokerface.svg"></div><span>120</span></div>
+      <div class="size"><div style="width:87px;height:87px"><img src="B-pokerface.svg"></div><span>87</span></div>
+      <div class="size"><div style="width:60px;height:60px"><img src="B-pokerface.svg"></div><span>60 · home</span></div>
+      <div class="size"><div style="width:40px;height:40px"><img src="B-pokerface.svg"></div><span>40</span></div>
+    </div></div>
+  </div>
+
+  <!-- E -->
+  <div class="card">
+    <div class="head">
+      <div class="hero"><img src="E-medallion.svg" alt="Medallion"></div>
+      <div class="meta">
+        <div class="rank">Ranked 2 of 5</div>
+        <h2>E · The Medallion</h2>
+        <div class="angle">Angle: the <em>emblem</em> — the player as a struck coin.</div>
+        <p>Borrows the one thing that makes chip icons work — a hard circular silhouette — and puts the character inside it, with the hand fanned behind. The most "premium" of the five.</p>
+        <div class="crit"><b>Critique.</b> The silhouette holds beautifully to 40&nbsp;px, but <b>the cards are functionally invisible below 87&nbsp;px</b> — so for most of its life this is "a face in a coin", and the poker read rests entirely on the chip notches. The gold also pushes toward <em>slots parlour</em>, which is louder than the restrained dark-green table the app actually uses, and slightly at odds with a play-money app trying not to look like gambling.</div>
+      </div>
+    </div>
+    <div class="ladder"><h3>Size ladder</h3><div class="sizes">
+      <div class="size"><div style="width:180px;height:180px"><img src="E-medallion.svg"></div><span>180</span></div>
+      <div class="size"><div style="width:120px;height:120px"><img src="E-medallion.svg"></div><span>120</span></div>
+      <div class="size"><div style="width:87px;height:87px"><img src="E-medallion.svg"></div><span>87</span></div>
+      <div class="size"><div style="width:60px;height:60px"><img src="E-medallion.svg"></div><span>60 · home</span></div>
+      <div class="size"><div style="width:40px;height:40px"><img src="E-medallion.svg"></div><span>40</span></div>
+    </div></div>
+  </div>
+
+  <!-- A -->
+  <div class="card">
+    <div class="head">
+      <div class="hero"><img src="A-peek.svg" alt="The peek"></div>
+      <div class="meta">
+        <div class="rank">Ranked 3 of 5</div>
+        <h2>A · The Peek</h2>
+        <div class="angle">Angle: the <em>gesture</em> — eyes just clearing the hand.</div>
+        <p>The single most recognisable body-language moment in poker: cards held up, everything below the eyes hidden. Raised brows do the acting. On the app's own dark felt.</p>
+        <div class="crit"><b>Critique.</b> Strongest <em>story</em> of the five, and the most brand-consistent ground. But the A/K/Q indices are <b>wasted detail — illegible by 87&nbsp;px</b>, so I'm paying composition cost for something nobody sees. The fan is also slightly left-weighted, and with the mouth hidden and no other expression the face reads a little blank in isolation.</div>
+      </div>
+    </div>
+    <div class="ladder"><h3>Size ladder</h3><div class="sizes">
+      <div class="size"><div style="width:180px;height:180px"><img src="A-peek.svg"></div><span>180</span></div>
+      <div class="size"><div style="width:120px;height:120px"><img src="A-peek.svg"></div><span>120</span></div>
+      <div class="size"><div style="width:87px;height:87px"><img src="A-peek.svg"></div><span>87</span></div>
+      <div class="size"><div style="width:60px;height:60px"><img src="A-peek.svg"></div><span>60 · home</span></div>
+      <div class="size"><div style="width:40px;height:40px"><img src="A-peek.svg"></div><span>40</span></div>
+    </div></div>
+  </div>
+
+  <!-- C -->
+  <div class="card">
+    <div class="head">
+      <div class="hero"><img src="C-reveal.svg" alt="The reveal"></div>
+      <div class="meta">
+        <div class="rank">Ranked 4 of 5</div>
+        <h2>C · The Reveal</h2>
+        <div class="angle">Angle: the <em>payoff</em> — grinning, tabling a straight.</div>
+        <p>The emotional opposite of the peek: the moment you win. Broad smile, halo burst, a legible 10-J-Q-K-A laid out across the bottom.</p>
+        <div class="crit"><b>Critique.</b> The best-looking at 1024&nbsp;px and <b>the worst degradation of the set</b> — five cards collapse into a white smear by 60&nbsp;px and the halo spikes turn to noise around the head. Five cards is simply too many objects for an icon. It also over-promises: an icon showing a winning hand sets an expectation the app can't keep.</div>
+      </div>
+    </div>
+    <div class="ladder"><h3>Size ladder</h3><div class="sizes">
+      <div class="size"><div style="width:180px;height:180px"><img src="C-reveal.svg"></div><span>180</span></div>
+      <div class="size"><div style="width:120px;height:120px"><img src="C-reveal.svg"></div><span>120</span></div>
+      <div class="size"><div style="width:87px;height:87px"><img src="C-reveal.svg"></div><span>87</span></div>
+      <div class="size"><div style="width:60px;height:60px"><img src="C-reveal.svg"></div><span>60 · home</span></div>
+      <div class="size"><div style="width:40px;height:40px"><img src="C-reveal.svg"></div><span>40</span></div>
+    </div></div>
+  </div>
+
+  <!-- D -->
+  <div class="card">
+    <div class="head">
+      <div class="hero"><img src="D-headtohead.svg" alt="Head to head"></div>
+      <div class="meta">
+        <div class="rank">Ranked 5 of 5</div>
+        <h2>D · Head to Head</h2>
+        <div class="angle">Angle: the <em>opponent</em> — two players, one pot.</div>
+        <p>The only one that shows the social promise in the app's own name: two characters across a felt oval with the pot between them.</p>
+        <div class="crit"><b>Critique.</b> <b>Most on-message, least viable.</b> Four focal points — two heads, the pot, a card — with no hierarchy, so at 40&nbsp;px it is mush. The two faces also read as a matched pair rather than as opponents, which undercuts the whole idea, and the heads crowd the top of the squircle. This concept needs one character plus an implied second, not two equal ones.</div>
+      </div>
+    </div>
+    <div class="ladder"><h3>Size ladder</h3><div class="sizes">
+      <div class="size"><div style="width:180px;height:180px"><img src="D-headtohead.svg"></div><span>180</span></div>
+      <div class="size"><div style="width:120px;height:120px"><img src="D-headtohead.svg"></div><span>120</span></div>
+      <div class="size"><div style="width:87px;height:87px"><img src="D-headtohead.svg"></div><span>87</span></div>
+      <div class="size"><div style="width:60px;height:60px"><img src="D-headtohead.svg"></div><span>60 · home</span></div>
+      <div class="size"><div style="width:40px;height:40px"><img src="D-headtohead.svg"></div><span>40</span></div>
+    </div></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;font-size:19px">Scorecard</h2>
+    <table>
+      <tr><th>Design</th><th>Reads at 40px</th><th>Says "poker"</th><th>Says "friends"</th><th>Fits dark UI</th><th>Objects</th></tr>
+      <tr><td>B · Poker Face</td><td class="s">5/5</td><td class="s">3/5</td><td class="s">2/5</td><td class="s">3/5</td><td class="s">3</td></tr>
+      <tr><td>E · Medallion</td><td class="s">5/5</td><td class="s">4/5</td><td class="s">2/5</td><td class="s">2/5</td><td class="s">4</td></tr>
+      <tr><td>A · Peek</td><td class="s">4/5</td><td class="s">5/5</td><td class="s">2/5</td><td class="s">5/5</td><td class="s">4</td></tr>
+      <tr><td>C · Reveal</td><td class="s">2/5</td><td class="s">5/5</td><td class="s">2/5</td><td class="s">4/5</td><td class="s">7</td></tr>
+      <tr><td>D · Head to Head</td><td class="s">1/5</td><td class="s">4/5</td><td class="s">5/5</td><td class="s">4/5</td><td class="s">6</td></tr>
+    </table>
+    <p style="color:var(--soft);font-size:14.5px;margin-top:16px">
+      <b>The pattern:</b> object count predicts small-size survival almost perfectly. Everything at three or four objects survives; everything at six or seven dies. <b>The unsolved tension</b> is that the designs which say <em>poker</em> and <em>friends</em> best (A, D) are the ones carrying the most objects.
+    </p>
+    <p style="color:var(--soft);font-size:14.5px">
+      <b>Where I'd go next:</b> B's face with A's raised-brow peek framing — shades on, one card edge entering the frame instead of three. Three objects, keeps the poker gesture, keeps the 40&nbsp;px legibility.
+    </p>
+  </div>
+
+  <footer>
+    Source: <code>scripts/make-icons-character.py</code> → <code>docs/design/icons-character/*.svg</code>. Vector, so the winner exports to every iOS/Android size losslessly. Direction concepts, not production art.
+  </footer>
+</div>
+</body>
+</html>

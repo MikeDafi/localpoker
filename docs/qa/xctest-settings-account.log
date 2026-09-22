@@ -1,0 +1,81 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project .maestro/xctest/UITestHarness.xcodeproj -scheme Harness -destination "platform=iOS Simulator,id=D832CD41-7428-4488-BE3E-38B636FC06ED" -derivedDataPath .maestro/DerivedData -resultBundlePath docs/qa/xctest-settings-account.xcresult "-only-testing:LocalPokerUITests/LocalPokerUITests/test03SettingsAccount"
+
+Writing result bundle at path:
+	/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/xctest-settings-account.xcresult
+
+2026-09-15 16:08:41.477350-0700 LocalPokerUITests-Runner[11338:54646857] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 16:08:44.827.
+Test Suite 'LocalPokerUITests.xctest' started at 2026-09-15 16:08:44.828.
+Test Suite 'LocalPokerUITests' started at 2026-09-15 16:08:44.828.
+Test Case '-[LocalPokerUITests.LocalPokerUITests test03SettingsAccount]' started.
+    t =     0.00s Start Test at 2026-09-15 16:08:44.829
+    t =     0.10s Set Up
+    t =     0.10s Open host.exp.Exponent
+    t =     0.10s     Activate host.exp.Exponent
+    t =     0.14s         Wait for host.exp.Exponent to idle
+    t =     1.15s Checking existence of `Any (First Match)`
+    t =     1.36s Checking existence of `Any (First Match)`
+    t =     2.00s Tap Application 'host.exp.Exponent'[0.91, 0.11]
+    t =     2.00s     Wait for host.exp.Exponent to idle
+    t =     2.00s     Find the Application 'host.exp.Exponent'
+    t =     2.02s     Check for interrupting elements affecting "Expo Go" Application
+    t =     2.04s     Synthesize event
+    t =     2.04s         Find the Application 'host.exp.Exponent'
+    t =     2.06s         Find the Application 'host.exp.Exponent'
+    t =     2.07s         Find the Application 'host.exp.Exponent'
+    t =     3.03s     Wait for host.exp.Exponent to idle
+    t =     3.22s Waiting 8.0s for Any (First Match) to exist
+    t =     4.31s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =     4.32s         Checking existence of `Any (First Match)`
+    t =     5.33s Swipe up Application 'host.exp.Exponent'
+    t =     5.33s     Wait for host.exp.Exponent to idle
+    t =     5.34s     Find the Application 'host.exp.Exponent'
+    t =     8.11s     Check for interrupting elements affecting "Expo Go" Application
+    t =     8.19s     Synthesize event
+    t =     8.99s     Wait for host.exp.Exponent to idle
+    t =    11.59s Swipe up Application 'host.exp.Exponent'
+    t =    11.59s     Wait for host.exp.Exponent to idle
+    t =    11.60s     Find the Application 'host.exp.Exponent'
+    t =    11.67s     Check for interrupting elements affecting "Expo Go" Application
+    t =    11.76s     Synthesize event
+    t =    12.24s     Wait for host.exp.Exponent to idle
+    t =    14.86s Swipe up Application 'host.exp.Exponent'
+    t =    14.86s     Wait for host.exp.Exponent to idle
+    t =    14.86s     Find the Application 'host.exp.Exponent'
+    t =    14.94s     Check for interrupting elements affecting "Expo Go" Application
+    t =    15.02s     Synthesize event
+    t =    15.83s     Wait for host.exp.Exponent to idle
+    t =    18.44s Swipe up Application 'host.exp.Exponent'
+    t =    18.44s     Wait for host.exp.Exponent to idle
+    t =    18.45s     Find the Application 'host.exp.Exponent'
+    t =    18.53s     Check for interrupting elements affecting "Expo Go" Application
+    t =    18.61s     Synthesize event
+    t =    19.19s     Wait for host.exp.Exponent to idle
+    t =    21.84s Swipe up Application 'host.exp.Exponent'
+    t =    21.84s     Wait for host.exp.Exponent to idle
+    t =    21.84s     Find the Application 'host.exp.Exponent'
+    t =    21.92s     Check for interrupting elements affecting "Expo Go" Application
+    t =    22.00s     Synthesize event
+    t =    22.59s     Wait for host.exp.Exponent to idle
+    t =    25.29s Added attachment named '21-settings-account-bottom'
+SNAP 21-settings-account-bottom
+    t =    25.30s Tear Down
+Test Case '-[LocalPokerUITests.LocalPokerUITests test03SettingsAccount]' passed (27.989 seconds).
+Test Suite 'LocalPokerUITests' passed at 2026-09-15 16:09:12.818.
+	 Executed 1 test, with 0 failures (0 unexpected) in 27.989 (27.990) seconds
+Test Suite 'LocalPokerUITests.xctest' passed at 2026-09-15 16:09:12.818.
+	 Executed 1 test, with 0 failures (0 unexpected) in 27.989 (27.990) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 16:09:12.819.
+	 Executed 1 test, with 0 failures (0 unexpected) in 27.989 (27.991) seconds
+2026-09-15 16:09:13.114 xcodebuild[10535:54644703] [MT] IDETestOperationsObserverDebug: 49.092 elapsed -- Testing started completed.
+2026-09-15 16:09:13.114 xcodebuild[10535:54644703] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 16:09:13.114 xcodebuild[10535:54644703] [MT] IDETestOperationsObserverDebug: 49.092 sec, +49.092 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/xctest-settings-account.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

@@ -1,0 +1,60 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project .maestro/xctest/UITestHarness.xcodeproj -scheme Harness -destination "platform=iOS Simulator,id=D832CD41-7428-4488-BE3E-38B636FC06ED" -derivedDataPath .maestro/DerivedData -resultBundlePath docs/qa/xctest-settings-account2.xcresult "-only-testing:LocalPokerUITests/LocalPokerUITests/test04SettingsAccountVisible"
+
+Writing result bundle at path:
+	/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/xctest-settings-account2.xcresult
+
+2026-09-15 16:11:01.065808-0700 LocalPokerUITests-Runner[30272:54687430] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 16:11:01.983.
+Test Suite 'LocalPokerUITests.xctest' started at 2026-09-15 16:11:01.983.
+Test Suite 'LocalPokerUITests' started at 2026-09-15 16:11:01.983.
+Test Case '-[LocalPokerUITests.LocalPokerUITests test04SettingsAccountVisible]' started.
+    t =     0.00s Start Test at 2026-09-15 16:11:01.984
+    t =     0.27s Set Up
+    t =     0.27s Open host.exp.Exponent
+    t =     0.27s     Activate host.exp.Exponent
+    t =     0.28s         Wait for host.exp.Exponent to idle
+    t =     1.29s Checking existence of `Any (First Match)`
+    t =     1.48s Tap Application 'host.exp.Exponent'[0.91, 0.11]
+    t =     1.48s     Wait for host.exp.Exponent to idle
+    t =     1.48s     Find the Application 'host.exp.Exponent'
+    t =     1.56s     Check for interrupting elements affecting "Expo Go" Application
+    t =     1.75s     Synthesize event
+    t =     1.76s         Find the Application 'host.exp.Exponent'
+    t =     1.83s         Find the Application 'host.exp.Exponent'
+    t =     1.90s         Find the Application 'host.exp.Exponent'
+    t =     2.34s     Wait for host.exp.Exponent to idle
+    t =     2.34s Waiting 8.0s for Any (First Match) to exist
+    t =     3.34s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =     3.34s         Checking existence of `Any (First Match)`
+    t =    22.38s Checking existence of `Any (First Match)`
+    t =    22.47s Find the Any (First Match)
+    t =    22.59s Swipe up Application 'host.exp.Exponent'
+    t =    22.59s     Wait for host.exp.Exponent to idle
+    t =    22.59s     Find the Application 'host.exp.Exponent'
+    t =    22.67s     Check for interrupting elements affecting "Expo Go" Application
+    t =    22.75s     Synthesize event
+    t =    23.41s     Wait for host.exp.Exponent to idle
+    t =    25.43s Checking existence of `"Log out" Other`
+    t =    25.50s Find the "Log out" Other
+    t =    25.65s Added attachment named '22-settings-account-visible'
+SNAP 22-settings-account-visible
+    t =    25.65s Tear Down
+Test Case '-[LocalPokerUITests.LocalPokerUITests test04SettingsAccountVisible]' passed (25.681 seconds).
+Test Suite 'LocalPokerUITests' passed at 2026-09-15 16:11:27.665.
+	 Executed 1 test, with 0 failures (0 unexpected) in 25.681 (25.682) seconds
+Test Suite 'LocalPokerUITests.xctest' passed at 2026-09-15 16:11:27.665.
+	 Executed 1 test, with 0 failures (0 unexpected) in 25.681 (25.682) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 16:11:27.666.
+	 Executed 1 test, with 0 failures (0 unexpected) in 25.681 (25.683) seconds
+2026-09-15 16:11:27.962 xcodebuild[29496:54682470] [MT] IDETestOperationsObserverDebug: 53.677 elapsed -- Testing started completed.
+2026-09-15 16:11:27.962 xcodebuild[29496:54682470] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 16:11:27.962 xcodebuild[29496:54682470] [MT] IDETestOperationsObserverDebug: 53.677 sec, +53.677 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/xctest-settings-account2.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

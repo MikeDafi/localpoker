@@ -1,0 +1,89 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalPoker — Game Settings Prioritization</title>
+<style>
+:root{--bg:#0f1c26;--card:#16283440;--ink:#e9f1f6;--muted:#9fb3c0;--blue:#22abe4;--green:#3fb56b;--red:#e8503a;--gold:#f5c518;--amber:#f5a623;}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(160deg,#0b141b,#14303f);color:var(--ink);padding:32px 20px 60px}
+.wrap{max-width:960px;margin:0 auto}
+h1{font-size:30px;margin:0 0 4px}.sub{color:var(--muted);margin:0 0 24px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:16px 0 28px;font-size:13px;color:var(--muted)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;color:#0b141b}
+.b-keep{background:var(--green)}.b-cut{background:var(--red);color:#fff}.b-ess{background:var(--gold)}.b-use{background:var(--blue);color:#fff}
+h2{font-size:19px;margin:26px 0 10px;display:flex;align-items:center;gap:8px}
+.count{color:var(--muted);font-weight:400;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.item{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px}
+.item .n{font-weight:600;font-size:14px}.item .d{color:var(--muted);font-size:12px;margin-top:3px}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+td,th{text-align:left;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.reason{color:var(--muted)}
+.k{color:var(--gold)}
+.pill{background:rgba(255,255,255,.08);border-radius:8px;padding:1px 7px;font-size:11px;color:var(--muted)}
+footer{margin-top:36px;color:var(--muted);font-size:12px}
+</style></head><body><div class="wrap">
+<h1>🎛️ LocalPoker — Game Settings, Prioritized</h1>
+<p class="sub">Trimmed from <b>102</b> settings to <b>29</b> that are implemented and meaningful. Below: what stays (by priority) and what was cut and why.</p>
+<div class="legend">
+<span><span class="badge b-ess">ESSENTIAL</span> core to a game</span>
+<span><span class="badge b-use">USEFUL</span> nice quality-of-life</span>
+<span><span class="badge b-cut">CUT</span> removed from the UI</span>
+</div>
+
+<h2>✅ Kept <span class="count">— 29 settings, 7 sections</span></h2>
+
+<h3>🎲 Table <span class="badge b-ess">ESSENTIAL</span></h3>
+<div class="grid">
+<div class="item"><div class="n">Small Blind</div><div class="d">core stake</div></div>
+<div class="item"><div class="n">Big Blind</div><div class="d">core stake</div></div>
+<div class="item"><div class="n">Ante</div><div class="d">optional forced bet</div></div>
+<div class="item"><div class="n">Starting Stack</div><div class="d">chips to start</div></div>
+<div class="item"><div class="n">Opponents</div><div class="d">1–8 bots (quick play)</div></div>
+<div class="item"><div class="n">Turn Timer (s)</div><div class="d">now enforced with a visible clock</div></div>
+</div>
+
+<h3>🤖 Opponents <span class="badge b-ess">ESSENTIAL</span></h3>
+<div class="grid">
+<div class="item"><div class="n">Difficulty</div><div class="d">Easy→Expert (engine-backed)</div></div>
+<div class="item"><div class="n">Opponent Speed</div><div class="d">how fast bots act</div></div>
+<div class="item"><div class="n">Mixed Table</div><div class="d">varied skill levels</div></div>
+</div>
+
+<h3>🎯 In-Game <span class="badge b-use">USEFUL</span></h3>
+<div class="grid">
+<div class="item"><div class="n">Live Stats Overlay</div><div class="d">VPIP/PFR/win rate during play</div></div>
+<div class="item"><div class="n">Hand Strength Hints</div><div class="d">names your current hand</div></div>
+<div class="item"><div class="n">Win Probability</div><div class="d">rough equity readout</div></div>
+<div class="item"><div class="n">Auto Muck Losers</div><div class="d">show/muck control</div></div>
+<div class="item"><div class="n">Confirm All-in</div><div class="d">safety tap</div></div>
+<div class="item"><div class="n">Confirm Fold (can check)</div><div class="d">avoid misclicks</div></div>
+</div>
+
+<h3>🔊 Sound & Haptics · ✨ Animations · 🎨 Appearance · ♿ Accessibility <span class="badge b-use">USEFUL</span></h3>
+<div class="grid">
+<div class="item"><div class="n">Sound Effects + Volume</div></div>
+<div class="item"><div class="n">Haptics</div></div>
+<div class="item"><div class="n">Win Fanfare</div></div>
+<div class="item"><div class="n">Animation Speed</div></div>
+<div class="item"><div class="n">Avatar Idle Motion</div></div>
+<div class="item"><div class="n">Confetti on Win</div></div>
+<div class="item"><div class="n">Reduce Motion</div></div>
+<div class="item"><div class="n">Table Theme</div></div>
+<div class="item"><div class="n">Card Back</div></div>
+<div class="item"><div class="n">Show Names</div></div>
+<div class="item"><div class="n">Large Text</div></div>
+<div class="item"><div class="n">High Contrast</div></div>
+<div class="item"><div class="n">Color Blind Mode</div></div>
+</div>
+
+<h2>🗑️ Cut <span class="count">— 73 settings removed from the UI</span></h2>
+<table>
+<tr><th>Reason</th><th>Settings</th></tr>
+<tr><td class="k">Not wired to the engine (aspirational)</td><td class="reason">Run It Twice, Rabbit Hunt, Bomb Pots (+frequency), 7-2 Bonus, All-in Insurance, Chop Blinds, Posting Rule, Show 1 on Fold, Straddle (+type), Big Blind Ante, blind-increase schedule, game type (only Hold'em), dead button, seating choice, time bank (+per-hand, auto-extension)</td></tr>
+<tr><td class="k">Whole feature areas not built</td><td class="reason">All <span class="pill">Tournament</span> (mode, levels, re-entry, rebuys, add-on, payouts, bounty) and all <span class="pill">House Rules</span> (bet cap, min-raise rule, string-bet, check-raise toggle, disconnect penalty/protection)</td></tr>
+<tr><td class="k">Needs online backend (no live play yet)</td><td class="reason">Chat, Emotes, Quick-chat only, Allow Spectators, Friends Only</td></tr>
+<tr><td class="k">Redundant / folded into another control</td><td class="reason">Bot Aggression (→Difficulty), Show Avatars (→Show Names), Card Deal/Chip/Avatar-reaction toggles (→Animation Speed), Felt Pattern, Card Face, Chip Style, Stacks-in-BB, Music (+volume, no music), Dealer Voice, Bot Chatter, Adaptive Difficulty</td></tr>
+<tr><td class="k">Niche / low value for a casual app</td><td class="reason">Min/Max buy-in, Currency, Max Players, Show Clock, Left-handed layout, Four-color deck, Always show odds, Auto-rebuy (+threshold), Sit-out next hand, Wait for big blind, Save hand history, Showdown all hands, Muck losing hands</td></tr>
+</table>
+
+<footer>Generated for LocalPoker · settings live in <code>src/game/settings.ts</code> (<code>SETTINGS_SCHEMA</code>). Cut settings still exist as safe internal defaults so nothing breaks; they're just no longer shown. Re-add any by putting them back in the schema.</footer>
+</div></body></html>

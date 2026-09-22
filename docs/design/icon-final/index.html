@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalPoker — The Poker Face, v4 &amp; v5</title>
+<style>
+  :root{--bg:#0e1113;--panel:#171b1e;--line:rgba(255,255,255,.12);--ink:#eef3f1;
+        --soft:rgba(238,243,241,.75);--muted:rgba(238,243,241,.5);
+        --red:#E0796B;--green:#5FBF8B}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);padding:48px 28px 96px;
+    font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0 0 30px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:26px;margin-bottom:24px}
+  h2{font-size:19px;margin:0 0 16px}
+  .ba{display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+  .col{text-align:center}
+  .col .sq{width:310px;height:310px;border-radius:22.37%;overflow:hidden;
+    box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  .col .sq img{width:100%;height:100%;display:block}
+  .col h3{margin:14px 0 2px;font-size:15px}
+  .col span{font-size:12.5px;color:var(--muted)}
+  ul{margin:0;padding-left:20px}
+  ul li{margin-bottom:13px;color:var(--soft);font-size:15px}
+  ul li b{color:var(--ink)}
+  .done{color:var(--green);font-weight:600}
+  .sizes{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+  .size{text-align:center}
+  .size div{border-radius:22.37%;overflow:hidden;margin:0 auto 6px;
+    box-shadow:0 3px 10px rgba(0,0,0,.4)}
+  .size img{width:100%;height:100%;display:block}
+  .size span{font-size:11px;color:var(--muted)}
+  .crit{font-size:14.3px;padding:13px 16px;border-radius:10px;border-left:3px solid var(--red);
+    background:rgba(224,121,107,.09);color:var(--soft);margin-top:8px}
+  .crit b{color:var(--ink)}
+  footer{color:var(--muted);font-size:13.5px;margin-top:34px;border-top:1px solid var(--line);
+    padding-top:20px}
+  code{background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>The Poker Face — v4 &amp; v5</h1>
+  <p class="sub">v4 kept for reference; v5 spaces the hand and adds a craft pass.</p>
+
+  <div class="card">
+    <div class="ba">
+      <div class="col"><div class="sq"><img src="pokerface-v1.svg" alt="v1"></div>
+        <h3>v1</h3><span>original pick</span></div>
+      <div class="col"><div class="sq"><img src="pokerface-v4.svg" alt="v4"></div>
+        <h3>v4</h3><span>real card faces</span></div>
+      <div class="col"><div class="sq"><img src="pokerface-v5.svg" alt="v5"></div>
+        <h3>v5</h3><span>spaced + craft pass</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>v5 &mdash; what changed</h2>
+    <ul>
+      <li><span class="done">&#10003;</span> <b>The hand is spaced.</b> In v4 the two cards touched, so they merged into one wide white slab and the 2's left pip column was hidden. Separating them gives each card its own silhouette and reopens the centre line so the chin and mouth read. <b>It also measurably improves the icon small</b> &mdash; in the ladder below v5's cards stay countable as two cards down to 60&nbsp;px, where v4's fuse into one shape.</li>
+      <li><span class="done">&#10003;</span> <b>Rim light on the head.</b> The face met the dark felt with no separation and its silhouette dissolved when shrunk; a warm sliver along the lit edge reads as the overhead spot catching it.</li>
+      <li><span class="done">&#10003;</span> <b>A specular streak on one lens</b> &mdash; the only cue that the glasses are glass rather than two black holes.</li>
+      <li><span class="done">&#10003;</span> <b>Corner vignette</b>, so the tile has a focal centre instead of reading as a flat rectangle of dark green.</li>
+      <li>Verified: <b>0% of card pixels clipped</b> by the iOS squircle in either version.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>v4 &mdash; what changed from v1</h2>
+    <ul>
+      <li><span class="done">&#10003;</span> <b>Kept v1's face and hair.</b> The brow-bar sunglasses, the deadpan mouth bar and the rounded hair mass are v1's — not the wayfarer/clipped treatment from v2&ndash;v3.</li>
+      <li><span class="done">&#10003;</span> <b>Hair now fits the top of the head.</b> This was the one real fault in v1: its hair was an arc peaking at y&nbsp;=&nbsp;139 while the skull topped out at y&nbsp;=&nbsp;186, so it floated roughly 47&nbsp;px proud of the head like a wig. v4 clips the head's own circle, so the hair cannot sit anywhere but on the skull.</li>
+      <li><span class="done">&#10003;</span> <b>Person bigger.</b> Head radius 262 &rarr; 300, filling far more of the tile.</li>
+      <li><span class="done">&#10003;</span> <b>Cards bigger</b> — and lowered so they no longer cover the mouth, since the expression is the whole point.</li>
+      <li><span class="done">&#10003;</span> <b>10&#9829; and 2&#9824;, offsuit</b> — one red, one black — instead of a pair of aces.</li>
+      <li><span class="done">&#10003;</span> <b>Rank and suit mirrored into opposite corners</b> on both cards: upright at the top-left, rotated 180&deg; at the bottom-right, the way a real card is printed.</li>
+      <li><span class="done">&#10003;</span> <b>The cards are real cards.</b> They are the English-pattern 10&#9829; and 2&#9824; faces by Dmitry Fomin, released <b>CC0 / public domain</b> on Wikimedia Commons, placed and scaled rather than redrawn. A render of the extracted face was diffed against the source: <b>maximum channel delta 0</b> &mdash; pixel-identical.</li>
+      <li><span class="done">&#10003;</span> <b>Cards now cast a shadow</b> so they sit in front of the face instead of looking pasted on. Built from stacked translucent shapes because <code>feDropShadow</code> is silently ignored by several SVG rasterisers &mdash; the first attempt rendered nothing at all.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Size ladder</h2>
+    <div class="sizes">
+      <div class="size"><div style="width:180px;height:180px"><img src="pokerface-v5.svg"></div><span>180 &middot; @3x</span></div>
+      <div class="size"><div style="width:120px;height:120px"><img src="pokerface-v5.svg"></div><span>120 &middot; @2x</span></div>
+      <div class="size"><div style="width:87px;height:87px"><img src="pokerface-v5.svg"></div><span>87 &middot; settings</span></div>
+      <div class="size"><div style="width:60px;height:60px"><img src="pokerface-v5.svg"></div><span>60 &middot; home</span></div>
+      <div class="size"><div style="width:40px;height:40px"><img src="pokerface-v5.svg"></div><span>40 &middot; spotlight</span></div>
+    </div>
+    <p style="color:var(--soft);font-size:14.6px;margin-top:16px">
+      Every element is verified inside the iOS squircle crop, which the rounded corners above simulate — an earlier card placement ran off the bottom edge.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Still not perfect</h2>
+    <div class="crit"><b>Hand-drawing the cards was the wrong approach, and not obviously so.</b> My versions were wrong in ways that are hard to catch by eye: a 10 needs ten pips in a set arrangement (one central pip is how an <em>ace</em> is printed), card faces are 360&times;540 (2:3) rather than the squarer shape I had guessed, pips are taller than wide, and the "10" index is condensed with separately kerned digits. Ten correctly-drawn pips still cost small-size clarity &mdash; at 40&nbsp;px they read as speckle rather than a countable ten &mdash; but that is now a property of real cards, not of my drawing.</div>
+    <div class="crit"><b>10-2 is an in-joke.</b> It reads as "confident player holding garbage", which lands with a poker player and is invisible to everyone else. A stranger browsing the App Store just sees two cards.</div>
+    <div class="crit"><b>Dark ground still costs pop.</b> v1's blue tile is louder among colourful home-screen neighbours; v4 looks more premium and matches the app's felt, but recedes more.</div>
+    <div class="crit"><b>Still says nothing about friends.</b> Unchanged, and unsolved by any single-character concept in this exploration.</div>
+  </div>
+
+  <footer>
+    Source: <code>scripts/make-icon-pokerface.py</code> &rarr; <code>docs/design/icon-final/pokerface-v4.svg</code>.
+    Suit glyphs are Bootstrap Icons (MIT), credited in <code>assets/textures/CREDITS.md</code>.
+    Vector — exports losslessly to every iOS/Android size. Direction concept, not production art.
+  </footer>
+</div>
+</body>
+</html>

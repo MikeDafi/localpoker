@@ -1,0 +1,17 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "D832CD41-7428-4488-BE3E-38B636FC06ED",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "086E3641-100A-490D-A930-BFB7FF9D5B2A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "21-settings-account-bottom_0_A4B32090-647F-4492-A62E-4CD18BA1B464.png",
+        "timestamp" : 1789513750.123
+      }
+    ],
+    "testIdentifier" : "LocalPokerUITests/test03SettingsAccount()",
+    "testIdentifierURL" : "test://com.apple.xcode/UITestHarness/LocalPokerUITests/LocalPokerUITests/test03SettingsAccount"
+  }
+]

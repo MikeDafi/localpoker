@@ -1,0 +1,195 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project .maestro/xctest/UITestHarness.xcodeproj -scheme Harness -destination "platform=iOS Simulator,id=D832CD41-7428-4488-BE3E-38B636FC06ED" -derivedDataPath .maestro/DerivedData -resultBundlePath docs/qa/xctest-pal-friends.xcresult "-only-testing:LocalPokerUITests/LocalPokerUITests/test02PalAndFriendsSetup"
+
+Writing result bundle at path:
+	/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/xctest-pal-friends.xcresult
+
+2026-09-15 16:02:51.098525-0700 LocalPokerUITests-Runner[51329:54529652] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 16:02:52.432.
+Test Suite 'LocalPokerUITests.xctest' started at 2026-09-15 16:02:52.432.
+Test Suite 'LocalPokerUITests' started at 2026-09-15 16:02:52.432.
+Test Case '-[LocalPokerUITests.LocalPokerUITests test02PalAndFriendsSetup]' started.
+    t =     0.00s Start Test at 2026-09-15 16:02:52.433
+    t =     0.26s Set Up
+    t =     0.26s Open host.exp.Exponent
+    t =     0.26s     Activate host.exp.Exponent
+    t =     0.30s         Wait for host.exp.Exponent to idle
+    t =     2.32s Checking existence of `Any (First Match)`
+    t =     2.54s Checking existence of `Any (First Match)`
+    t =     2.64s Added attachment named '19-home-before-pal'
+SNAP 19-home-before-pal
+    t =     2.64s Waiting 8.0s for Any (First Match) to exist
+    t =     3.67s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =     3.67s         Checking existence of `Any (First Match)`
+    t =     3.69s Find the Any (First Match)
+    t =     3.81s Tap "My Pal, Customize" Other
+    t =     3.81s     Wait for host.exp.Exponent to idle
+    t =     3.82s     Find the "My Pal, Customize" Other
+    t =     3.83s     Check for interrupting elements affecting "My Pal, Customize" Other
+    t =     3.88s     Synthesize event
+    t =     4.19s     Wait for host.exp.Exponent to idle
+    t =     5.41s Waiting 10.0s for Any (First Match) to exist
+    t =     6.45s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =     6.45s         Checking existence of `Any (First Match)`
+    t =     6.56s Added attachment named '19-pal-face'
+SNAP 19-pal-face
+    t =     6.56s Waiting 2.0s for Any (First Match) to exist
+    t =     7.60s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =     7.60s         Checking existence of `Any (First Match)`
+    t =     7.62s Find the Any (First Match)
+    t =     7.65s Tap "Hair, 3" Button
+    t =     7.65s     Wait for host.exp.Exponent to idle
+    t =     7.66s     Find the "Hair, 3" Button
+    t =     7.68s     Check for interrupting elements affecting "Hair, 3" Button
+    t =     7.77s     Synthesize event
+    t =     8.39s     Wait for host.exp.Exponent to idle
+    t =    10.20s Added attachment named '19b-pal-hair'
+SNAP 19b-pal-hair
+    t =    10.20s Waiting 2.0s for Any (First Match) to exist
+    t =    11.24s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    11.24s         Checking existence of `Any (First Match)`
+    t =    11.26s Find the Any (First Match)
+    t =    11.29s Tap "Eyes, 3" Button
+    t =    11.29s     Wait for host.exp.Exponent to idle
+    t =    11.29s     Find the "Eyes, 3" Button
+    t =    11.31s     Check for interrupting elements affecting "Eyes, 3" Button
+    t =    11.40s     Synthesize event
+    t =    11.98s     Wait for host.exp.Exponent to idle
+    t =    13.78s Added attachment named '19c-pal-eyes'
+SNAP 19c-pal-eyes
+    t =    13.78s Waiting 2.0s for Any (First Match) to exist
+    t =    14.82s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    14.82s         Checking existence of `Any (First Match)`
+    t =    14.84s Find the Any (First Match)
+    t =    14.87s Tap "Extras, 3" Button
+    t =    14.87s     Wait for host.exp.Exponent to idle
+    t =    14.88s     Find the "Extras, 3" Button
+    t =    14.89s     Check for interrupting elements affecting "Extras, 3" Button
+    t =    14.98s     Synthesize event
+    t =    15.33s     Wait for host.exp.Exponent to idle
+    t =    17.14s Added attachment named '19d-pal-extras'
+SNAP 19d-pal-extras
+    t =    17.14s Waiting 2.0s for Any (First Match) to exist
+    t =    18.18s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    18.18s         Checking existence of `Any (First Match)`
+    t =    18.20s Find the Any (First Match)
+    t =    18.22s Tap "Build a console-style avatar with smooth, instant updates." StaticText
+    t =    18.22s     Wait for host.exp.Exponent to idle
+    t =    18.22s     Find the "Build a console-style avatar with smooth, instant updates." StaticText
+    t =    18.24s     Check for interrupting elements affecting "Build a console-style avatar with smooth, instant updates." StaticText
+    t =    18.33s     Synthesize event
+    t =    18.80s     Wait for host.exp.Exponent to idle
+    t =    20.62s Added attachment named '19e-pal-style'
+SNAP 19e-pal-style
+    t =    20.62s Waiting 2.0s for Any (First Match) to exist
+    t =    21.66s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    21.66s         Checking existence of `Any (First Match)`
+    t =    21.68s Find the Any (First Match)
+    t =    21.71s Tap "Randomize" Other
+    t =    21.71s     Wait for host.exp.Exponent to idle
+    t =    21.71s     Find the "Randomize" Other
+    t =    21.72s     Check for interrupting elements affecting "Randomize" Other
+    t =    21.81s     Synthesize event
+    t =    22.47s     Wait for host.exp.Exponent to idle
+    t =    24.27s Added attachment named '19f-pal-randomize'
+SNAP 19f-pal-randomize
+    t =    24.27s Waiting 2.0s for Any (First Match) to exist
+    t =    25.31s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    25.31s         Checking existence of `Any (First Match)`
+    t =    25.33s Find the Any (First Match)
+    t =    25.35s Tap "Save" Other
+    t =    25.35s     Wait for host.exp.Exponent to idle
+    t =    25.35s     Find the "Save" Other
+    t =    25.36s     Check for interrupting elements affecting "Save" Other
+    t =    25.44s     Synthesize event
+    t =    25.78s     Wait for host.exp.Exponent to idle
+    t =    26.92s Waiting 10.0s for Any (First Match) to exist
+    t =    27.97s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    27.97s         Checking existence of `Any (First Match)`
+    t =    27.99s Waiting 8.0s for Any (First Match) to exist
+    t =    29.03s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    29.03s         Checking existence of `Any (First Match)`
+    t =    29.05s Find the Any (First Match)
+    t =    29.08s Tap "Play with Friends, Private room" Other
+    t =    29.08s     Wait for host.exp.Exponent to idle
+    t =    29.08s     Find the "Play with Friends, Private room" Other
+    t =    29.10s     Check for interrupting elements affecting "Play with Friends, Private room" Other
+    t =    29.13s     Synthesize event
+    t =    29.76s     Wait for host.exp.Exponent to idle
+    t =    30.89s Waiting 10.0s for Any (First Match) to exist
+    t =    31.93s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    31.93s         Checking existence of `Any (First Match)`
+    t =    32.03s Added attachment named '20-room-create'
+SNAP 20-room-create
+    t =    32.03s Waiting 3.0s for Any (First Match) to exist
+    t =    33.05s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    33.06s         Checking existence of `Any (First Match)`
+    t =    33.07s Find the Any (First Match)
+    t =    33.09s Tap "Configure Table →" Other
+    t =    33.09s     Wait for host.exp.Exponent to idle
+    t =    33.10s     Find the "Configure Table →" Other
+    t =    33.11s     Check for interrupting elements affecting "Configure Table →" Other
+    t =    33.14s     Synthesize event
+    t =    33.65s     Wait for host.exp.Exponent to idle
+    t =    34.89s Waiting 10.0s for Any (First Match) to exist
+    t =    35.94s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    35.94s         Checking existence of `Any (First Match)`
+    t =    37.07s Added attachment named '20b-friends-setup-create'
+SNAP 20b-friends-setup-create
+    t =    37.07s Waiting 3.0s for Any (First Match) to exist
+    t =    38.10s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    38.10s         Checking existence of `Any (First Match)`
+    t =    38.13s Find the Any (First Match)
+    t =    38.16s Tap "Start Game" Other
+    t =    38.16s     Wait for host.exp.Exponent to idle
+    t =    38.16s     Find the "Start Game" Other
+    t =    38.18s     Check for interrupting elements affecting "Start Game" Other
+    t =    38.22s     Synthesize event
+    t =    38.59s     Wait for host.exp.Exponent to idle
+    t =    39.30s Waiting 15.0s for Any (First Match) to exist
+    t =    40.34s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    40.34s         Checking existence of `Any (First Match)`
+    t =    42.46s Added attachment named '20c-friends-table-create'
+SNAP 20c-friends-table-create
+    t =    42.46s Tap Application 'host.exp.Exponent'[0.10, 0.10]
+    t =    42.46s     Wait for host.exp.Exponent to idle
+    t =    42.47s     Find the Application 'host.exp.Exponent'
+    t =    42.59s     Check for interrupting elements affecting "Expo Go" Application
+    t =    42.72s     Synthesize event
+    t =    42.72s         Find the Application 'host.exp.Exponent'
+    t =    42.84s         Find the Application 'host.exp.Exponent'
+    t =    42.95s         Find the Application 'host.exp.Exponent'
+    t =    43.40s     Wait for host.exp.Exponent to idle
+    t =    45.72s Tap Application 'host.exp.Exponent'[0.69, 0.56]
+    t =    45.72s     Wait for host.exp.Exponent to idle
+    t =    45.74s     Find the Application 'host.exp.Exponent'
+    t =    45.86s     Check for interrupting elements affecting "Expo Go" Application
+    t =    45.99s     Synthesize event
+    t =    46.00s         Find the Application 'host.exp.Exponent'
+    t =    46.11s         Find the Application 'host.exp.Exponent'
+    t =    46.23s         Find the Application 'host.exp.Exponent'
+    t =    46.74s     Wait for host.exp.Exponent to idle
+    t =    50.26s Waiting 10.0s for Any (First Match) to exist
+    t =    51.30s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    51.30s         Checking existence of `Any (First Match)`
+    t =    51.40s Added attachment named '20d-home-after-friends-table'
+SNAP 20d-home-after-friends-table
+    t =    51.40s Tear Down
+Test Case '-[LocalPokerUITests.LocalPokerUITests test02PalAndFriendsSetup]' passed (51.909 seconds).
+Test Suite 'LocalPokerUITests' passed at 2026-09-15 16:03:44.343.
+	 Executed 1 test, with 0 failures (0 unexpected) in 51.909 (51.910) seconds
+Test Suite 'LocalPokerUITests.xctest' passed at 2026-09-15 16:03:44.343.
+	 Executed 1 test, with 0 failures (0 unexpected) in 51.909 (51.911) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 16:03:44.343.
+	 Executed 1 test, with 0 failures (0 unexpected) in 51.909 (51.911) seconds
+2026-09-15 16:03:44.666 xcodebuild[49618:54526419] [MT] IDETestOperationsObserverDebug: 62.690 elapsed -- Testing started completed.
+2026-09-15 16:03:44.666 xcodebuild[49618:54526419] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 16:03:44.666 xcodebuild[49618:54526419] [MT] IDETestOperationsObserverDebug: 62.690 sec, +62.690 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/xctest-pal-friends.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

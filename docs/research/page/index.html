@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poker table references &mdash; 3 video games</title>
+<style>
+  :root {
+    --bg: #0B0F0E; --surface: #141A18; --line: rgba(255,255,255,.10);
+    --ink: #EDF2F0; --soft: rgba(237,242,240,.78); --muted: rgba(237,242,240,.56);
+    --accent: #2F9FD4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 72px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.02em; }
+  .lede { color: var(--soft); margin: 0 0 8px; max-width: 70ch; }
+  .note-small { color: var(--muted); font-size: 13px; margin: 0 0 36px; max-width: 70ch; }
+  h2 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
+  .meta { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; margin-bottom: 28px;
+  }
+  .shot { display: block; background: #000; }
+  .shot img { width: 100%; height: auto; display: block; }
+  .body { padding: 20px 22px 22px; }
+  .read { color: var(--soft); margin: 12px 0 16px; }
+  .measure { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.02); }
+  .patch { width: 220px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  .vals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .chip { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); display: inline-block; vertical-align: middle; }
+  .chip.sm { width: 16px; height: 16px; border-radius: 4px; margin-right: 8px; }
+  code { font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+  .hsl { color: var(--muted); font-size: 13px; }
+  .take { margin: 16px 0 14px; padding-left: 18px; color: var(--soft); }
+  .take li { margin: 5px 0; }
+  .src { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .src:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 26px; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: none; }
+  td.note { color: var(--muted); }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-bottom: 28px; }
+  .panel h2 { margin-bottom: 12px; }
+  .verdict li { margin: 8px 0; color: var(--soft); }
+  .foot { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Poker table references &mdash; 3 video games</h1>
+  <p class="lede">
+    Official store screenshots for three dedicated poker games, with the felt colour
+    measured straight out of each image and compared against LocalPoker's theme tokens.
+  </p>
+  <p class="note-small">
+    Screenshots are the publishers' promotional assets, pulled from each game's Steam store
+    listing and kept here purely as internal design reference. All rights remain with their
+    respective owners.
+  </p>
+
+
+      <article class="card">
+        <a class="shot" href="table-refs/prominence-poker-2.jpg" target="_blank" rel="noopener">
+          <img src="table-refs/prominence-poker-2.jpg" alt="Prominence Poker poker table screenshot" loading="lazy">
+        </a>
+        <div class="body">
+          <header>
+            <h2>Prominence Poker</h2>
+            <p class="meta">Pipeworks Studios / 505 Games &middot; 2016</p>
+          </header>
+          <p class="read">Near-black felt with a cool violet cast, gold line-art inlay, and a thick black padded rail over a wooden base.</p>
+          <div class="measure">
+            <img class="patch" src="table-refs/swatch-prominence-poker-2.jpg" alt="felt sample from Prominence Poker">
+            <div class="vals">
+              <span class="chip" style="background:#212025"></span>
+              <code>#212025</code>
+              <span class="hsl">hue 252&deg; &middot; sat 7% &middot; light 14%</span>
+            </div>
+          </div>
+          <ul class="take"><li>Felt is essentially black — the colour comes from the lighting, not the cloth.</li>
+<li>Ornament lives in a single metallic accent (gold) on an otherwise dead-flat surface.</li>
+<li>A wide matte rail separates the felt from the room and grounds the table.</li></ul>
+          <a class="src" href="https://store.steampowered.com/app/384180/" target="_blank" rel="noopener">Official screenshots &rarr; Steam</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <a class="shot" href="table-refs/poker-club-3.jpg" target="_blank" rel="noopener">
+          <img src="table-refs/poker-club-3.jpg" alt="Poker Club poker table screenshot" loading="lazy">
+        </a>
+        <div class="body">
+          <header>
+            <h2>Poker Club</h2>
+            <p class="meta">Ripstone &middot; 2020</p>
+          </header>
+          <p class="read">Matte desaturated navy felt carrying a tonal suit-pattern watermark, lit evenly with no specular sheen.</p>
+          <div class="measure">
+            <img class="patch" src="table-refs/swatch-poker-club-3.jpg" alt="felt sample from Poker Club">
+            <div class="vals">
+              <span class="chip" style="background:#2D475E"></span>
+              <code>#2D475E</code>
+              <span class="hsl">hue 208&deg; &middot; sat 35% &middot; light 27%</span>
+            </div>
+          </div>
+          <ul class="take"><li>Texture is tonal — the suit motif is only a few percent lighter than the base.</li>
+<li>Blue reads as 'premium casino' without the toy-green association.</li>
+<li>Cards and chips are the only saturated objects; the cloth never competes.</li></ul>
+          <a class="src" href="https://store.steampowered.com/app/1174460/" target="_blank" rel="noopener">Official screenshots &rarr; Steam</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <a class="shot" href="table-refs/pure-holdem-1.jpg" target="_blank" rel="noopener">
+          <img src="table-refs/pure-holdem-1.jpg" alt="Pure Hold'em poker table screenshot" loading="lazy">
+        </a>
+        <div class="body">
+          <header>
+            <h2>Pure Hold'em</h2>
+            <p class="meta">VooFoo Studios &middot; 2015</p>
+          </header>
+          <p class="read">Warm near-black charcoal felt with a visible fabric weave and a subtle damask swirl, lit by a single warm overhead source.</p>
+          <div class="measure">
+            <img class="patch" src="table-refs/swatch-pure-holdem-1.jpg" alt="felt sample from Pure Hold'em">
+            <div class="vals">
+              <span class="chip" style="background:#2E2528"></span>
+              <code>#2E2528</code>
+              <span class="hsl">hue 340&deg; &middot; sat 11% &middot; light 16%</span>
+            </div>
+          </div>
+          <ul class="take"><li>Visible cloth weave at close range is what sells 'felt' rather than 'flat colour'.</li>
+<li>One warm light source with a strong falloff creates all the depth.</li>
+<li>The darker the cloth, the more the cards pop as the focal point.</li></ul>
+          <a class="src" href="https://store.steampowered.com/app/322950/" target="_blank" rel="noopener">Official screenshots &rarr; Steam</a>
+        </div>
+      </article>
+
+  <div class="panel">
+    <h2>Measured felt vs. ours</h2>
+    <table>
+      <thead><tr><th>Reference</th><th>Felt</th><th>Hue</th><th>Sat</th><th>Light</th><th></th></tr></thead>
+      <tbody>
+<tr><td>Prominence Poker</td>
+        <td><span class="chip sm" style="background:#212025"></span><code>#212025</code></td>
+        <td>252&deg;</td><td>7%</td><td>14%</td><td class="note">measured from bare felt</td></tr>
+<tr><td>Poker Club</td>
+        <td><span class="chip sm" style="background:#2D475E"></span><code>#2D475E</code></td>
+        <td>208&deg;</td><td>35%</td><td>27%</td><td class="note">measured from bare felt</td></tr>
+<tr><td>Pure Hold'em</td>
+        <td><span class="chip sm" style="background:#2E2528"></span><code>#2E2528</code></td>
+        <td>340&deg;</td><td>11%</td><td>16%</td><td class="note">measured from bare felt</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>LocalPoker token</th><th>Value</th><th>Hue</th><th>Sat</th><th>Light</th><th></th></tr></thead>
+      <tbody>
+<tr><td><code>feltLight</code></td>
+        <td><span class="chip sm" style="background:#1E2C27"></span><code>#1E2C27</code></td>
+        <td>159&deg;</td><td>19%</td><td>15%</td><td class="note">lit top of the table</td></tr>
+<tr><td><code>felt</code></td>
+        <td><span class="chip sm" style="background:#16211D"></span><code>#16211D</code></td>
+        <td>158&deg;</td><td>20%</td><td>11%</td><td class="note">table surface</td></tr>
+<tr><td><code>feltDeep</code></td>
+        <td><span class="chip sm" style="background:#111A17"></span><code>#111A17</code></td>
+        <td>160&deg;</td><td>21%</td><td>8%</td><td class="note">shaded bottom</td></tr>
+<tr><td><code>feltRail</code></td>
+        <td><span class="chip sm" style="background:#161D1A"></span><code>#161D1A</code></td>
+        <td>154&deg;</td><td>14%</td><td>10%</td><td class="note">rail</td></tr>
+<tr><td><code>feltRoom</code></td>
+        <td><span class="chip sm" style="background:#080C0B"></span><code>#080C0B</code></td>
+        <td>165&deg;</td><td>20%</td><td>4%</td><td class="note">room around the table</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>What this tells us</h2>
+    <ul class="verdict">
+      <li><strong>Dark was the right call.</strong> The three references average
+        <strong>19% lightness</strong> and <strong>18% saturation</strong>.
+        Our felt sits at <strong>11%</strong> lightness and
+        <strong>20%</strong> saturation &mdash; the same family, slightly darker
+        and a little more desaturated than the middle of the pack.</li>
+      <li><strong>Not one of them uses a bright green cloth.</strong> They run near-black
+        (Prominence, Pure Hold'em) or desaturated navy (Poker Club). The old
+        <code>#2FA35E</code> Wii-green had no equivalent in any modern poker title.</li>
+      <li><strong>Every felt carries a texture.</strong> A tonal suit watermark, a damask
+        swirl, or a visible cloth weave &mdash; always only a few percent off the base colour.
+        Ours is still a flat gradient; that is the clearest remaining gap.</li>
+      <li><strong>Ornament is a single metallic accent.</strong> Gold line-art on black
+        (Prominence) is the only decoration on the surface &mdash; consistent with keeping the
+        palette restrained.</li>
+      <li><strong>One light source, strong falloff.</strong> All three are lit from above with
+        the table edges falling into shadow, which is exactly the room &rarr; rail &rarr; felt
+        hierarchy we built.</li>
+    </ul>
+  </div>
+
+  <p class="foot">
+    Generated by <code>scripts/build-table-references.py</code> &middot;
+    screenshots fetched via <code>scripts/fetch-steam-refs.mjs</code> from Steam's public
+    appdetails API &middot; felt colours averaged from hand-verified crops of bare cloth.
+  </p>
+</div>
+</body>
+</html>

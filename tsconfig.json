@@ -1,0 +1,11 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // The app is React Native, but the tests run in node and a couple of them
+    // read real files off disk — the card artwork, which is the only part of
+    // the deck that is a file rather than geometry.
+    "types": ["node"]
+  },
+  "exclude": ["node_modules", "scripts", ".maestro"]
+}
