@@ -73,25 +73,45 @@ production, add Firebase Auth and App Check so writes can be tied to real users/
 
 ---
 
-## LocalPoker — current status (auto-configured)
+## LocalPoker - current status
 
-A Firebase **Web app** and **Realtime Database** were provisioned via the browser and the
-config is already in **`.env`** (project `bestplan-dac49`, us-central1). `isFirebaseConfigured()`
-returns true, so the app initializes Firebase.
+LocalPoker runs on its own Firebase project, **`localpoker-app-2026`** (us-central1).
 
-**Data isolation:** all LocalPoker data is namespaced under `/localpoker/...` in the RTDB, so it
-never touches other data in the project.
+It was deliberately separated from `bestplan-dac49`, which has a billing account attached
+(Blaze). `localpoker-app-2026` has **no billing account**, so it is on the Spark free plan and
+usage stops at the free quota rather than generating a bill. That is the safer default for a
+free app that anyone can download. The previous values are kept in `.env.bestplan-backup`.
 
-### One remaining manual step: publish database rules
-The RTDB was created in locked mode, so writes are currently denied. Publish the rules so the
-lobby/rooms work:
+Provisioned and already done:
 
-1. Firebase console → Realtime Database → **Rules**.
-2. Paste the contents of **`database.rules.json`** (in this repo) and click **Publish**.
-   (Or, for a quick start, choose "test mode".)
+- Web app created, config written to `.env` (gitignored)
+- Realtime Database instance `localpoker-app-2026-default-rtdb` created
+- Security rules from `database.rules.json` deployed and live
 
-The provided rules scope public read/write to `/localpoker/rooms/*` and `/localpoker/healthcheck` only.
+**Data isolation:** all LocalPoker data is namespaced under `/localpoker/...`.
 
-### Using a dedicated project instead of bestplan
-Create a new Firebase project, add a Web app + Realtime Database, then replace the
-`EXPO_PUBLIC_FIREBASE_*` values in `.env` and restart the dev server. No code changes needed.
+### One remaining manual step: enable Anonymous sign-in
+
+This cannot be scripted on the free plan. The Identity Toolkit admin API that toggles sign-in
+providers is part of Identity Platform, which requires billing, so the Firebase console is the
+only route on Spark.
+
+1. Open https://console.firebase.google.com/project/localpoker-app-2026/authentication/providers
+2. Click **Get started** if prompted.
+3. Enable **Anonymous**, then **Save**.
+
+Until that is done, `ensureSignedIn()` returns null and the app falls back to local-only play.
+That is intentional: see `src/services/firebase/auth.ts`, which no-ops rather than breaking.
+
+### Verifying it worked
+
+    npm run test:rules     # rules suite against the local emulator
+
+Then launch the app and open a friends room. If sign-in is working, room writes succeed; if not,
+the app stays usable offline and logs a warning rather than crashing.
+
+### Moving to a different project
+
+Create a Firebase project, add a Web app and a Realtime Database, deploy the rules with
+`npx firebase deploy --only database --project <id>`, then replace the `EXPO_PUBLIC_FIREBASE_*`
+values in `.env` and restart the dev server. No code changes needed.

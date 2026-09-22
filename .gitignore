@@ -45,6 +45,8 @@ yarn-error.*
 
 # local env (Firebase keys)
 .env
+.env.*
+!.env.example
 
 # Short-lived gcloud access token used for Firebase admin calls — never commit
 .tok
