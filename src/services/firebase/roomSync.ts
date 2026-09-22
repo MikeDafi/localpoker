@@ -20,6 +20,7 @@ import {
   redactGameState,
   type PublicGameState,
 } from '../../game/onlineSync';
+import { maskedPublicName } from '../../moderation/contentFilter';
 import { createGame, startHand, type GameConfig, type GameState, type PlayerInput } from '../../engine';
 
 type Result = { ok: boolean; reason?: string };
@@ -55,6 +56,7 @@ const playerConnectedPath = (code: string, playerId: string): string =>
 const actionsPath = (code: string): string => `${roomPath(code)}/actions`;
 const actionSeqPath = (code: string): string => `${roomPath(code)}/actionSeq`;
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
+const userRoomPath = (playerId: string, code: string): string => `localpoker/userRooms/${playerId}/${code}`;
 
 const unavailableResult = (): Result => ({ ok: false, reason: NOT_CONFIGURED_REASON });
 
@@ -71,7 +73,7 @@ const toDbPlayer = (player: RoomPlayer, overrides: Partial<RoomPlayer> = {}): Ro
 
   return {
     id: merged.id,
-    name: merged.name,
+    name: maskedPublicName(merged.name.trim().replace(/\s+/g, ' ').slice(0, 24) || 'Player'),
     ...(merged.palSeed ? { palSeed: merged.palSeed } : {}),
     seatIndex: merged.seatIndex,
     chips: merged.chips,
@@ -214,7 +216,10 @@ export const createRoom = async (
       actionSeq: 0,
     };
 
-    await set(roomRef, room);
+    await update(ref(db), {
+      [roomPath(roomCode)]: room,
+      [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
+    });
     await registerDisconnect(db, roomCode, hostId, true);
     return { ok: true };
   } catch (error) {
@@ -313,7 +318,10 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
     }
 
     const playerValue = toDbPlayer(player, { id: playerId, connected: true });
-    await update(ref(db, playerPath(roomCode, playerId)), playerValue);
+    await update(ref(db), {
+      [playerPath(roomCode, playerId)]: playerValue,
+      [userRoomPath(playerId, roomCode)]: { code: roomCode, role: 'player', updatedAt: Date.now() },
+    });
     await registerDisconnect(db, roomCode, playerId);
     return { ok: true };
   } catch (error) {
@@ -346,6 +354,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
       };
       for (const id of Object.keys(room.players ?? {})) {
         updates[viewPath(roomCode, id)] = null;
+        updates[userRoomPath(id, roomCode)] = null;
       }
 
       await update(ref(db), updates);
@@ -353,7 +362,11 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
       return;
     }
 
-    await set(ref(db, playerPath(roomCode, cleanPlayerId)), null);
+    await update(ref(db), {
+      [playerPath(roomCode, cleanPlayerId)]: null,
+      [viewPath(roomCode, cleanPlayerId)]: null,
+      [userRoomPath(cleanPlayerId, roomCode)]: null,
+    });
   } catch (error) {
     reportFirebaseError('leave-room', error);
     console.warn('Unable to leave Firebase room.', error);
@@ -642,6 +655,7 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
 
     for (const playerId of Object.keys(room.players ?? {})) {
       updates[viewPath(roomCode, playerId)] = null;
+      updates[userRoomPath(playerId, roomCode)] = null;
     }
 
     await update(ref(db), updates);

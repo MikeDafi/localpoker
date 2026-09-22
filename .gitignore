@@ -68,3 +68,7 @@ ui-debug.log
 # docs/qa are worth keeping; the raw xctest console dumps are not.
 .claude/logs/
 docs/qa/*.log
+
+# Built output of the legal site (docs/site/build-legal-site.mjs). CI builds it
+# fresh; a local run must never be committed.
+_site/

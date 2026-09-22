@@ -36,7 +36,7 @@
               ".write": "auth != null && auth.uid === $uid",
               ".validate": "(newData.hasChildren(['id','name']) && newData.child('id').val() === auth.uid) || !newData.exists()",
               "name": {
-                ".validate": "newData.isString() && newData.val().length <= 24"
+                ".validate": "newData.isString() && newData.val().length <= 24 && !(newData.val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/))"
               }
             }
           },
@@ -97,7 +97,7 @@
                   ".validate": "newData.isString() && newData.val().length <= 128"
                 },
                 "name": {
-                  ".validate": "newData.isString() && newData.val().length <= 24"
+                  ".validate": "newData.isString() && newData.val().length <= 24 && !(newData.val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/))"
                 },
                 "seatIndex": {
                   ".validate": "newData.isNumber()"
@@ -162,7 +162,7 @@
         "$code": {
           "$uid": {
             ".read": "auth != null && auth.uid === $uid",
-            ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && root.child('localpoker').child('rooms').child($code).child('players').child($uid).exists()",
+            ".write": "auth != null && ((root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && root.child('localpoker').child('rooms').child($code).child('players').child($uid).exists()) || (auth.uid === $uid && !newData.exists()))",
             ".validate": "!newData.exists() || (newData.hasChildren(['version','playerId','handNumber','holeCards']) && newData.child('version').val() === 1 && newData.child('playerId').val() === $uid && !newData.child('deck').exists() && !newData.child('seed').exists())",
             "version": {
               ".validate": "newData.isNumber() && newData.val() === 1"
@@ -198,32 +198,61 @@
         "$uid": {
           ".read": "auth != null",
           ".write": "auth != null && auth.uid === $uid",
-          ".validate": "!newData.exists() || (newData.hasChildren(['handle','displayName','updatedAt']) && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && root.child('localpoker').child('handles').child(newData.child('handle').val()).val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && newData.child('updatedAt').isNumber())"
+          ".validate": "!newData.exists() || (newData.hasChildren(['handle','displayName','updatedAt']) && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('handle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && root.child('localpoker').child('handles').child(newData.child('handle').val()).val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && !(newData.child('displayName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('displayName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('displayName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('displayName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('displayName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('updatedAt').isNumber())"
         }
       },
       "handles": {
         "$handle": {
           ".read": "auth != null",
-          ".write": "auth != null && !data.exists() && newData.isString() && newData.val() === auth.uid && $handle.matches(/^[a-z0-9_]{3,20}$/)",
-          ".validate": "newData.isString() && newData.val() === auth.uid"
+          ".write": "auth != null && ((!data.exists() && newData.isString() && newData.val() === auth.uid && $handle.matches(/^[a-z0-9_]{3,20}$/) && !$handle.matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/)) || (data.exists() && data.val() === auth.uid && !newData.exists()))",
+          ".validate": "!newData.exists() || (newData.isString() && newData.val() === auth.uid)"
         }
       },
       "friendRequests": {
         "$toUid": {
           ".read": "auth != null && auth.uid === $toUid",
+          ".write": "auth != null && auth.uid === $toUid && !newData.exists()",
           "$fromUid": {
             ".read": "auth != null && (auth.uid === $toUid || auth.uid === $fromUid)",
-            ".write": "auth != null && ((!data.exists() && auth.uid === $fromUid && $toUid !== auth.uid && newData.child('fromUid').val() === auth.uid && newData.child('status').val() === 'pending') || (data.exists() && auth.uid === $toUid && data.child('status').val() === 'pending' && (newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined')))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','fromHandle','fromName','createdAt','status']) && newData.child('fromUid').val() === $fromUid && newData.child('fromHandle').isString() && newData.child('fromHandle').val().matches(/^[a-z0-9_]{3,20}$/) && newData.child('fromName').isString() && newData.child('fromName').val().length >= 1 && newData.child('fromName').val().length <= 24 && newData.child('createdAt').isNumber() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined') && (!data.exists() || (newData.child('fromUid').val() === data.child('fromUid').val() && newData.child('fromHandle').val() === data.child('fromHandle').val() && newData.child('fromName').val() === data.child('fromName').val() && newData.child('createdAt').val() === data.child('createdAt').val())))"
+            ".write": "auth != null && ((!data.exists() && auth.uid === $fromUid && $toUid !== auth.uid && !root.child('localpoker').child('blocks').child($toUid).child($fromUid).exists() && newData.child('fromUid').val() === auth.uid && newData.child('status').val() === 'pending') || (data.exists() && !newData.exists() && (auth.uid === $toUid || auth.uid === $fromUid)) || (data.exists() && auth.uid === $toUid && data.child('status').val() === 'pending' && (newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined')))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','fromHandle','fromName','createdAt','status']) && newData.child('fromUid').val() === $fromUid && newData.child('fromHandle').isString() && newData.child('fromHandle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('fromHandle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && newData.child('fromName').isString() && newData.child('fromName').val().length >= 1 && newData.child('fromName').val().length <= 24 && !(newData.child('fromName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('fromName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('fromName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('fromName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('fromName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('fromName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('fromName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('createdAt').isNumber() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined') && (!data.exists() || (newData.child('fromUid').val() === data.child('fromUid').val() && newData.child('fromHandle').val() === data.child('fromHandle').val() && newData.child('fromName').val() === data.child('fromName').val() && newData.child('createdAt').val() === data.child('createdAt').val())))"
           }
         }
       },
       "friends": {
         "$uid": {
           ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid && !newData.exists()",
           "$friendUid": {
             ".write": "auth != null && ((!newData.exists() && data.exists() && (auth.uid === $uid || auth.uid === $friendUid)) || (newData.exists() && ((auth.uid === $uid && (root.child('localpoker').child('friendRequests').child($uid).child($friendUid).child('status').val() === 'pending' || root.child('localpoker').child('friendRequests').child($uid).child($friendUid).child('status').val() === 'accepted')) || (auth.uid === $friendUid && (root.child('localpoker').child('friendRequests').child($friendUid).child($uid).child('status').val() === 'pending' || root.child('localpoker').child('friendRequests').child($friendUid).child($uid).child('status').val() === 'accepted')))))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['uid','handle','displayName','status','updatedAt']) && newData.child('uid').val() === $friendUid && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && newData.child('status').val() === 'accepted' && newData.child('updatedAt').isNumber())"
+            ".validate": "!newData.exists() || (newData.hasChildren(['uid','handle','displayName','status','updatedAt']) && newData.child('uid').val() === $friendUid && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('handle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && !(newData.child('displayName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('displayName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('displayName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('displayName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('displayName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('status').val() === 'accepted' && newData.child('updatedAt').isNumber())"
+          }
+        }
+      },
+      "blocks": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid && !newData.exists()",
+          "$blockedUid": {
+            ".write": "auth != null && auth.uid === $uid && $blockedUid !== auth.uid && (!newData.exists() || !data.exists())",
+            ".validate": "!newData.exists() || (newData.hasChildren(['uid','displayName','createdAt']) && newData.child('uid').val() === $blockedUid && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && !(newData.child('displayName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('displayName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('displayName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('displayName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('displayName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('createdAt').isNumber() && (!newData.child('handle').exists() || (newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('handle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/))))"
+          }
+        }
+      },
+      "reports": {
+        "$reportId": {
+          ".read": false,
+          ".write": "auth != null && !data.exists() && newData.child('reporterUid').val() === auth.uid && newData.child('reportedUid').val() !== auth.uid",
+          ".validate": "newData.hasChildren(['reporterUid','reportedUid','reportedName','context','category','createdAt']) && newData.child('reporterUid').val() === auth.uid && newData.child('reportedUid').isString() && newData.child('reportedUid').val().length <= 128 && newData.child('reportedName').isString() && newData.child('reportedName').val().length >= 1 && newData.child('reportedName').val().length <= 24 && !(newData.child('reportedName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('reportedName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('reportedName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('reportedName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('reportedName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('reportedName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('reportedName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && (newData.child('context').val() === 'friends' || newData.child('context').val() === 'table') && newData.child('category').val() === 'offensive_content' && newData.child('createdAt').isNumber() && (!newData.child('roomCode').exists() || (newData.child('roomCode').isString() && newData.child('roomCode').val().length <= 12))"
+        }
+      },
+      "userRooms": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid && !newData.exists()",
+          "$code": {
+            ".write": "auth != null && ((auth.uid === $uid && (!newData.exists() || newData.child('code').val() === $code)) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['code','role','updatedAt']) && newData.child('code').val() === $code && (newData.child('role').val() === 'host' || newData.child('role').val() === 'player') && newData.child('updatedAt').isNumber())"
           }
         }
       }

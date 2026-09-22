@@ -5,7 +5,7 @@ import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { WiiChannelTile } from '../components/WiiChannelTile';
 import { AnimatedPal } from '../components/AnimatedPal';
-import { AdBanner } from '../components/AdBanner';
+import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { FriendsIcon, BotIcon, StatsIcon, ProfileIcon, CartIcon } from '../components/Icons';
 import { SettingsIcon, PaletteIcon } from '../components/Icons';
 import { colors, fonts, radii, shadows, spacing, easings } from '../theme/theme';
@@ -91,7 +91,7 @@ export function HomeScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <View style={styles.bottomBar}><AdBanner /></View>
+      {ADS_ENABLED ? <View style={styles.bottomBar}><AdBanner /></View> : null}
     </ScreenBackground>
   );
 }

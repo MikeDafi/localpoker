@@ -7,25 +7,45 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 ## 1. Current submission blockers
 
 1. **Ads decision required.** The app is positioned as free with ads, but `AdBanner` is only a static placeholder and no ad SDK is installed. The visible fake ad slot is an App Review rejection risk as placeholder content, separate from the privacy-label issue. For 1.0, either hide ad placeholders and submit as no-ads, or integrate real ads and complete ATT, consent, SKAdNetwork, and privacy disclosures.
-2. **Legal URLs are not live yet.** Host `PRIVACY-POLICY.md` and `TERMS.md` through GitHub Pages, then fill the legal placeholders.
+2. **Legal pages still need human-owned legal values.** The support and privacy contact email is resolved as `maskndafi@gmail.com`. The GitHub Actions Pages workflow still refuses to publish while the remaining legal placeholder markers remain. Fill the exact fields in section 2 below, then enable Pages with **Source: GitHub Actions** and run the Legal Pages workflow.
 3. **Online rooms need production Firebase setup.** Enable Anonymous Authentication, publish `database.rules.json`, add production EAS Firebase env vars, and define room cleanup.
-4. **EAS submit values are placeholders.** Replace Apple ID email, App Store Connect app ID, and Apple team ID before running `eas submit`.
+4. **EAS submit values are not committed.** `eas.json` has no placeholder submit values. Follow `EAS-SUBMIT.md` to supply Apple, ASC, team, and Google Play credentials without committing secrets or fake IDs.
 5. **Sentry is off by default.** If you want Sentry in the release, add a real DSN, restore real Expo plugin org/project config, and update diagnostics disclosures.
 6. **Screenshots are captured but blocked by ad placeholders.** `docs/store/screenshots/` has a real `1320 x 2868` iPhone 6.9-inch set. Do not upload the four screenshots that show `Reserved banner slot` until that placeholder is hidden or replaced by real disclosed ads.
 
-## 2. Identity and build readiness
+## 2. Human-owned legal fields required before publishing
+
+The site build intentionally fails while any `[PLACEHOLDER: ...]` or similar marker remains. The support, privacy, and Terms contact email is now `maskndafi@gmail.com`, which is a reasonable published developer contact for a solo indie app. If LocalPoker grows, a dedicated support alias is the usual next step.
+
+The remaining fields need a human owner. The jurisdiction, representative, DPO, transfer mechanism, liability cap, governing law, and venue choices likely need legal review. Do not publish the GitHub Pages site until these are settled.
+
+Decide first whether LocalPoker is published by a legal entity or by an individual. That choice changes the publisher/entity fields, contact block, Terms owner language, and possibly the governing law and dispute venue.
+
+Fields only the user or counsel can provide:
+
+- **Publisher choice:** whether LocalPoker is published by a legal entity or by an individual.
+- **Privacy Policy:** effective date, publisher or legal entity name, mailing address, governing jurisdiction, EU/UK representative or DPO if required, and the international data-transfer mechanism clause.
+- **Terms:** effective date, publisher or legal entity name, mailing address, governing law and dispute venue, and liability cap.
+
+The Markdown files are:
+
+- `docs/store/SUPPORT.md`
+- `docs/store/PRIVACY-POLICY.md`
+- `docs/store/TERMS.md`
+
+## 3. Identity and build readiness
 
 - App name: **LocalPoker: Poker with Friends**. Count: 30 of 30 characters.
 - Bundle/package: `com.localpoker.app` in `app.json`.
 - Store-facing app version: `1.0.0` in `app.json`.
 - iOS build number: `1`; Android version code: `1` in `app.json`.
 - Expo SDK: `~57.0.23` in `package.json`.
-- EAS config exists with production build and submit profiles.
+- EAS config exists with an explicit store production build profile and submit profiles that contain only safe metadata.
 - iOS is now phone-only by deliberate product decision: `ios.supportsTablet = false` in `app.json`. The table UI is phone-tuned, so there is no iPad support at launch.
 - Export compliance: `ios.infoPlist.ITSAppUsesNonExemptEncryption = false`. Confirm the app uses only standard HTTPS/TLS and no custom non-exempt encryption.
 - Sentry is optional. Production EAS does not set a placeholder DSN, and `app.json` has no placeholder Sentry plugin config. If a real DSN is added, update App Privacy for diagnostics.
 
-## 3. Online rooms status
+## 4. Online rooms status
 
 The prior checklist said there was an auth-ID mismatch where `LobbyScreen.tsx` used `profile.id` while rules required `auth.uid`. That specific issue is fixed.
 
@@ -38,7 +58,7 @@ Current code evidence:
 
 Do not submit friend-room claims until the Firebase console steps and EAS production environment variables are done.
 
-## 4. Privacy and data collection summary
+## 5. Privacy and data collection summary
 
 Current no-ads, no-Sentry build behavior:
 
@@ -51,7 +71,7 @@ Current no-ads, no-Sentry build behavior:
 
 Use `APP-PRIVACY-LABELS.md` for the full App Privacy and Play Data Safety answer key.
 
-## 5. Age rating guidance
+## 6. Age rating guidance
 
 Use the literal answer sheet in `APP-STORE-CONNECT.md`.
 
@@ -69,7 +89,7 @@ High-confidence answers for the current concept:
 
 Expected Apple result: likely 17+ because simulated gambling is frequent. Keep the in-app 18+ gate.
 
-## 6. Screenshots and store assets
+## 7. Screenshots and store assets
 
 Apple current phone-only requirement, checked 2026-09-21:
 
@@ -92,7 +112,7 @@ Shot list:
 
 Do not show placeholder ads in final screenshots. Apple's placeholder-content review risk applies even before considering ad privacy. Upload screenshots only after the placeholder slot is hidden or after real ads are integrated and disclosed.
 
-## 7. Conditional real ads checklist
+## 8. Conditional real ads checklist
 
 Before shipping a real ad-supported binary:
 
@@ -105,10 +125,11 @@ Before shipping a real ad-supported binary:
 7. Update Privacy Policy, App Privacy labels, Play Data Safety, age-rating Advertising answer, and Play Console **Contains ads**.
 8. Re-run App Review screenshots so no placeholder ad slots remain.
 
-## 8. Pre-submit technical checks
+## 9. Pre-submit technical checks
 
 - Run `npx tsc --noEmit`.
 - Run `npx vitest run` if code changed or before final release.
+- Run `npm run test:rules` with Java installed so Firebase Realtime Database rules protect hole-card confidentiality.
 - Build a production EAS binary.
 - Install the production build on a real iPhone.
 - Verify:

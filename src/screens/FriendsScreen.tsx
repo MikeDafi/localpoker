@@ -6,7 +6,7 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiPanel } from '../components/WiiPanel';
 import { WiiButton } from '../components/WiiButton';
-import { AdBanner } from '../components/AdBanner';
+import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { FriendsIcon, ProfileIcon } from '../components/Icons';
 import { palFromSeed } from '../avatar/palConfig';
@@ -19,7 +19,16 @@ import { RootStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
 export function FriendsScreen({ navigation }: Props) {
-  const { auth, friends, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend } = useApp();
+  const {
+    auth,
+    friends,
+    addFriend,
+    acceptFriendRequest,
+    declineFriendRequest,
+    removeFriend,
+    reportUser,
+    blockUser,
+  } = useApp();
   const [friendText, setFriendText] = useState('');
   const [inputError, setInputError] = useState<string | null>(null);
   const [addingFriend, setAddingFriend] = useState(false);
@@ -70,6 +79,33 @@ export function FriendsScreen({ navigation }: Props) {
         style: 'destructive',
         onPress: () => removeFriend(friend.id),
       },
+    ]);
+  };
+
+  const handleReportFriend = async (friend: Friend) => {
+    const res = await reportUser(friend.uid ?? friend.id, friend.name, 'friends');
+    Alert.alert(res.ok ? 'Report sent' : 'Could not report', res.reason || 'Thanks. We will review this player.');
+  };
+
+  const confirmBlockFriend = (friend: Friend) => {
+    Alert.alert('Block player?', `${friend.name} will not be able to send you friend requests. Their name and reactions will be hidden from you.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          const res = await blockUser(friend.uid ?? friend.id, friend.name, friend.handle);
+          Alert.alert(res.ok ? 'Player blocked' : 'Could not block', res.reason || `${friend.name} was blocked.`);
+        },
+      },
+    ]);
+  };
+
+  const openSafetyMenu = (friend: Friend) => {
+    Alert.alert(friend.name, 'Choose a safety action.', [
+      { text: 'Report offensive content', onPress: () => handleReportFriend(friend) },
+      { text: 'Block player', style: 'destructive', onPress: () => confirmBlockFriend(friend) },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
@@ -171,6 +207,7 @@ export function FriendsScreen({ navigation }: Props) {
               startDelay={140}
               onInvite={inviteFriend}
               onRemove={confirmRemoveFriend}
+              onSafety={openSafetyMenu}
               onAccept={handleAcceptFriend}
               onDecline={handleDeclineFriend}
             />
@@ -180,15 +217,18 @@ export function FriendsScreen({ navigation }: Props) {
               startDelay={140 + onlineFriends.length * 58}
               onInvite={inviteFriend}
               onRemove={confirmRemoveFriend}
+              onSafety={openSafetyMenu}
               onAccept={handleAcceptFriend}
               onDecline={handleDeclineFriend}
             />
           </View>
         )}
 
-        <Animated.View entering={FadeInDown.delay(220 + friendCount * 35).duration(380)}>
-          <AdBanner />
-        </Animated.View>
+        {ADS_ENABLED ? (
+          <Animated.View entering={FadeInDown.delay(220 + friendCount * 35).duration(380)}>
+            <AdBanner />
+          </Animated.View>
+        ) : null}
       </ScrollView>
     </ScreenBackground>
   );
@@ -200,6 +240,7 @@ function FriendSection({
   startDelay,
   onInvite,
   onRemove,
+  onSafety,
   onAccept,
   onDecline,
 }: {
@@ -208,6 +249,7 @@ function FriendSection({
   startDelay: number;
   onInvite: (friend: Friend) => void;
   onRemove: (friend: Friend) => void;
+  onSafety: (friend: Friend) => void;
   onAccept: (friend: Friend) => void;
   onDecline: (friend: Friend) => void;
 }) {
@@ -228,6 +270,7 @@ function FriendSection({
             friend={friend}
             onInvite={() => onInvite(friend)}
             onRemove={() => onRemove(friend)}
+            onSafety={() => onSafety(friend)}
             onAccept={() => onAccept(friend)}
             onDecline={() => onDecline(friend)}
           />
@@ -241,12 +284,14 @@ function FriendRow({
   friend,
   onInvite,
   onRemove,
+  onSafety,
   onAccept,
   onDecline,
 }: {
   friend: Friend;
   onInvite: () => void;
   onRemove: () => void;
+  onSafety: () => void;
   onAccept: () => void;
   onDecline: () => void;
 }) {
@@ -276,10 +321,12 @@ function FriendRow({
             <>
               <WiiButton label="Accept" variant="green" size="sm" onPress={onAccept} />
               <WiiButton label="Decline" variant="white" size="sm" onPress={onDecline} />
+              <WiiButton label="Safety" variant="white" size="sm" onPress={onSafety} />
             </>
           ) : (
             <>
               <WiiButton label={pending ? 'Pending' : 'Invite'} variant={pending ? 'white' : 'green'} size="sm" disabled={pending} onPress={onInvite} />
+              <WiiButton label="Safety" variant="white" size="sm" onPress={onSafety} />
               <WiiButton label="✕" variant="white" size="sm" round onPress={onRemove} />
             </>
           )}
@@ -476,8 +523,11 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: spacing.xs,
+    maxWidth: 190,
   },
   emptyState: {
     alignItems: 'center',

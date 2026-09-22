@@ -1,0 +1,43 @@
+name: Legal Pages
+
+on:
+  push:
+    branches:
+      - i-want-to-build-a-poker-ios-ap
+    paths:
+      - docs/store/PRIVACY-POLICY.md
+      - docs/store/TERMS.md
+      - docs/store/SUPPORT.md
+      - docs/site/build-legal-site.mjs
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/i-want-to-build-a-poker-ios-ap'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/configure-pages@v5
+      - name: Build legal site
+        run: node docs/site/build-legal-site.mjs --out docs/online/_site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/online/_site
+      - id: deployment
+        uses: actions/deploy-pages@v4

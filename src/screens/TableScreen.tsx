@@ -16,7 +16,7 @@ import { Seat } from '../components/Seat';
 import { ActionBar } from '../components/ActionBar';
 import { WiiButton } from '../components/WiiButton';
 import { ChevronLeft, StatsIcon } from '../components/Icons';
-import { AdBanner } from '../components/AdBanner';
+import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { TurnTimer } from '../components/TurnTimer';
 import { LiveStatsPanel } from '../components/LiveStatsPanel';
 import { EmoteBar, type Emote } from '../components/EmoteBar';
@@ -86,7 +86,7 @@ interface RenderedChipFlight {
 
 export function TableScreen({ navigation, route }: Props) {
   const app = useApp();
-  const { profile, recordHand, savedGame, saveGame, clearSavedGame } = app;
+  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked } = app;
   const { width, height: winH } = useWindowDimensions();
 
   /**
@@ -500,7 +500,11 @@ export function TableScreen({ navigation, route }: Props) {
     }
   }, [isShowdown, state, legal, botDiff, settings.difficulty, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentActorName = current?.id === human.id ? 'You' : current?.name;
+  const currentActorName = current?.id === human.id
+    ? 'You'
+    : current
+      ? isBlocked(current.id) ? 'Blocked player' : current.name
+      : undefined;
 
   const rebuy = () => {
     sound.play('coins');
@@ -708,9 +712,59 @@ export function TableScreen({ navigation, route }: Props) {
   };
 
   const opponents = state.players.filter((p) => p.id !== human.id);
+  const reportablePlayers = opponents.filter((p) => !p.isBot && p.id !== HUMAN_ID);
   const dealerId = state.players[state.dealerIndex]?.id;
   const cardSize = width < 380 ? 46 : 52;
   const lowChips = human.chips < settings.bigBlind * 5;
+
+  const visiblePlayer = useCallback(
+    (player: GameState['players'][number]) =>
+      isBlocked(player.id) ? { ...player, name: 'Blocked player' } : player,
+    [isBlocked],
+  );
+  const visibleEmote = useCallback((playerId: string): Emote | null =>
+    isBlocked(playerId) ? null : emotes[playerId] ?? null, [emotes, isBlocked]);
+
+  const reportTablePlayer = async (player: GameState['players'][number]) => {
+    const result = await reportUser(player.id, player.name, 'table', roomCode);
+    Alert.alert(result.ok ? 'Report sent' : 'Could not report', result.reason || 'Thanks. We will review this player.');
+  };
+
+  const confirmBlockTablePlayer = (player: GameState['players'][number]) => {
+    Alert.alert('Block player?', `${player.name} will not be able to send you friend requests. Their name and reactions will be hidden from you.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          const result = await blockUser(player.id, player.name);
+          Alert.alert(result.ok ? 'Player blocked' : 'Could not block', result.reason || `${player.name} was blocked.`);
+        },
+      },
+    ]);
+  };
+
+  const openPlayerSafety = (player: GameState['players'][number]) => {
+    Alert.alert(player.name, 'Choose a safety action.', [
+      { text: 'Report offensive content', onPress: () => reportTablePlayer(player) },
+      { text: 'Block player', style: 'destructive', onPress: () => confirmBlockTablePlayer(player) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const openTableSafety = () => {
+    if (reportablePlayers.length === 0) {
+      Alert.alert('Table safety', 'No online players at this table can be reported.');
+      return;
+    }
+    Alert.alert('Table safety', 'Choose a player.', [
+      ...reportablePlayers.map((player) => ({
+        text: isBlocked(player.id) ? 'Blocked player' : player.name,
+        onPress: () => openPlayerSafety(player),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
 
   // A subtle in-game reaction for each Pal (uses the expressions they support).
   const reactionFor = (pid: string): 'happy' | 'sad' | 'think' | undefined => {
@@ -942,6 +996,17 @@ export function TableScreen({ navigation, route }: Props) {
           </View>
         ) : null}
         <View style={styles.topRight}>
+          {reportablePlayers.length > 0 ? (
+            <Pressable
+              onPress={openTableSafety}
+              style={[styles.safetyBtn, shadows.soft]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Open table safety actions"
+            >
+              <Text style={styles.safetyBtnText}>!</Text>
+            </Pressable>
+          ) : null}
           {settings.showLiveStats && (
             <Pressable onPress={() => { sound.play('tap'); setStatsOpen(true); }} style={[styles.iconBtn, shadows.soft]} hitSlop={8}>
               <StatsIcon size={22} color={colors.blueLight} />
@@ -1074,10 +1139,11 @@ export function TableScreen({ navigation, route }: Props) {
         {/* opponents around the outside of the circle */}
         {opponents.map((p, idx) => {
           const pos = seatPos(idx, opponents.length);
+          const visible = visiblePlayer(p);
           return (
             <View key={p.id} style={[styles.seatAbs, { left: pos.left, top: pos.top, width: SEAT_W }]} onLayout={idx === 0 ? (e) => growPod(e.nativeEvent.layout.height) : undefined}>
               <Seat
-                player={p}
+                player={visible}
                 pal={pals[p.id] ?? palFromSeed(p.id)}
                 isHuman={false}
                 compact
@@ -1090,7 +1156,7 @@ export function TableScreen({ navigation, route }: Props) {
                 won={isShowdown && state.winners.some((w) => w.playerId === p.id && w.amount > 0)}
                 reaction={reactionFor(p.id)}
                 idleMotion={settings.avatarIdleMotion && !animsOff}
-                emote={emotes[p.id] ?? null}
+                emote={visibleEmote(p.id)}
                 dealKey={`${state.handNumber}`}
                 dealAnimate={dealAnimate}
                 dealDelay={dealDelay(p.id, 0)}
@@ -1105,7 +1171,7 @@ export function TableScreen({ navigation, route }: Props) {
         <View style={[styles.humanSeatAbs]} onLayout={(e) => growHero(e.nativeEvent.layout.height)}>
           <Pressable onPress={() => { sound.play('tap'); navigation.navigate('Profile'); }} accessibilityRole="button" accessibilityLabel="Open your profile">
             <Seat
-              player={human}
+              player={visiblePlayer(human)}
               pal={pals[human.id] ?? profile.pal}
               isHuman
               isCurrent={isHumanTurn}
@@ -1114,7 +1180,7 @@ export function TableScreen({ navigation, route }: Props) {
               won={humanWon}
               reaction={reactionFor(human.id)}
               idleMotion={settings.avatarIdleMotion && !animsOff}
-              emote={emotes[human.id] ?? null}
+              emote={visibleEmote(human.id)}
             />
           </Pressable>
         </View>
@@ -1216,9 +1282,10 @@ export function TableScreen({ navigation, route }: Props) {
             </View>
             {state.winners.map((w) => {
               const p = state.players.find((pp) => pp.id === w.playerId);
+              const name = p ? visiblePlayer(p).name : 'Player';
               return (
                 <Text key={w.playerId} style={styles.resultLine} numberOfLines={1}>
-                  {p?.name} wins {w.amount.toLocaleString()}
+                  {name} wins {w.amount.toLocaleString()}
                   {w.hand ? ` · ${handName(w.hand.category)}` : ''}
                 </Text>
               );
@@ -1292,7 +1359,7 @@ export function TableScreen({ navigation, route }: Props) {
                 label={`${currentActorName}'s turn`}
               />
             ) : null}
-            <Text style={styles.waitingText}>{current ? `Waiting for ${current.name}…` : 'Dealing…'}</Text>
+            <Text style={styles.waitingText}>{current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…'}</Text>
             {human.folded && !isShowdown && (
               <Text style={styles.foldedNote}>You folded this hand</Text>
             )}
@@ -1300,14 +1367,14 @@ export function TableScreen({ navigation, route }: Props) {
         )}
       </View>
 
-      <View style={styles.adWrap}><AdBanner /></View>
+      {ADS_ENABLED ? <View style={styles.adWrap}><AdBanner /></View> : null}
 
       <LiveStatsPanel
         visible={statsOpen}
         onClose={() => setStatsOpen(false)}
         sessionHands={sessionHands}
         handHint={handHint}
-        opponents={opponents.map((p) => ({ id: p.id, name: p.name }))}
+        opponents={opponents.map((p) => ({ id: p.id, name: visiblePlayer(p).name }))}
         observed={observed}
       />
     </ScreenBackground>
@@ -1317,7 +1384,9 @@ export function TableScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   iconBtn: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
-  topRight: { width: 44, alignItems: 'flex-end' },
+  topRight: { minWidth: 44, flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  safetyBtn: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.red, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
+  safetyBtnText: { fontFamily: fonts.bold, fontSize: 22, color: colors.onDark },
   potWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm },
   potCenter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.lg, paddingVertical: 6 },
   potCenterLabel: { ...type.label, color: colors.onDarkMuted },

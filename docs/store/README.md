@@ -7,4 +7,6 @@ Draft store-submission documents for LocalPoker. These are based on the current 
 - [`SUBMISSION-CHECKLIST.md`](SUBMISSION-CHECKLIST.md) tracks blockers, build readiness, ads, Firebase, screenshots, and pre-submit checks.
 - [`PRIVACY-POLICY.md`](PRIVACY-POLICY.md) is the product-specific privacy policy draft with legal placeholders.
 - [`TERMS.md`](TERMS.md) is the play-money, no-real-gambling terms draft with legal placeholders.
+- [`SUPPORT.md`](SUPPORT.md) is the Markdown source for the public support page.
+- [`EAS-SUBMIT.md`](EAS-SUBMIT.md) explains how to supply store submit values without committing placeholders or secrets.
 - [`screenshots/`](screenshots/) stores real capture artifacts and notes. Current images are references, not final App Store upload assets unless their filenames and dimensions say so.

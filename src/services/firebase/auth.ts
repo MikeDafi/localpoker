@@ -55,6 +55,29 @@ export async function ensureSignedIn(): Promise<string | null> {
   return inFlight;
 }
 
+export async function deleteCurrentAuthUser(): Promise<boolean> {
+  if (!isFirebaseConfigured()) return false;
+
+  try {
+    const authMod = await import('firebase/auth');
+    const app = getFirebaseApp();
+    if (!app) return false;
+    const auth = authMod.getAuth(app);
+    if (!auth.currentUser) {
+      cachedUid = null;
+      return true;
+    }
+
+    await authMod.deleteUser(auth.currentUser);
+    cachedUid = null;
+    return true;
+  } catch (error) {
+    captureError(error, { tags: { area: 'firebase-auth', operation: 'delete-current-user' } });
+    console.warn('Unable to delete anonymous Firebase user.', error);
+    return false;
+  }
+}
+
 /** Touch the DB reference so callers can confirm connectivity. */
 export function authReady(): boolean {
   return isFirebaseConfigured() && !!getDb();

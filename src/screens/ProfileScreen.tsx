@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -18,7 +18,13 @@ export function ProfileScreen({ navigation }: Props) {
   const { profile, stats, updateProfile, logout } = useApp();
   const [name, setName] = useState(profile.name);
   const d = derivedStats(stats);
-  const saveName = () => updateProfile({ name: name.trim() || profile.name });
+  const saveName = () => {
+    const result = updateProfile({ name: name.trim() || profile.name });
+    if (!result.ok) {
+      Alert.alert('Choose another name', result.reason || 'That display name cannot be used.');
+      setName(profile.name);
+    }
+  };
 
   return (
     <ScreenBackground variant="menu">

@@ -16,7 +16,7 @@ const LEGAL_COPY: Record<LegalKind, { title: string; body: string }> = {
     body:
       'LocalPoker is a free, play-money poker game for adults 18 and older. The game does not offer real-money gambling, cash prizes, withdrawals, or anything with real-world value.\n\n' +
       'By playing, you agree to use LocalPoker for entertainment only and to follow fair-play rules. We may update features, ads, virtual coins, or these terms as the app evolves.\n\n' +
-      'Virtual coins are play-money only and cannot be sold, transferred for value, or redeemed. If you have questions about these terms, contact us at support@localpoker.example.',
+      'Virtual coins are play-money only and cannot be sold, transferred for value, or redeemed. If you have questions about these terms, contact us at maskndafi@gmail.com.',
   },
   privacy: {
     title: 'Privacy Policy',
@@ -24,7 +24,7 @@ const LEGAL_COPY: Record<LegalKind, { title: string; body: string }> = {
       'Your profile, coins, stats, settings and saved game stay on your device. We do not ask for your real name, and creating an account is not required to play.\n\n' +
       'If you play online with friends, we sign you in anonymously and send only what the table needs — an anonymous ID, your display name and the game state — to our Firebase server. Reaction GIFs load from Giphy\u2019s public CDN, which receives the usual network request details such as your IP address.\n\n' +
       'If crash reporting is enabled in this build, error and device diagnostics are sent to our crash-reporting provider so we can fix bugs. LocalPoker does not currently include an ads or analytics SDK; if that changes we will update this notice and ask for any consent the law requires first.\n\n' +
-      'LocalPoker never handles real-money gambling. For privacy questions or deletion requests, contact support@localpoker.example.',
+      'LocalPoker never handles real-money gambling. For privacy questions or deletion requests, contact maskndafi@gmail.com.',
   },
 };
 

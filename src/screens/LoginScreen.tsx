@@ -35,7 +35,10 @@ export function LoginScreen({ navigation }: Props) {
       return;
     }
 
-    login('email', handle, displayName || undefined);
+    const result = login('email', handle, displayName || undefined);
+    if (!result.ok) {
+      setEmailError(result.reason || 'Choose a different name.');
+    }
   };
 
   return (
@@ -64,7 +67,7 @@ export function LoginScreen({ navigation }: Props) {
             <View style={styles.shell}>
               <Animated.View entering={FadeIn.duration(500)} style={styles.statusPill}>
                 <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Free table lobby • ads keep it friendly</Text>
+                <Text style={styles.statusText}>Free table lobby • play-money only</Text>
               </Animated.View>
 
               <Animated.View entering={FadeInDown.delay(80).duration(460)}>
@@ -167,7 +170,10 @@ export function LoginScreen({ navigation }: Props) {
                       size="lg"
                       fullWidth
                       icon={<AuthGlyph label="♠" tone="light" />}
-                      onPress={() => login('guest')}
+                      onPress={() => {
+                        const result = login('guest');
+                        if (!result.ok) setEmailError(result.reason || 'Could not continue.');
+                      }}
                     />
                   </View>
                 </WiiPanel>

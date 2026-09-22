@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AdBanner } from '../components/AdBanner';
+import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiButton } from '../components/WiiButton';
@@ -227,9 +227,11 @@ export function GameSetupScreen({ navigation, route }: Props) {
           </Animated.View>
         </ScrollView>
 
-        <View style={styles.adWrap}>
-          <AdBanner />
-        </View>
+        {ADS_ENABLED ? (
+          <View style={styles.adWrap}>
+            <AdBanner />
+          </View>
+        ) : null}
       </View>
     </ScreenBackground>
   );

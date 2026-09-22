@@ -1,6 +1,7 @@
 import {
   get,
   onValue,
+  push,
   ref,
   runTransaction,
   serverTimestamp,
@@ -9,8 +10,9 @@ import {
 } from 'firebase/database';
 
 import { getDb, isFirebaseConfigured } from './config';
-import { ensureSignedIn } from './auth';
+import { deleteCurrentAuthUser, ensureSignedIn } from './auth';
 import { captureError } from '../telemetry';
+import { maskedPublicName, publicNameIssue } from '../../moderation/contentFilter';
 
 export type FirebaseFriendResult<T extends object = object> =
   | ({ ok: true; reason?: string } & T)
@@ -38,9 +40,29 @@ export type FriendEdgeRecord = {
   updatedAt: number;
 };
 
+export type BlockRecord = {
+  uid: string;
+  handle?: string;
+  displayName: string;
+  createdAt: number;
+};
+
+export type ReportContext = 'friends' | 'table';
+
+export type ReportRecord = {
+  reporterUid: string;
+  reportedUid: string;
+  reportedName: string;
+  context: ReportContext;
+  category: 'offensive_content';
+  createdAt: number;
+  roomCode?: string;
+};
+
 export type SocialSnapshot = {
   accepted: FriendEdgeRecord[];
   incoming: FriendRequestRecord[];
+  blocked: BlockRecord[];
 };
 
 const NOT_CONFIGURED_REASON =
@@ -61,6 +83,9 @@ const cleanDisplayName = (name: string): string => name.trim().replace(/\s+/g, '
 export const normalizeHandle = (input: string): string | null => {
   const beforeAt = input.trim().toLowerCase().replace(/^@+/, '').split('@')[0] ?? '';
   const handle = beforeAt.replace(/[^a-z0-9_]/g, '');
+  if (publicNameIssue(handle, 'handle')) {
+    return null;
+  }
   return HANDLE_RE.test(handle) ? handle : null;
 };
 
@@ -70,6 +95,14 @@ const friendsPath = (uid: string): string => `localpoker/friends/${uid}`;
 const friendPath = (uid: string, friendUid: string): string => `${friendsPath(uid)}/${friendUid}`;
 const requestsPath = (toUid: string): string => `localpoker/friendRequests/${toUid}`;
 const requestPath = (toUid: string, fromUid: string): string => `${requestsPath(toUid)}/${fromUid}`;
+const blocksPath = (uid: string): string => `localpoker/blocks/${uid}`;
+const blockPath = (uid: string, blockedUid: string): string => `${blocksPath(uid)}/${blockedUid}`;
+const reportsPath = (): string => 'localpoker/reports';
+const userRoomsPath = (uid: string): string => `localpoker/userRooms/${uid}`;
+const userRoomPath = (uid: string, code: string): string => `${userRoomsPath(uid)}/${code}`;
+const roomPath = (code: string): string => `localpoker/rooms/${code}`;
+const roomPlayerPath = (code: string, uid: string): string => `${roomPath(code)}/players/${uid}`;
+const viewPath = (code: string, uid: string): string => `localpoker/views/${code}/${uid}`;
 
 const getConfiguredDb = (): Database | null => {
   if (!isFirebaseConfigured()) {
@@ -122,6 +155,10 @@ export const publishUserDirectory = async (
     }
 
     const displayName = cleanDisplayName(displayNameInput) || `Player ${handle}`;
+    const displayNameIssue = publicNameIssue(displayName, 'display name');
+    if (displayNameIssue) {
+      return { ok: false, reason: displayNameIssue };
+    }
     await update(ref(db), {
       [usersPath(uid)]: {
         handle,
@@ -169,7 +206,7 @@ export const resolveHandle = async (
       ok: true,
       uid: foundUid,
       handle,
-      displayName: cleanDisplayName(user?.displayName ?? '') || `@${handle}`,
+      displayName: maskedPublicName(cleanDisplayName(user?.displayName ?? '') || `@${handle}`),
     };
   } catch (error) {
     reportFirebaseError('resolve-handle', error);
@@ -212,6 +249,17 @@ export const sendFriendRequest = async (
       return { ok: false, reason: `${target.displayName} is already in your crew.` };
     }
 
+    const blockedByTarget = await get(ref(db, blockPath(target.uid, fromUid)));
+    if (blockedByTarget.exists()) {
+      return { ok: false, reason: 'That player is not accepting friend requests from you.' };
+    }
+
+    const fromName = cleanDisplayName(fromDisplayName) || `@${ownHandle}`;
+    const fromNameIssue = publicNameIssue(fromName, 'display name');
+    if (fromNameIssue) {
+      return { ok: false, reason: fromNameIssue };
+    }
+
     const requestRef = ref(db, requestPath(target.uid, fromUid));
     const existingRequest = await get(requestRef);
     if (existingRequest.exists()) {
@@ -228,7 +276,7 @@ export const sendFriendRequest = async (
       [requestPath(target.uid, fromUid)]: {
         fromUid,
         fromHandle: ownHandle,
-        fromName: cleanDisplayName(fromDisplayName) || `@${ownHandle}`,
+        fromName,
         createdAt: serverTimestamp() as unknown as number,
         status: 'pending',
       } satisfies FriendRequestRecord,
@@ -352,20 +400,209 @@ export const removeFriendship = async (friendUid: string): Promise<FirebaseFrien
   }
 };
 
+export const blockUser = async (
+  blockedUid: string,
+  displayNameInput: string,
+  handleInput?: string,
+): Promise<FirebaseFriendResult> => {
+  const db = getConfiguredDb();
+  if (!db) {
+    return { ok: false, reason: NOT_CONFIGURED_REASON };
+  }
+
+  const uid = await ensureSignedIn();
+  if (!uid) {
+    return notSignedInResult();
+  }
+  if (blockedUid === uid) {
+    return { ok: false, reason: "You can't block yourself." };
+  }
+
+  try {
+    const displayName = maskedPublicName(cleanDisplayName(displayNameInput) || 'Blocked player');
+    const handle = normalizeHandle(handleInput ?? '');
+    await update(ref(db), {
+      [blockPath(uid, blockedUid)]: {
+        uid: blockedUid,
+        ...(handle ? { handle } : {}),
+        displayName,
+        createdAt: serverTimestamp() as unknown as number,
+      } satisfies BlockRecord,
+      [friendPath(uid, blockedUid)]: null,
+      [friendPath(blockedUid, uid)]: null,
+      [requestPath(uid, blockedUid)]: null,
+      [requestPath(blockedUid, uid)]: null,
+    });
+    return { ok: true };
+  } catch (error) {
+    reportFirebaseError('block-user', error);
+    console.warn('Unable to block Firebase user.', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+export const reportUser = async (
+  reportedUid: string,
+  reportedNameInput: string,
+  context: ReportContext,
+  roomCode?: string,
+): Promise<FirebaseFriendResult> => {
+  const db = getConfiguredDb();
+  if (!db) {
+    return { ok: false, reason: NOT_CONFIGURED_REASON };
+  }
+
+  const uid = await ensureSignedIn();
+  if (!uid) {
+    return notSignedInResult();
+  }
+  if (reportedUid === uid) {
+    return { ok: false, reason: "You can't report yourself." };
+  }
+
+  try {
+    const reportRef = push(ref(db, reportsPath()));
+    if (!reportRef.key) {
+      return { ok: false, reason: 'Could not create a report.' };
+    }
+    await update(ref(db), {
+      [`${reportsPath()}/${reportRef.key}`]: {
+        reporterUid: uid,
+        reportedUid,
+        reportedName: maskedPublicName(cleanDisplayName(reportedNameInput) || 'Reported player'),
+        context,
+        category: 'offensive_content',
+        createdAt: serverTimestamp() as unknown as number,
+        ...(roomCode ? { roomCode: roomCode.slice(0, 12) } : {}),
+      } satisfies ReportRecord,
+    });
+    return { ok: true };
+  } catch (error) {
+    reportFirebaseError('report-user', error);
+    console.warn('Unable to report Firebase user.', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+export type DeleteAccountHints = {
+  knownFriendUids?: string[];
+  knownOutgoingRequestUids?: string[];
+  knownRoomCodes?: string[];
+};
+
+const readKeys = <T>(value: Record<string, T> | null | undefined): string[] => Object.keys(value ?? {});
+
+export const deleteOnlineAccount = async (
+  hints: DeleteAccountHints = {},
+): Promise<FirebaseFriendResult<{ remoteDeleted: boolean }>> => {
+  const db = getConfiguredDb();
+  if (!db) {
+    return { ok: true, remoteDeleted: false, reason: NOT_CONFIGURED_REASON };
+  }
+
+  const uid = await ensureSignedIn();
+  if (!uid) {
+    return { ok: true, remoteDeleted: false, reason: 'Could not sign in, so only local data was deleted.' };
+  }
+
+  try {
+    const [userSnapshot, friendsSnapshot, roomsSnapshot] = await Promise.all([
+      get(ref(db, usersPath(uid))),
+      get(ref(db, friendsPath(uid))),
+      get(ref(db, userRoomsPath(uid))),
+    ]);
+
+    const user = userSnapshot.exists() ? (userSnapshot.val() as Partial<DirectoryUser>) : null;
+    const friendUids = new Set([
+      ...readKeys(friendsSnapshot.val() as Record<string, FriendEdgeRecord> | null),
+      ...(hints.knownFriendUids ?? []),
+    ]);
+    const roomCodes = new Set([
+      ...readKeys(roomsSnapshot.val() as Record<string, unknown> | null),
+      ...(hints.knownRoomCodes ?? []),
+    ]);
+
+    for (const code of roomCodes) {
+      const roomSnapshot = await get(ref(db, roomPath(code)));
+      if (!roomSnapshot.exists()) {
+        continue;
+      }
+      const room = roomSnapshot.val() as {
+        hostId?: string;
+        players?: Record<string, unknown>;
+      } | null;
+      if (room?.hostId === uid) {
+        const playerIds = Object.keys(room.players ?? {});
+        const cleanup: Record<string, unknown> = {};
+        for (const playerId of playerIds) {
+          cleanup[viewPath(code, playerId)] = null;
+          cleanup[userRoomPath(playerId, code)] = null;
+        }
+        if (Object.keys(cleanup).length > 0) {
+          await update(ref(db), cleanup);
+        }
+        await update(ref(db), { [roomPath(code)]: null });
+      } else if (room?.players?.[uid]) {
+        await update(ref(db), {
+          [roomPlayerPath(code, uid)]: null,
+          [viewPath(code, uid)]: null,
+          [userRoomPath(uid, code)]: null,
+        });
+      }
+    }
+
+    const updates: Record<string, unknown> = {
+      [usersPath(uid)]: null,
+      [friendsPath(uid)]: null,
+      [requestsPath(uid)]: null,
+      [blocksPath(uid)]: null,
+      [userRoomsPath(uid)]: null,
+    };
+
+    if (user?.handle) {
+      const handleSnapshot = await get(ref(db, handlesPath(user.handle)));
+      if (handleSnapshot.exists() && handleSnapshot.val() === uid) {
+        updates[handlesPath(user.handle)] = null;
+      }
+    }
+
+    for (const friendUid of friendUids) {
+      updates[friendPath(friendUid, uid)] = null;
+    }
+    for (const toUid of hints.knownOutgoingRequestUids ?? []) {
+      updates[requestPath(toUid, uid)] = null;
+    }
+
+    await update(ref(db), updates);
+    const authDeleted = await deleteCurrentAuthUser();
+    return {
+      ok: true,
+      remoteDeleted: true,
+      ...(authDeleted ? {} : { reason: 'Online records were deleted, but the anonymous auth session could not be deleted.' }),
+    };
+  } catch (error) {
+    reportFirebaseError('delete-online-account', error);
+    console.warn('Unable to delete Firebase account data.', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
 export const subscribeSocialGraph = (cb: (snapshot: SocialSnapshot) => void): (() => void) => {
   const db = getConfiguredDb();
   if (!db) {
-    cb({ accepted: [], incoming: [] });
+    cb({ accepted: [], incoming: [], blocked: [] });
     return noop;
   }
 
   let unsubscribed = false;
   let offFriends: (() => void) | null = null;
   let offRequests: (() => void) | null = null;
+  let offBlocks: (() => void) | null = null;
   let accepted: FriendEdgeRecord[] = [];
   let incoming: FriendRequestRecord[] = [];
+  let blocked: BlockRecord[] = [];
 
-  const emit = (): void => cb({ accepted, incoming });
+  const emit = (): void => cb({ accepted, incoming, blocked });
 
   ensureSignedIn()
     .then((uid) => {
@@ -373,7 +610,7 @@ export const subscribeSocialGraph = (cb: (snapshot: SocialSnapshot) => void): ((
         return;
       }
       if (!uid) {
-        cb({ accepted: [], incoming: [] });
+        cb({ accepted: [], incoming: [], blocked: [] });
         return;
       }
 
@@ -388,16 +625,23 @@ export const subscribeSocialGraph = (cb: (snapshot: SocialSnapshot) => void): ((
         incoming = Object.values(value ?? {}).filter((request) => request.status === 'pending');
         emit();
       });
+
+      offBlocks = onValue(ref(db, blocksPath(uid)), (snapshot) => {
+        const value = snapshot.val() as Record<string, BlockRecord> | null;
+        blocked = Object.values(value ?? {});
+        emit();
+      });
     })
     .catch((error) => {
       reportFirebaseError('subscribe-social-graph', error);
       console.warn('Unable to subscribe to Firebase friends.', error);
-      cb({ accepted: [], incoming: [] });
+      cb({ accepted: [], incoming: [], blocked: [] });
     });
 
   return () => {
     unsubscribed = true;
     offFriends?.();
     offRequests?.();
+    offBlocks?.();
   };
 };

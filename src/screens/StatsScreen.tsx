@@ -7,7 +7,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiPanel } from '../components/WiiPanel';
 import { WiiButton } from '../components/WiiButton';
 import { LineChart } from '../components/LineChart';
-import { AdBanner } from '../components/AdBanner';
+import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { colors, fonts, spacing, easings } from '../theme/theme';
 import { useApp, derivedStats } from '../state/AppContext';
 import { InfoDot, InfoNote } from '../components/InfoDot';
@@ -99,9 +99,11 @@ export function StatsScreen({ navigation }: Props) {
         <Animated.View entering={FadeInDown.delay(210).duration(400).easing(Easing.bezier(...easings.out))}>
           <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onReset} />
         </Animated.View>
-        <Animated.View entering={FadeInDown.delay(280).duration(400).easing(Easing.bezier(...easings.out))}>
-          <AdBanner />
-        </Animated.View>
+        {ADS_ENABLED ? (
+          <Animated.View entering={FadeInDown.delay(280).duration(400).easing(Easing.bezier(...easings.out))}>
+            <AdBanner />
+          </Animated.View>
+        ) : null}
       </ScrollView>
     </ScreenBackground>
   );

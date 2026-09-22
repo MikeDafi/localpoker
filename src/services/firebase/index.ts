@@ -1,16 +1,29 @@
 export { getDb, isFirebaseConfigured } from './config';
-export { ensureSignedIn, getAuthUid, authReady } from './auth';
+export { deleteCurrentAuthUser, ensureSignedIn, getAuthUid, authReady } from './auth';
 export {
   acceptFriendRequest,
+  blockUser,
+  deleteOnlineAccount,
   declineFriendRequest,
   normalizeHandle,
   publishUserDirectory,
   removeFriendship,
+  reportUser,
   resolveHandle,
   sendFriendRequest,
   subscribeSocialGraph,
 } from './friends';
-export type { DirectoryUser, FirebaseFriendResult, FriendEdgeRecord, FriendRequestRecord, SocialSnapshot } from './friends';
+export type {
+  BlockRecord,
+  DeleteAccountHints,
+  DirectoryUser,
+  FirebaseFriendResult,
+  FriendEdgeRecord,
+  FriendRequestRecord,
+  ReportContext,
+  ReportRecord,
+  SocialSnapshot,
+} from './friends';
 export {
   createRoom,
   endRoom,

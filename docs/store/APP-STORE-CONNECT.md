@@ -7,9 +7,9 @@ This is the paste-ready App Store Connect sheet for `com.localpoker.app` version
 1. **Ads are not real today.** `src/components/AdBanner.tsx` is a static placeholder and no ad SDK is installed. Shipping the visible fake ad slot is an App Review rejection risk because it is placeholder content, not only because it affects ad privacy answers. For submission, choose one path:
    - **No-ads 1.0 path:** hide or remove ad placeholder UI and ad copy before uploading, then recapture screenshots and answer all ad, tracking, IDFA, ATT, and SKAdNetwork questions as No.
    - **Ad-supported 1.0 path:** integrate a real ad SDK first, then add consent, ATT if tracking, SKAdNetwork IDs, and updated privacy labels.
-2. **Legal URLs must be hosted before App Review.** GitHub Pages can host the existing `docs/store` Markdown files. Follow the exact Pages steps below, then paste the resulting URLs.
+2. **Legal URLs must be hosted before App Review, but not with placeholders.** GitHub Pages can host the `docs/store` Markdown files. The site build refuses to publish while unresolved legal or support placeholders remain. Fill the human-owned fields listed in `SUBMISSION-CHECKLIST.md`, follow the exact Pages steps below, then paste the resulting URLs.
 3. **Online rooms need production Firebase setup.** Set the production `EXPO_PUBLIC_FIREBASE_*` values for EAS, enable Anonymous Authentication, publish `database.rules.json`, and define room cleanup. If online rooms are not enabled, remove friend-room claims from metadata and screenshots.
-4. **EAS submit placeholders must be replaced.** `eas.json` still needs the real Apple ID email, App Store Connect app ID, and Apple team ID before `eas submit` can run.
+4. **EAS submit values must be supplied at submit time.** `eas.json` no longer contains placeholder Apple, ASC, team, or Google service-account values. Use `EAS-SUBMIT.md` so credentials come from environment variables, EAS credentials, prompts, or a local one-line edit that is not committed.
 5. **Sentry is optional.** Production EAS no longer sets a placeholder DSN, and the placeholder Sentry Expo plugin config was removed. If you add a real `EXPO_PUBLIC_SENTRY_DSN`, restore real Sentry org/project config and update App Privacy for diagnostics before submitting.
 
 ## App identity and build fields
@@ -82,33 +82,40 @@ Welcome to LocalPoker 1.0.0.
 
 ## URLs
 
-Use GitHub Pages from this repository. The expected public site base is:
+Use the GitHub Actions Pages workflow added in `.github/workflows/pages.yml`. It builds styled HTML from the Markdown sources in `docs/store` with `docs/site/build-legal-site.mjs`, then deploys only from the LocalPoker branch `i-want-to-build-a-poker-ios-ap` to the `github-pages` environment.
+
+This is the cleanest setup because `origin/main` is unrelated to LocalPoker. It does not require putting generated HTML or a `docs/` Pages folder on `main`. Tradeoff: GitHub Pages is still one site per repository. If `MikeDafi/bestplan` already needs Pages for the unrelated `main` project, or if Pages is unavailable for this private repo on the account plan, use a separate public repo such as `localpoker-legal` or another static host, then replace the same URL fields below with that host's URLs.
+
+Expected public site base after Pages is enabled:
 
 `https://mikedafi.github.io/bestplan/`
 
-After Pages is enabled from the `main` branch and `/docs` folder, use these URLs:
+Use these App Store Connect URLs:
 
 | App Store Connect field | URL |
 |---|---|
-| Privacy Policy URL | `https://mikedafi.github.io/bestplan/store/PRIVACY-POLICY.html` |
-| Support URL | `https://mikedafi.github.io/bestplan/store/README.html` |
-| Marketing URL | `https://mikedafi.github.io/bestplan/store/README.html` |
-| Terms URL, if requested outside ASC metadata | `https://mikedafi.github.io/bestplan/store/TERMS.html` |
+| Privacy Policy URL | `https://mikedafi.github.io/bestplan/privacy/` |
+| Support URL | `https://mikedafi.github.io/bestplan/support/` |
+| Marketing URL, optional | `https://mikedafi.github.io/bestplan/` |
+| Terms URL, if requested outside ASC metadata | `https://mikedafi.github.io/bestplan/terms/` |
 
 GitHub Pages steps:
 
-1. Merge these docs to the repository's default branch.
+1. Push the LocalPoker branch with `.github/workflows/pages.yml`.
 2. In GitHub, open `MikeDafi/bestplan`.
 3. Go to **Settings**.
 4. Go to **Pages**.
-5. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
-6. Set **Branch** to `main` and folder to `/docs`.
-7. Click **Save**.
-8. Wait for Pages to publish.
-9. Open `https://mikedafi.github.io/bestplan/store/PRIVACY-POLICY.html`, `https://mikedafi.github.io/bestplan/store/TERMS.html`, and `https://mikedafi.github.io/bestplan/store/README.html` in a private browser window.
-10. If any URL 404s, wait two minutes and refresh. If it still 404s, add a simple `docs/index.md` later or switch Pages to a GitHub Actions Pages workflow.
+5. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+6. Click **Save** if GitHub shows a save button.
+7. Go to **Actions**.
+8. Open **Legal Pages**.
+9. Click **Run workflow** and choose branch `i-want-to-build-a-poker-ios-ap`, or push a docs change to that branch.
+10. Wait for the deployment to the `github-pages` environment.
+11. Open `https://mikedafi.github.io/bestplan/privacy/`, `https://mikedafi.github.io/bestplan/terms/`, and `https://mikedafi.github.io/bestplan/support/` in a private browser window.
 
-Before App Review, replace the legal placeholders in `PRIVACY-POLICY.md` and `TERMS.md`: effective date, publisher or legal entity, contact email, mailing address, jurisdiction, and liability cap.
+These URLs are not live until the user enables Pages in repository settings and the Legal Pages workflow completes successfully.
+
+Before App Review, replace the remaining non-URL legal placeholders in `PRIVACY-POLICY.md` and `TERMS.md`. The public support and privacy contact email is already set to `maskndafi@gmail.com`. See `SUBMISSION-CHECKLIST.md` section 2 for the exact human-owned fields. The Pages build intentionally fails until those values are filled.
 
 ## Age rating answer sheet
 
@@ -255,10 +262,11 @@ Follow these steps in order.
     3. Run `eas build --platform ios --profile production`.
     4. Install the build on a real iPhone or simulator-supported release channel and smoke-test age gate, local play, online room creation, stats, legal links, and ad behavior.
 11. **Submit the binary.**
-    1. Replace `APPLE_ID_EMAIL_PLACEHOLDER`, `APP_STORE_CONNECT_APP_ID_PLACEHOLDER`, and `APPLE_TEAM_ID_PLACEHOLDER` in `eas.json` or pass those values through EAS submit configuration.
-    2. Run `eas submit --platform ios --profile production`.
-    3. Wait for App Store Connect processing.
-    4. Select the processed build in the 1.0.0 app version.
+    1. Follow `docs/store/EAS-SUBMIT.md`. Set `EXPO_APPLE_ID`, set `EXPO_APPLE_APP_SPECIFIC_PASSWORD` if using app-specific password auth, and let interactive EAS prompt for missing ASC values.
+    2. For non-interactive submit, add `ascAppId` and, if needed, `appleTeamId` as a local one-line `eas.json` edit at submit time, then do not commit that edit.
+    3. Run `eas submit --platform ios --profile production`.
+    4. Wait for App Store Connect processing.
+    5. Select the processed build in the 1.0.0 app version.
 12. **Final review checklist.**
     1. Confirm screenshots do not show placeholder ads unless ads really ship.
     2. Confirm copy says play-money only and never implies real-money gambling.

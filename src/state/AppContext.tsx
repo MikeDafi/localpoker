@@ -9,17 +9,23 @@ import { sound } from '../services/sound';
 import { captureError } from '../services/telemetry';
 import {
   acceptFriendRequest as acceptFirebaseFriendRequest,
+  blockUser as blockFirebaseUser,
+  deleteOnlineAccount,
   declineFriendRequest as declineFirebaseFriendRequest,
   isFirebaseConfigured,
   normalizeHandle,
   publishUserDirectory,
   removeFriendship,
+  reportUser as reportFirebaseUser,
   sendFriendRequest,
   subscribeSocialGraph,
+  type BlockRecord,
   type FriendEdgeRecord,
   type FriendRequestRecord,
+  type ReportContext,
   type SocialSnapshot,
 } from '../services/firebase';
+import { publicNameIssue } from '../moderation/contentFilter';
 
 export interface Profile {
   id: string;
@@ -57,8 +63,12 @@ const friendFromRequest = (request: FriendRequestRecord): Friend => ({
 });
 
 const mergeSocialFriends = (current: Friend[], snapshot: SocialSnapshot): Friend[] => {
-  const accepted = snapshot.accepted.map(friendFromEdge);
+  const blockedUids = new Set(snapshot.blocked.map((blocked) => blocked.uid));
+  const accepted = snapshot.accepted
+    .filter((friend) => !blockedUids.has(friend.uid))
+    .map(friendFromEdge);
   const incoming = snapshot.incoming
+    .filter((request) => !blockedUids.has(request.fromUid))
     .filter((request) => !accepted.some((friend) => friend.uid === request.fromUid))
     .map(friendFromRequest);
   const remoteUids = new Set([
@@ -92,6 +102,13 @@ export interface Friend {
   friendshipStatus?: 'accepted' | 'pending_outgoing' | 'incoming' | 'local';
 }
 
+export interface BlockedUser {
+  uid: string;
+  handle?: string;
+  name: string;
+  blockedAt: number;
+}
+
 export type { Stats, HandResult } from '../game/stats';
 
 const PROFILE_KEY = '@pokerpals/profile';
@@ -101,6 +118,16 @@ const FRIENDS_KEY = '@pokerpals/friends';
 const SETTINGS_KEY = '@pokerpals/settings';
 const SAVED_GAME_KEY = '@pokerpals/savedgame';
 const AGE_KEY = '@pokerpals/ageVerified';
+const BLOCKS_KEY = '@pokerpals/blocks';
+
+type ActionResult = { ok: boolean; reason?: string };
+
+const blockedFromRecord = (record: BlockRecord): BlockedUser => ({
+  uid: record.uid,
+  handle: record.handle,
+  name: record.displayName,
+  blockedAt: record.createdAt,
+});
 
 const reportStorageError = (operation: string, key: string, error: unknown): void => {
   captureError(error, { tags: { area: 'async-storage', operation, key } });
@@ -147,16 +174,21 @@ interface AppContextValue {
   friends: Friend[];
   settings: GameSettings;
   savedGame: SavedGame | null;
-  login: (provider: AuthState['provider'], handle?: string, name?: string) => void;
+  blockedUsers: BlockedUser[];
+  login: (provider: AuthState['provider'], handle?: string, name?: string) => ActionResult;
   logout: () => void;
-  updateProfile: (patch: Partial<Profile>) => void;
+  updateProfile: (patch: Partial<Profile>) => ActionResult;
   setPal: (pal: PalConfig) => void;
   addCoins: (n: number) => void;
   recordHand: (r: HandResult) => number;
-  addFriend: (name: string) => Promise<{ ok: boolean; reason?: string }>;
-  acceptFriendRequest: (id: string) => Promise<{ ok: boolean; reason?: string }>;
-  declineFriendRequest: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  addFriend: (name: string) => Promise<ActionResult>;
+  acceptFriendRequest: (id: string) => Promise<ActionResult>;
+  declineFriendRequest: (id: string) => Promise<ActionResult>;
   removeFriend: (id: string) => void;
+  blockUser: (uid: string, name: string, handle?: string) => Promise<ActionResult>;
+  reportUser: (uid: string, name: string, context: ReportContext, roomCode?: string) => Promise<ActionResult>;
+  deleteAccount: () => Promise<ActionResult>;
+  isBlocked: (uid: string) => boolean;
   updateSettings: (patch: Partial<GameSettings>) => void;
   resetStats: () => void;
   saveGame: (g: SavedGame) => void;
@@ -174,15 +206,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS);
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [p, s, a, f, st, g, av] = await Promise.all([
+        const [p, s, a, f, st, g, av, b] = await Promise.all([
           AsyncStorage.getItem(PROFILE_KEY), AsyncStorage.getItem(STATS_KEY),
           AsyncStorage.getItem(AUTH_KEY), AsyncStorage.getItem(FRIENDS_KEY),
           AsyncStorage.getItem(SETTINGS_KEY), AsyncStorage.getItem(SAVED_GAME_KEY),
-          AsyncStorage.getItem(AGE_KEY),
+          AsyncStorage.getItem(AGE_KEY), AsyncStorage.getItem(BLOCKS_KEY),
         ]);
         if (p) { const parsed = JSON.parse(p); setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
         else {
@@ -202,6 +235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (st) setSettings(normalizeSettings(JSON.parse(st)));
         if (g) setSavedGame(JSON.parse(g));
         if (av === 'true') setAgeVerified(true);
+        if (b) setBlockedUsers(JSON.parse(b));
       } catch (error) {
         captureError(error, { tags: { area: 'async-storage', operation: 'hydrate-app-state' } });
       }
@@ -223,6 +257,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const persistStats = useCallback((next: Stats) => { setStats(next); persist(STATS_KEY, next); }, [persist]);
   const persistAuth = useCallback((next: AuthState) => { setAuth(next); persist(AUTH_KEY, next); }, [persist]);
   const persistFriends = useCallback((next: Friend[]) => { setFriends(next); persist(FRIENDS_KEY, next); }, [persist]);
+  const persistBlocked = useCallback((next: BlockedUser[]) => { setBlockedUsers(next); persist(BLOCKS_KEY, next); }, [persist]);
 
   const publishDirectory = useCallback(async (nextAuth: AuthState, nextProfile: Profile): Promise<string | null> => {
     if (!nextAuth.loggedIn || !isFirebaseConfigured()) {
@@ -240,8 +275,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return result.ok ? result.handle : null;
   }, [persistAuth]);
 
-  const login = useCallback((provider: AuthState['provider'], handle?: string, name?: string) => {
-    const nextProfile = name && name.trim() ? { ...profile, name: name.trim() } : profile;
+  const login = useCallback((provider: AuthState['provider'], handle?: string, name?: string): ActionResult => {
+    const requestedHandle = handle?.trim();
+    if (requestedHandle && !normalizeHandle(requestedHandle)) {
+      return { ok: false, reason: 'Choose a handle using 3 to 20 letters, numbers, or underscores.' };
+    }
+
+    const displayName = name?.trim();
+    if (displayName) {
+      const issue = publicNameIssue(displayName, 'display name');
+      if (issue) {
+        return { ok: false, reason: issue };
+      }
+    }
+
+    const nextProfile = displayName ? { ...profile, name: displayName } : profile;
     const nextAuth = {
       loggedIn: true,
       provider,
@@ -254,6 +302,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     publishDirectory(nextAuth, nextProfile).catch((error) => {
       captureError(error, { tags: { area: 'firebase-friends', operation: 'login-publish-directory' } });
     });
+    return { ok: true };
   }, [persistAuth, persistProfile, profile, publishDirectory]);
 
   useEffect(() => {
@@ -272,6 +321,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     return subscribeSocialGraph((snapshot) => {
+      const nextBlocked = snapshot.blocked.map(blockedFromRecord);
+      persist(BLOCKS_KEY, nextBlocked);
+      setBlockedUsers(nextBlocked);
       setFriends((prev) => {
         const next = mergeSocialFriends(prev, snapshot);
         persist(FRIENDS_KEY, next);
@@ -298,7 +350,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => persistAuth({ loggedIn: false, provider: null, handle: null }), [persistAuth]);
 
-  const updateProfile = useCallback((patch: Partial<Profile>) => persistProfile({ ...profile, ...patch }), [profile, persistProfile]);
+  const updateProfile = useCallback((patch: Partial<Profile>): ActionResult => {
+    if (typeof patch.name === 'string') {
+      const name = patch.name.trim();
+      const issue = publicNameIssue(name, 'display name');
+      if (issue) {
+        return { ok: false, reason: issue };
+      }
+      persistProfile({ ...profile, ...patch, name: name || profile.name });
+      return { ok: true };
+    }
+    persistProfile({ ...profile, ...patch });
+    return { ok: true };
+  }, [profile, persistProfile]);
   const setPal = useCallback((pal: PalConfig) => persistProfile({ ...profile, pal: normalizePal(pal) }), [profile, persistProfile]);
   const addCoins = useCallback((n: number) => persistProfile({ ...profile, coins: Math.max(0, profile.coins + n) }), [profile, persistProfile]);
 
@@ -394,6 +458,94 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [friends, persistFriends]);
 
+  const isBlocked = useCallback((uid: string): boolean =>
+    blockedUsers.some((blocked) => blocked.uid === uid), [blockedUsers]);
+
+  const blockUser = useCallback(async (uid: string, name: string, handle?: string): Promise<ActionResult> => {
+    if (!uid || uid === profile.id) {
+      return { ok: false, reason: "You can't block yourself." };
+    }
+
+    if (auth.loggedIn && isFirebaseConfigured()) {
+      const remote = await blockFirebaseUser(uid, name, handle);
+      if (!remote.ok) {
+        return { ok: false, reason: remote.reason || 'Could not block that player.' };
+      }
+    }
+
+    const nextBlocked: BlockedUser = {
+      uid,
+      handle,
+      name: name.trim() || 'Blocked player',
+      blockedAt: Date.now(),
+    };
+    persistBlocked([nextBlocked, ...blockedUsers.filter((blocked) => blocked.uid !== uid)]);
+    persistFriends(friends.filter((friend) => (friend.uid ?? friend.id) !== uid));
+    return {
+      ok: true,
+      reason: auth.loggedIn && isFirebaseConfigured() ? undefined : 'Blocked locally. Online blocking needs Firebase setup.',
+    };
+  }, [auth.loggedIn, blockedUsers, friends, persistBlocked, persistFriends, profile.id]);
+
+  const reportUser = useCallback(async (
+    uid: string,
+    name: string,
+    context: ReportContext,
+    roomCode?: string,
+  ): Promise<ActionResult> => {
+    if (!uid || uid === profile.id) {
+      return { ok: false, reason: "You can't report yourself." };
+    }
+    if (!auth.loggedIn || !isFirebaseConfigured()) {
+      return { ok: false, reason: 'Online reports need Firebase setup.' };
+    }
+    const remote = await reportFirebaseUser(uid, name, context, roomCode);
+    return remote.ok ? { ok: true } : { ok: false, reason: remote.reason || 'Could not send that report.' };
+  }, [auth.loggedIn, profile.id]);
+
+  const clearLocalAccountData = useCallback(async (): Promise<void> => {
+    const nextProfile = makeDefaultProfile();
+    setAuth({ loggedIn: false, provider: null, handle: null });
+    setProfile(nextProfile);
+    setStats(DEFAULT_STATS);
+    setFriends([]);
+    setBlockedUsers([]);
+    setSavedGame(null);
+    await AsyncStorage.multiRemove([
+      PROFILE_KEY,
+      STATS_KEY,
+      AUTH_KEY,
+      FRIENDS_KEY,
+      SAVED_GAME_KEY,
+      BLOCKS_KEY,
+    ]);
+  }, []);
+
+  const deleteAccount = useCallback(async (): Promise<ActionResult> => {
+    let remoteReason: string | undefined;
+    if (auth.loggedIn && isFirebaseConfigured()) {
+      const remote = await deleteOnlineAccount({
+        knownFriendUids: friends
+          .map((friend) => friend.uid ?? friend.id)
+          .filter(Boolean),
+        knownOutgoingRequestUids: friends
+          .filter((friend) => friend.friendshipStatus === 'pending_outgoing')
+          .map((friend) => friend.uid ?? friend.id)
+          .filter(Boolean),
+        knownRoomCodes: savedGame?.roomCode ? [savedGame.roomCode] : [],
+      });
+      if (!remote.ok) {
+        return { ok: false, reason: remote.reason || 'Could not delete online account data.' };
+      }
+      remoteReason = remote.reason;
+    } else if (!isFirebaseConfigured()) {
+      remoteReason = 'Firebase is not configured, so only local account data was deleted.';
+    }
+
+    await clearLocalAccountData();
+    return { ok: true, reason: remoteReason };
+  }, [auth.loggedIn, clearLocalAccountData, friends, savedGame?.roomCode]);
+
   const updateSettings = useCallback((patch: Partial<GameSettings>) => {
     const next = normalizeSettings({ ...settings, ...patch });
     setSettings(next);
@@ -415,9 +567,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame,
-    login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, updateSettings, resetStats, saveGame, clearSavedGame,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, updateSettings, resetStats, saveGame, clearSavedGame]);
+    ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers,
+    login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame,
+  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

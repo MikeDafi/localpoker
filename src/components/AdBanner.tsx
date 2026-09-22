@@ -1,14 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { ADS_ENABLED } from '../config/ads';
 import { colors, fonts, radii } from '../theme/theme';
 
 /**
- * Placeholder banner ad slot. In a production build this is replaced by
- * `react-native-google-mobile-ads` <BannerAd/>, which requires a custom dev
- * client (AdMob native module is not available in Expo Go). Kept as a visual
- * slot so the layout reflects the real, ad-supported design.
+ * Default-off ad slot. Do not enable this flag in a submitted binary until the
+ * placeholder below is replaced by a real ad SDK banner.
  */
 export function AdBanner({ label = 'Ad' }: { label?: string }) {
+  if (!ADS_ENABLED) {
+    return null;
+  }
+
   return (
     <View style={styles.wrap}>
       <View style={styles.tag}>
@@ -41,3 +44,5 @@ const styles = StyleSheet.create({
   tagText: { color: colors.onDarkMuted, fontFamily: fonts.semibold, fontSize: 10 },
   text: { color: colors.onDarkMuted, fontFamily: fonts.medium, fontSize: 13 },
 });
+
+export { ADS_ENABLED };

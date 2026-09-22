@@ -143,6 +143,54 @@ function logOk(message) {
     await assertFails(set(ref(playerDb, 'localpoker/handles/forged_owner'), 'host'));
     logOk('user cannot claim a handle for another uid');
 
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/CREAT1': {
+        code: 'CREAT1',
+        hostId: 'host',
+        status: 'lobby',
+        createdAt: 10,
+        settingsJson: '{}',
+        actionSeq: 0,
+        players: {
+          host: { id: 'host', name: 'Host', seatIndex: 0, chips: 100, connected: true, isHost: true },
+        },
+      },
+      'localpoker/userRooms/host/CREAT1': { code: 'CREAT1', role: 'host', updatedAt: 10 },
+    }));
+    logOk('host can create room and own userRooms index in one multi-path write');
+
+    await assertFails(update(ref(hostDb), {
+      'localpoker/rooms/BADHOST': {
+        code: 'BADHOST',
+        hostId: 'player',
+        status: 'lobby',
+        createdAt: 10,
+        settingsJson: '{}',
+        actionSeq: 0,
+        players: {
+          player: { id: 'player', name: 'Player', seatIndex: 0, chips: 100, connected: true, isHost: true },
+        },
+      },
+      'localpoker/userRooms/host/BADHOST': { code: 'BADHOST', role: 'host', updatedAt: 10 },
+    }));
+    logOk('host cannot create room with another uid as hostId');
+
+    await assertFails(update(ref(hostDb), {
+      'localpoker/rooms/BADIDX': {
+        code: 'BADIDX',
+        hostId: 'host',
+        status: 'lobby',
+        createdAt: 10,
+        settingsJson: '{}',
+        actionSeq: 0,
+        players: {
+          host: { id: 'host', name: 'Host', seatIndex: 0, chips: 100, connected: true, isHost: true },
+        },
+      },
+      'localpoker/userRooms/player/BADIDX': { code: 'BADIDX', role: 'host', updatedAt: 10 },
+    }));
+    logOk('host cannot create another user userRooms index');
+
     await assertSucceeds(update(ref(playerDb), {
       [playerActionPath]: { playerId: 'player', type: 'call', seq: 1, ts: 1 },
       [actionSeqPath]: 1,
@@ -221,6 +269,122 @@ function logOk(message) {
       'localpoker/friends/player/host': null,
     }));
     logOk('either side can remove a friendship');
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.database();
+      await update(ref(db), {
+        'localpoker/users/player': users.player,
+        [`localpoker/handles/${users.player.handle}`]: 'player',
+        'localpoker/friends/player/host': {
+          uid: 'host',
+          handle: users.host.handle,
+          displayName: users.host.displayName,
+          status: 'accepted',
+          updatedAt: 3,
+        },
+        'localpoker/friends/host/player': {
+          uid: 'player',
+          handle: users.player.handle,
+          displayName: users.player.displayName,
+          status: 'accepted',
+          updatedAt: 3,
+        },
+        'localpoker/friendRequests/player/host': {
+          fromUid: 'host',
+          fromHandle: users.host.handle,
+          fromName: users.host.displayName,
+          createdAt: 4,
+          status: 'pending',
+        },
+        'localpoker/friendRequests/stranger/player': {
+          fromUid: 'player',
+          fromHandle: users.player.handle,
+          fromName: users.player.displayName,
+          createdAt: 4,
+          status: 'pending',
+        },
+        'localpoker/userRooms/player/ROOM12': { code: 'ROOM12', role: 'player', updatedAt: 4 },
+        'localpoker/views/ROOM12/player': privateView('player'),
+        'localpoker/rooms/ROOM12/players/player': room.players.player,
+      });
+    });
+
+    await assertFails(set(ref(hostDb, `localpoker/handles/${users.player.handle}`), null));
+    logOk('user cannot release another user handle');
+
+    await assertSucceeds(set(ref(playerDb, `localpoker/handles/${users.player.handle}`), null));
+    logOk('user can release own handle');
+
+    await assertSucceeds(set(ref(playerDb, `localpoker/handles/${users.player.handle}`), 'player'));
+    logOk('released handle can be reclaimed by the same user');
+
+    await assertFails(set(ref(hostDb, 'localpoker/users/player'), null));
+    logOk('user cannot delete another user directory profile');
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/blocks/player/stranger'), {
+      uid: 'stranger',
+      handle: users.stranger.handle,
+      displayName: users.stranger.displayName,
+      createdAt: 5,
+    }));
+    logOk('user can block another user');
+
+    await assertFails(set(ref(hostDb, 'localpoker/blocks/player/stranger'), {
+      uid: 'stranger',
+      displayName: users.stranger.displayName,
+      createdAt: 5,
+    }));
+    logOk('user cannot write another user block list');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/friendRequests/player/stranger'), {
+      fromUid: 'stranger',
+      fromHandle: users.stranger.handle,
+      fromName: users.stranger.displayName,
+      createdAt: 6,
+      status: 'pending',
+    }));
+    logOk('blocked user cannot send a friend request to blocker');
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/reports/report1'), {
+      reporterUid: 'player',
+      reportedUid: 'host',
+      reportedName: users.host.displayName,
+      context: 'friends',
+      category: 'offensive_content',
+      createdAt: 7,
+    }));
+    logOk('user can create an offensive content report');
+
+    await assertFails(get(ref(playerDb, 'localpoker/reports/report1')));
+    logOk('reporter cannot read reports');
+
+    await assertFails(update(ref(playerDb, 'localpoker/reports/report1'), {
+      category: 'offensive_content',
+    }));
+    logOk('reporter cannot edit reports');
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/users/player': null,
+      [`localpoker/handles/${users.player.handle}`]: null,
+      'localpoker/friends/player/host': null,
+      'localpoker/friends/host/player': null,
+      'localpoker/friendRequests/player/host': null,
+      'localpoker/friendRequests/stranger/player': null,
+      'localpoker/blocks/player': null,
+      'localpoker/userRooms/player/ROOM12': null,
+      'localpoker/views/ROOM12/player': null,
+      'localpoker/rooms/ROOM12/players/player': null,
+    }));
+    logOk('user can delete own account records and room presence');
+
+    await assertFails(update(ref(hostDb), {
+      'localpoker/users/player': null,
+      [`localpoker/handles/${users.player.handle}`]: null,
+      'localpoker/friends/player/host': null,
+      'localpoker/friendRequests/stranger/player': null,
+      'localpoker/userRooms/player/ROOM12': null,
+    }));
+    logOk('user cannot delete another user account records');
   } finally {
     await testEnv.cleanup();
   }

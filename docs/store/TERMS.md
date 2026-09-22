@@ -3,7 +3,7 @@
 **App:** LocalPoker: Poker with Friends (`com.localpoker.app`)  
 **Effective date:** [PLACEHOLDER: effective date]  
 **Publisher:** [PLACEHOLDER: company/legal entity name]  
-**Contact:** [PLACEHOLDER: support/legal contact email]  
+**Contact:** maskndafi@gmail.com  
 **Governing law / venue:** [PLACEHOLDER: jurisdiction]
 
 > Legal review required: this is a product-specific draft prepared from the current codebase. It is not legal advice and must be reviewed by a qualified professional before publication.
@@ -112,4 +112,4 @@ We may update these Terms. Material changes should be reflected in the hosted te
 
 [PLACEHOLDER: company/legal entity name]  
 [PLACEHOLDER: mailing address]  
-[PLACEHOLDER: support/legal contact email]
+maskndafi@gmail.com

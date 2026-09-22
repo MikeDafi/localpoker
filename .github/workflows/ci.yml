@@ -2,11 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - '**'
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,9 +16,44 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ hashFiles('package-lock.json', 'firebase.rules-test.json') }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
       - name: Install dependencies
         run: npm ci
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Unit tests
         run: npx vitest run
+      # Lint placeholder: add an ESLint step here once an ESLint config exists.
+      - name: Firebase security rules tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(npm run test:rules 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if grep -q "Skipping Firebase rules tests" <<< "$output"; then
+            echo "::error::Firebase rules tests skipped. CI must run the emulator backed suite."
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          if ! grep -q "ok: player cannot read another player private view" <<< "$output"; then
+            echo "::error::Firebase rules tests did not print the private view sentinel."
+            exit 1
+          fi
+          if ! grep -q "ok: either side can remove a friendship" <<< "$output"; then
+            echo "::error::Firebase rules tests did not reach the final assertion."
+            exit 1
+          fi

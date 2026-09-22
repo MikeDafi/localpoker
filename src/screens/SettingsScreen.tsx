@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -50,9 +50,10 @@ const APP_SECTION_ICONS: Record<AppPreferenceSectionId, IconComponent> = {
 };
 
 export function SettingsScreen({ navigation }: Props) {
-  const { settings, updateSettings, auth, logout, resetStats, profile } = useApp();
+  const { settings, updateSettings, auth, logout, resetStats, profile, deleteAccount } = useApp();
   const { width } = useWindowDimensions();
   const compact = width < 430;
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const appSections = useMemo(
     () =>
@@ -74,6 +75,29 @@ export function SettingsScreen({ navigation }: Props) {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset stats', style: 'destructive', onPress: resetStats },
     ]);
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Delete account?',
+      'This deletes your LocalPoker profile, stats, friends, saved game, online handle, friend requests, and room presence. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete account',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingAccount(true);
+            const result = await deleteAccount();
+            setDeletingAccount(false);
+            Alert.alert(
+              result.ok ? 'Account deleted' : 'Could not delete account',
+              result.reason || (result.ok ? 'Your account data was deleted.' : 'Try again in a moment.'),
+            );
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -104,6 +128,8 @@ export function SettingsScreen({ navigation }: Props) {
           onCustomizePal={() => navigation.navigate('PalDesigner')}
           onLogout={logout}
           onResetStats={confirmResetStats}
+          onDeleteAccount={confirmDeleteAccount}
+          deletingAccount={deletingAccount}
         />
 
         <Text style={styles.footer}>LocalPoker v0.1 · Play-money only</Text>
@@ -274,6 +300,8 @@ function AccountSection({
   onCustomizePal,
   onLogout,
   onResetStats,
+  onDeleteAccount,
+  deletingAccount,
 }: {
   compact: boolean;
   provider: string;
@@ -283,6 +311,8 @@ function AccountSection({
   onCustomizePal: () => void;
   onLogout: () => void;
   onResetStats: () => void;
+  onDeleteAccount: () => void;
+  deletingAccount: boolean;
 }) {
   return (
     <WiiPanel padding={0} style={styles.sectionPanel}>
@@ -308,6 +338,21 @@ function AccountSection({
           <WiiButton label="Customize Pal" variant="blue" size="md" fullWidth onPress={onCustomizePal} />
           <WiiButton label="Log out" variant="white" size="md" fullWidth onPress={onLogout} />
           <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onResetStats} />
+          <WiiButton
+            label={deletingAccount ? 'Deleting account...' : 'Delete account'}
+            variant="red"
+            size="md"
+            fullWidth
+            disabled={deletingAccount}
+            onPress={onDeleteAccount}
+          />
+        </View>
+
+        <View style={styles.supportBox}>
+          <Text style={styles.supportTitle}>Safety and support</Text>
+          <Text style={styles.supportText}>
+            Report or block players from Friends or a live table. For help, privacy, or moderation concerns, contact maskndafi@gmail.com.
+          </Text>
         </View>
       </View>
     </WiiPanel>
@@ -721,6 +766,25 @@ const styles = StyleSheet.create({
   },
   accountActions: {
     gap: spacing.md,
+  },
+  supportBox: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panelAlt,
+    padding: spacing.md,
+  },
+  supportTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  supportText: {
+    marginTop: 4,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.inkSoft,
   },
   footer: {
     marginTop: spacing.xs,

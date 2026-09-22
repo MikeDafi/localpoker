@@ -71,6 +71,19 @@ const player = {
   isHost: true,
 };
 
+const writtenValueAt = (path: string): unknown => {
+  const direct = writes.find((write) => write.path === path);
+  if (direct) return direct.value;
+
+  for (const write of writes) {
+    if (write.path !== '') continue;
+    const multiPath = write.value as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(multiPath, path)) return multiPath[path];
+  }
+
+  return undefined;
+};
+
 describe('room writes are keyed by auth.uid', () => {
   beforeEach(() => {
     writes.length = 0;
@@ -85,9 +98,9 @@ describe('room writes are keyed by auth.uid', () => {
   it('creates a room with hostId set to the auth uid, not the local profile id', async () => {
     const { createRoom } = await import('../roomSync');
     const result = await createRoom('ROOM12', player, '{}');
-
     expect(result.ok).toBe(true);
-    const room = writes[0].value as {
+    expect(result.ok).toBe(true);
+    const room = writtenValueAt('localpoker/rooms/ROOM12') as {
       hostId: string;
       players: Record<string, { id: string; palSeed: string }>;
     };
@@ -96,6 +109,11 @@ describe('room writes are keyed by auth.uid', () => {
     expect(room.hostId).toBe(AUTH_UID);
     expect(Object.keys(room.players)).toEqual([AUTH_UID]);
     expect(room.players[AUTH_UID].id).toBe(AUTH_UID);
+    expect(writtenValueAt(`localpoker/userRooms/${AUTH_UID}/ROOM12`)).toEqual({
+      code: 'ROOM12',
+      role: 'host',
+      updatedAt: expect.any(Number),
+    });
 
     // palSeed is cosmetic (it seeds the avatar), so it deliberately keeps the
     // local profile id — the player's avatar shouldn't change when they sign in.
