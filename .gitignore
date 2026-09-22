@@ -76,3 +76,6 @@ _site/
 # Xcode test result bundles from QA runs. The screenshots in docs/qa are worth
 # keeping; the .xcresult bundles are 200MB of build artifacts.
 *.xcresult/
+
+# Screenshots extracted from .xcresult bundles, duplicate build output
+docs/qa/xcresult-attachments/
