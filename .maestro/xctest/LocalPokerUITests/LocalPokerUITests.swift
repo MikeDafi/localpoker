@@ -17,6 +17,20 @@ final class LocalPokerUITests: XCTestCase {
  func btn(_ t:String)->XCUIElement{
    app.buttons.matching(NSPredicate(format:"label CONTAINS[c] %@",t)).firstMatch
  }
+ /// Some labels surface as static text on iPhone but only as a button on iPad,
+ /// where the tile's Pressable groups its children into one accessibility
+ /// element. A gate written as `any(...)` alone therefore returns false on
+ /// iPad even though the label is plainly on screen, which silently took out
+ /// a whole capture run: the home screenshot fired before the screen had
+ /// loaded and every later navigation step missed.
+ func present(_ t:String,_ timeout:TimeInterval=10)->Bool{
+   let deadline=Date().addingTimeInterval(timeout)
+   repeat {
+     if any(t).exists || btn(t).exists { return true }
+     usleep(400_000)
+   } while Date() < deadline
+   return false
+ }
  @discardableResult func tap(_ t:String,_ timeout:TimeInterval=10)->Bool{
    let b=btn(t)
    let e:XCUIElement = b.waitForExistence(timeout:timeout) ? b : any(t)
@@ -460,39 +474,67 @@ final class LocalPokerUITests: XCTestCase {
 
  // App Store screenshot capture. Writes raw, unmodified frames that a separate
  // compositor turns into captioned marketing images.
+ //
+ // The output folder is chosen from the captured pixel size rather than passed
+ // in, so running the same test against an iPad destination cannot silently
+ // overwrite the iPhone set. 1320x2868 is the 6.9-inch iPhone, 2064x2752 the
+ // 13-inch iPad; both are accepted App Store sizes.
  func storeOut(_ n:String){
-   let png=XCUIScreen.main.screenshot().pngRepresentation
-   let dir="/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/store/screenshots/raw"
-   try? png.write(to:URL(fileURLWithPath:"\(dir)/\(n).png")); print("STORE \(n)")
+   let shot=XCUIScreen.main.screenshot()
+   let png=shot.pngRepresentation
+   let w=Int(shot.image.size.width * shot.image.scale)
+   let root="/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/store/screenshots"
+   let dir = w >= 1800 ? "\(root)/raw-ipad" : "\(root)/raw"
+   try? FileManager.default.createDirectory(atPath:dir, withIntermediateDirectories:true)
+   try? png.write(to:URL(fileURLWithPath:"\(dir)/\(n).png")); print("STORE \(dir)/\(n)")
  }
  func gate(){
    app.activate(); sleep(2)
-   if any("Confirm your age").waitForExistence(timeout:6) {
+   // Expo Go shows a one-time developer-menu sheet on a simulator it has not
+   // run a project on before. It covers the age gate. Tapping its Continue
+   // button dismisses the explainer but opens the full dev menu behind it,
+   // which covers the gate just as thoroughly, so close that too by tapping
+   // outside the sheet.
+   if app.buttons["Continue"].waitForExistence(timeout:5) {
+     app.buttons["Continue"].tap(); sleep(2)
+     if present("Toggle performance monitor",3) {
+       app.coordinate(withNormalizedOffset: CGVector(dx:0.5,dy:0.04)).tap(); sleep(2)
+     }
+   }
+   if present("Confirm your age",6) {
      let f=app.textFields.firstMatch
      if f.waitForExistence(timeout:5){ f.tap(); usleep(500_000); for d in ["1","9","9","8"]{ f.typeText(d); usleep(300_000) } }
      app.coordinate(withNormalizedOffset: CGVector(dx:0.5,dy:0.42)).tap(); usleep(500_000); _=tap("Enter",4)
    }
-   if any("Play as Guest").waitForExistence(timeout:6){ _=tap("Play as Guest",4) }
+   // Sign-in is skipped when a session is already on disk. Auth now persists
+   // through AsyncStorage, so on any simulator that has run the app before,
+   // the app opens straight onto the home screen and "Play as Guest" never
+   // appears. Waiting on it unconditionally is what made the first iPad run
+   // look like a broken sign-in: the button was absent because the user was
+   // already signed in.
+   if present("Quick Play",4) { return }
+   if present("Play as Guest",8){ _=tap("Play as Guest",6) }
+   _=present("Quick Play",20)
  }
  func home(){
    for _ in 0..<4 {
-     if any("Quick Play").waitForExistence(timeout:3) { return }
-     _=tap("Back",2); usleep(500_000)
+     if present("Quick Play",3) { return }
+     backTap()
    }
  }
  func testS1Store() throws {
    gate()
-   _=any("Quick Play").waitForExistence(timeout:12)
+   _=present("Quick Play",12)
    storeOut("01-home")
 
    // Setup screen: difficulty tiles and table options.
    if tap("Quick Play",8){
-     _=any("Start Game").waitForExistence(timeout:8); sleep(1)
+     _=present("Start Game",8); sleep(1)
      storeOut("02-difficulty")
 
      // Play into a live hand so the board and pot are populated.
      _=tap("Start Game",6)
-     _=any("POT").waitForExistence(timeout:20); sleep(3)
+     _=present("POT",20); sleep(3)
 
      // Drive a few streets so a board is out and chips are committed.
      for _ in 0..<7 {
@@ -524,13 +566,20 @@ final class LocalPokerUITests: XCTestCase {
    if tap("My Pal",6){ sleep(3); storeOut("08-pal") }
  }
 
- /// Back chevron is an icon with no label, so tap it by position.
+ /// The back chevron is icon-only. It now carries an accessibility label, so
+ /// match it by name; the normalised coordinate below is only a fallback for a
+ /// screen that has not been relabelled yet. The coordinate alone was not
+ /// portable: 6% across and 6.6% down lands on the chevron on a 1320x2868
+ /// iPhone but roughly 100px clear of it on a 2064x2752 iPad, which silently
+ /// stranded every capture that had to navigate home.
  func backTap(){
+   let b=app.buttons["Go back"]
+   if b.waitForExistence(timeout:2) && b.isHittable { b.tap(); usleep(900_000); return }
    app.coordinate(withNormalizedOffset: CGVector(dx:0.06,dy:0.066)).tap(); usleep(900_000)
  }
  func toHome(){
    for _ in 0..<5 {
-     if any("Quick Play").waitForExistence(timeout:2) { return }
+     if present("Quick Play",2) { return }
      backTap()
    }
  }
@@ -541,9 +590,9 @@ final class LocalPokerUITests: XCTestCase {
    // Mid-hand: capture the instant the hero has action buttons, which is the
    // frame that actually sells the game.
    if tap("Quick Play",8){
-     _=any("Start Game").waitForExistence(timeout:8)
+     _=present("Start Game",8)
      _=tap("Start Game",6)
-     _=any("POT").waitForExistence(timeout:20)
+     _=present("POT",20)
      var got=false
      for _ in 0..<26 {
        if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable {
@@ -580,15 +629,15 @@ final class LocalPokerUITests: XCTestCase {
  func testS3Missing() throws {
    gate()
    // Force back to home from whatever screen the last run left behind.
-   for _ in 0..<8 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+   for _ in 0..<8 { if present("Quick Play",2) { break }; backTap() }
 
    if tap("My Stats",6){ sleep(3); storeOut("06-stats"); }
-   for _ in 0..<6 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+   for _ in 0..<6 { if present("Quick Play",2) { break }; backTap() }
 
    if tap("Quick Play",8){
-     _=any("Start Game").waitForExistence(timeout:8)
+     _=present("Start Game",8)
      _=tap("Start Game",6)
-     _=any("POT").waitForExistence(timeout:20)
+     _=present("POT",20)
      // Wait for a frame where the hero is on the clock with a board out.
      for _ in 0..<30 {
        if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable {
@@ -613,29 +662,29 @@ final class LocalPokerUITests: XCTestCase {
 
  func testS4Extra() throws {
    gate()
-   for _ in 0..<8 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+   for _ in 0..<8 { if present("Quick Play",2) { break }; backTap() }
 
    // Friends screen, captured properly this time. The earlier run caught it
    // mid load, which produced an unusable frame.
    if tap("Friends",6){
      sleep(5)
-     _=any("crew").waitForExistence(timeout:6)
+     _=present("crew",6)
      sleep(2)
      storeOut("10-friends")
    }
-   for _ in 0..<6 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+   for _ in 0..<6 { if present("Quick Play",2) { break }; backTap() }
 
    // Create or join room, which is the actual social hook.
    if tap("Play with Friends",6){ sleep(4); storeOut("11-room") }
-   for _ in 0..<6 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+   for _ in 0..<6 { if present("Quick Play",2) { break }; backTap() }
 
    // A showdown where the hero wins, for the "beat the bots" angle.
    if tap("Quick Play",8){
-     _=any("Start Game").waitForExistence(timeout:8)
+     _=present("Start Game",8)
      _=tap("Start Game",6)
-     _=any("POT").waitForExistence(timeout:20)
+     _=present("POT",20)
      for _ in 0..<40 {
-       if any("wins").waitForExistence(timeout:1) { sleep(1); storeOut("12-win"); break }
+       if present("wins",1) { sleep(1); storeOut("12-win"); break }
        if btn("Check").waitForExistence(timeout:1) { _=tap("Check",1) }
        else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
        else if btn("Next Hand").waitForExistence(timeout:1) { _=tap("Next Hand",1) }
@@ -650,6 +699,45 @@ final class LocalPokerUITests: XCTestCase {
        else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
        else if btn("Next Hand").waitForExistence(timeout:1) { _=tap("Next Hand",1) }
        usleep(700_000)
+     }
+   }
+ }
+
+ func testS5Duo() throws {
+   gate()
+   for _ in 0..<8 { if present("Quick Play",2) { break }; backTap() }
+
+   // Heads up: the "Number of Opponents" control renders as a stepper, not a
+   // UISlider, so `app.sliders` never matched it and the table stayed six-handed.
+   // Step it down to 1 so the table really is 1v1, and assert that it landed.
+   if tap("Quick Play",8){
+     _=present("Start Game",8)
+     _=tap("Opponents",4)
+     sleep(1)
+     let down = app.buttons["Decrease Number of Opponents"]
+     XCTAssertTrue(down.waitForExistence(timeout:8), "opponents stepper not found")
+     for _ in 0..<6 { if down.isHittable { break }; app.swipeUp(); usleep(400_000) }
+     for _ in 0..<8 {
+       guard down.isEnabled && down.isHittable else { break }
+       down.tap(); usleep(400_000)
+     }
+     storeOut("20-headsup-setup")
+     XCTAssertFalse(down.isEnabled, "opponents did not reach the minimum of 1")
+     _=tap("Start Game",6)
+     _=present("POT",20)
+     for _ in 0..<26 {
+       if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable { sleep(1); break }
+       usleep(700_000)
+     }
+     sleep(1)
+     storeOut("21-headsup")
+
+     // Reactions sheet, opened from the table. Shows GIFs, stickers, emoji and
+     // the quick-text field all at once.
+     if tap("Send a reaction",6){
+       sleep(3)
+       storeOut("22-reactions")
+       _=tap("Close reactions",3)
      }
    }
  }

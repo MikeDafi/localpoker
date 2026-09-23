@@ -21,7 +21,7 @@ This is the paste-ready App Store Connect sheet for `com.localpoker.app` version
 | iOS build number | `1` | Matches `app.json`. Increment for each uploaded binary after the first. |
 | Expo SDK | `~57.0.23` | Matches `package.json`. |
 | EAS CLI | `>= 5.0.0` | Required by `eas.json`. |
-| iPad support | `false` | Deliberate launch decision because the table UI is phone-tuned. No iPad support at launch, upload iPhone screenshots only. |
+| iPad support | `false` | Deliberate launch decision because the table UI is phone-tuned. No iPad support at launch, upload iPhone screenshots only. Confirmed on a 13-inch simulator: `docs/store/screenshots/raw-ipad/03-table.png` shows the felt squashed into the top third with the lower half empty. |
 | Export compliance | `ITSAppUsesNonExemptEncryption = false` | Use the standard encryption answer only if the app uses HTTPS/TLS and no custom non-exempt encryption. |
 | Sentry | Disabled by default | Add real DSN plus real Expo plugin org/project only if shipping diagnostics. |
 
@@ -174,7 +174,7 @@ Required iPhone size today:
 | 6.9-inch iPhone display | `1260 x 2736`, `1290 x 2796`, or `1320 x 2868` | Required if the app runs on iPhone. |
 | 6.5-inch iPhone display | `1284 x 2778` or `1242 x 2688` | Required only if 6.9-inch screenshots are not provided. |
 
-Because `ios.supportsTablet` is now `false` by deliberate product choice, App Store Connect should not require iPad screenshot wells for this iOS submission. This also means LocalPoker does not claim iPad support at launch. If tablet support is re-enabled later, upload 13-inch iPad screenshots too, commonly `2064 x 2752` or `2048 x 2732` portrait.
+Because `ios.supportsTablet` is now `false` by deliberate product choice, App Store Connect should not require iPad screenshot wells for this iOS submission. This also means LocalPoker does not claim iPad support at launch. If tablet support is re-enabled later, upload 13-inch iPad screenshots too, commonly `2064 x 2752` or `2048 x 2732` portrait. A 13-inch set can already be built from staged captures, but it is not uploadable yet for a second reason beyond the flag: see "The iPad set, and why it is staged rather than shipped" below.
 
 ### Shot list for LocalPoker
 
@@ -193,48 +193,137 @@ Do not show placeholder ads in final App Store screenshots unless a real ad SDK 
 
 ### Captured screenshots in this repo
 
-Four complete sets live under `docs/store/screenshots/<set>/`, each a different
-marketing angle with its own colourway. Upload **one set** to the iPhone
-6.9-inch well, since the copy and the colour are designed together. App Store
-Connect scales them for smaller iPhone wells, so no other size is needed.
+One set of six slides lives in `docs/store/screenshots/felt/`. Upload it to the
+iPhone 6.9-inch well; App Store Connect scales them for smaller iPhone wells,
+so no other size is needed. The raw device captures they are built from are in
+`docs/store/screenshots/raw/`.
 
-| Set | Angle | Slides | Lead headline |
-|---|---|---:|---|
-| `felt` | Honest value, the game's own felt | 6 | Real Texas Hold'em. Actually free. |
-| `night` | Social, invite codes and shared tables | 5 | Deal your friends in. |
-| `sharp` | Mastery, tough bots and real stats | 5 | Bots that actually fight back. |
-| `craft` | Premium craft, the deck and the peel | 5 | A real deck, drawn properly. |
+Earlier there were four competing sets (`felt`, `night`, `sharp`, `craft`).
+That was a decision aid, not a deliverable, and keeping four half-maintained
+sets meant a fix to the shared compositor had to be judged four times. The
+`felt` angle won and the rest were deleted.
 
-Rebuild with `python3 scripts/build-store-images.py`, or pass a set name to do
-one. Copy lives in the `SETS` table and colour in `WAYS`, both near the top of
-that script, so a new angle is a few lines rather than a new script.
+| # | Headline | Capture | Why it is in this position |
+|---:|---|---|---|
+| 1 | Real Texas Hold'em. Actually free. | `04-action.png` | The objection to clear first is price, so it leads. |
+| 2 | Heads up with a friend. | `21-headsup.png` | The social hook, ahead of the bots. |
+| 3 | Bots that actually play poker. | `02-difficulty.png` | The answer to "who do I play when nobody is around". |
+| 4 | Every hand, tracked. | `06-stats.png` | Depth, for the viewer still scrolling. |
+| 5 | Say something. | `22-reactions.png` | Proof the table is social, not solitaire. |
+| 6 | Your table, your Pal. | `08-pal.png` | Personalization, the softest sell, so it goes last. |
 
-Every slide is checked before it is written:
+Slide 2 really is one opponent. It used to be captured six-handed under a
+"heads up" headline, because `numOpponents` renders as a stepper rather than a
+`UISlider` and the test's `app.sliders` query silently matched nothing. The
+capture test now steps the control down and asserts it reached the minimum, so
+the headline and the picture cannot drift apart again.
 
-- exactly `1320 x 2868`, RGB, no alpha, asserted in the build
+Rebuild with `python3 scripts/build-store-images.py`. Copy, capture and
+flourish placement all live in the `SLIDES` table at the top of that script.
+
+Every slide is checked before it is written, and the build fails rather than
+emitting an image that misses:
+
+- exactly the device's declared size (`1320 x 2868` for 6.9-inch iPhone,
+  `2064 x 2752` for 13-inch iPad), RGB, no alpha
 - headline of seven words or fewer, so it survives a search thumbnail
-- no capture reused inside a set, which would read as padding
-- title contrast 14.3:1 or better against its backdrop, WCAG AAA on all four
-  sets; subcaptions clear AA
+- no capture reused inside the set, which would read as padding
+- headline contrast **at or above 7:1** (WCAG AAA) measured on the rendered
+  pixels, not assumed from the palette
+
+That last check is not decorative. It caught slide 3 at 6.1:1 after the
+background alone was already dark enough: the court-card flourish behind the
+headline was tinted *lighter* than the backdrop and was eating the contrast.
+The flourish is now debossed, tinted darker than the background, so it can only
+ever help white type.
 
 Captions exist because the App Store renders the first images at thumbnail size
 in search, where a raw capture of this dark table is unreadable. Type is the
-app's own Fredoka and each backdrop is derived from `src/theme/theme.ts`.
+app's own Fredoka. Each backdrop is sampled from its own screenshot's dominant
+hue, so the set is one family without every slide being the same flat green.
 
-All four palettes deliberately avoid casino red and gold. LocalPoker carries a
-simulated-gambling age rating and has to read clearly as play money, so looking
-like a real-money casino would fight the rating, the store copy and the privacy
-labels at once.
+The palette deliberately avoids casino red and gold. Guideline 2.3.8 requires
+screenshots to be suitable for a 4+ audience even though the app itself carries
+a 17+ simulated-gambling rating, so looking like a real-money casino would
+fight the rating, the store copy and the privacy labels at once.
 
 No slide shows the reserved ad banner, because `EXPO_PUBLIC_ADS_ENABLED`
 defaults to false and `AdBanner` returns null when it is off. If a real ad SDK
-is integrated later, every set must be recaptured: shipping screenshots that
-hide ads the app actually displays is a misrepresentation.
+is integrated later, the set must be recaptured: shipping screenshots that hide
+ads the app actually displays is a misrepresentation.
 
 Known weakness: hole cards are face down in the table slides. That is the peel
 interaction behaving correctly, but it undersells the game. The pending
-`deal-faceup` change would fix it, and rerunning the build regenerates all four
-sets.
+`deal-faceup` change would fix it, and rerunning the build regenerates the set.
+
+### The iPad set, and why it is staged rather than shipped
+
+`scripts/build-store-images.py` carries two device profiles and will emit a
+13-inch iPad set (`2064 x 2752`, into `docs/store/screenshots/felt-ipad/`) as
+soon as all six captures exist in `docs/store/screenshots/raw-ipad/`. It skips
+that profile with a notice rather than failing when they do not, because the
+iPhone set is the one that ships.
+
+One layout serves both canvases. Every measurement is a fraction of the canvas,
+and type is keyed to the canvas *diagonal* rather than to either edge: keyed to
+height it goes timid on the much wider iPad canvas, keyed to width it eats the
+slide. The fractions are set so the iPhone numbers land exactly where they were
+tuned by hand, which is the check that the iPad profile was added without
+disturbing the set that matters.
+
+**Do not upload the iPad set yet, and not only because `supportsTablet` is
+`false`.** The first iPad capture run produced the evidence: in
+`docs/store/screenshots/raw-ipad/03-table.png` the felt is squashed into the
+top third of the screen and the bottom half is empty. The table is laid out for
+a phone's aspect ratio and does not adapt, which is precisely the reason iPad
+support was declined in the first place. Shipping that frame as marketing would
+advertise a broken tablet experience and invite a Guideline 2.3.3 rejection for
+not showing the app in genuine use.
+
+The grid screens are a different story. Home, difficulty, stats and Pal all
+reflow correctly into the wider canvas and look good. So the blocker is
+specific: it is the *table* screens, which are slides 1 and 2, the two that
+carry the pitch.
+
+Re-enabling iPad is therefore a two-part change, not a flag flip:
+
+1. Adapt the table layout for a 4:3 aspect ratio, then recapture.
+2. Set `ios.supportsTablet` to `true`, which also puts the iPad experience in
+   front of App Review.
+
+To refresh the iPad captures, boot the 13-inch simulator, point Expo Go at the
+dev server, and run the three capture tests against it:
+
+```
+xcrun simctl boot "iPad Pro 13-inch (M5)"
+xcrun simctl openurl booted exp://127.0.0.1:8095
+xcodebuild test -project .maestro/xctest/UITestHarness.xcodeproj -scheme Harness \
+  -derivedDataPath .maestro/DerivedData -destination 'name=iPad Pro 13-inch (M5)' \
+  -only-testing:LocalPokerUITests/LocalPokerUITests/testS1Store
+```
+
+`storeOut` picks its output folder from the captured pixel width, so running
+the same test against an iPad destination cannot overwrite the iPhone set.
+
+Two harness bugs had to be fixed before an iPad run would complete, and both
+were really accessibility bugs in the app:
+
+- Tile labels surface as static text on iPhone but only as a *button* on iPad,
+  where the Pressable groups its children into one element. Gates written
+  against `app.staticTexts` alone returned false while the label was plainly on
+  screen, so the home screenshot fired before the screen had loaded and every
+  later navigation step missed. The gates now check both.
+- The back chevron was an icon-only `Pressable` with no accessibility label, so
+  VoiceOver announced nothing and the harness had to tap a hard-coded
+  coordinate. That coordinate lands on the chevron on an iPhone and about 100px
+  clear of it on an iPad. Both back buttons now carry `accessibilityLabel="Go
+  back"` and the harness matches on it.
+
+A third failure was not a bug at all: a run that appeared to show broken guest
+sign-in was simply an already-signed-in session. Auth persists through
+AsyncStorage now, so on any simulator that has run the app before there is no
+"Play as Guest" button to wait for. `gate()` returns early when it is already
+home.
 
 ## Ordered submission runbook
 

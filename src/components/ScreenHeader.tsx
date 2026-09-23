@@ -21,6 +21,8 @@ export function ScreenHeader({ title, onBack, right }: ScreenHeaderProps) {
           }}
           style={[styles.backBtn, shadows.soft]}
           hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <ChevronLeft />
         </Pressable>

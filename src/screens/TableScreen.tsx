@@ -984,7 +984,13 @@ export function TableScreen({ navigation, route }: Props) {
   return (
     <ScreenBackground variant="felt" edges={['top', 'bottom']}>
       <View style={styles.topBar}>
-        <Pressable onPress={leave} style={[styles.iconBtn, shadows.soft]} hitSlop={8}>
+        <Pressable
+          onPress={leave}
+          style={[styles.iconBtn, shadows.soft]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <ChevronLeft color={colors.onDark} />
         </Pressable>
         {/* Only friends games have anything to say up here; a solo hand's

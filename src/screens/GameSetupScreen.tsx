@@ -364,6 +364,8 @@ function FieldControl({
         <Pressable
           disabled={atMin}
           onPress={() => onNumberChange(field, nextDown)}
+          accessibilityRole="button"
+          accessibilityLabel={`Decrease ${field.label}`}
           style={[styles.stepButton, atMin && styles.stepButtonDisabled]}
         >
           <Text style={[styles.stepButtonText, atMin && styles.stepButtonTextDisabled]}>−</Text>
@@ -375,6 +377,8 @@ function FieldControl({
         <Pressable
           disabled={atMax}
           onPress={() => onNumberChange(field, nextUp)}
+          accessibilityRole="button"
+          accessibilityLabel={`Increase ${field.label}`}
           style={[styles.stepButton, atMax && styles.stepButtonDisabled]}
         >
           <Text style={[styles.stepButtonText, atMax && styles.stepButtonTextDisabled]}>+</Text>
