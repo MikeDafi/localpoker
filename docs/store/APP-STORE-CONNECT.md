@@ -2,6 +2,32 @@
 
 This is the paste-ready App Store Connect sheet for `com.localpoker.app` version `1.0.0`, build `1`. It assumes the submitted iOS app is phone-only, uses Firebase online rooms, does not ship real ads yet, and does not enable Sentry unless a real DSN is provided.
 
+## Where this stands right now
+
+Verified 2026-09-23. **Nothing has been submitted, and nothing is on TestFlight.**
+
+| Question | Answer | How it was checked |
+|---|---|---|
+| Linked to an EAS project? | No | `app.json` has no `expo.owner` and no `expo.extra.eas.projectId`. |
+| Has a binary ever been built? | No | No `.ipa` and no `.xcarchive` exists. |
+| App record in App Store Connect? | No | No `ascAppId` recorded anywhere in the repo. |
+| On TestFlight? | **No** | Follows from the above. TestFlight distributes an *uploaded build*, so with no binary there is nothing to be on it. |
+| Is any Apple ID a TestFlight tester? | Not applicable | Testers are per app. With no app record there is no tester list. |
+| Distribution certificate present? | No | The only code-signing identity is `Apple Development: Michael Askndafi`. Uploading needs an **Apple Distribution** certificate. |
+
+Re-check any time with:
+
+```
+python3 -c "import json;d=json.load(open('app.json'))['expo'];print('owner',d.get('owner'),'extra',d.get('extra'))"
+security find-identity -v -p codesigning
+```
+
+**The gate is the paid Apple Developer Program**, currently 99 USD per year. A
+free Apple ID can run the app on a simulator and on your own device, but it
+cannot produce a Distribution certificate, so it cannot upload to App Store
+Connect and therefore cannot reach TestFlight. No amount of local work removes
+that step; see step 0 of the runbook.
+
 ## Submission blockers and required decisions
 
 1. **Ads are not real today.** `src/components/AdBanner.tsx` is a static placeholder and no ad SDK is installed. Shipping the visible fake ad slot is an App Review rejection risk because it is placeholder content, not only because it affects ad privacy answers. For submission, choose one path:
@@ -345,6 +371,21 @@ home.
 
 Follow these steps in order.
 
+0. **Enrol in the Apple Developer Program, and link the project to EAS.**
+   This step is first because every later step depends on it, and it is the
+   only one that costs money and cannot be automated.
+   1. Enrol at <https://developer.apple.com/programs/enroll/>, currently
+      99 USD per year. An individual enrolment is usually approved within a
+      day or two; it can take longer if Apple asks for identity documents.
+   2. Install nothing globally. `eas-cli` is deliberately not a dependency of
+      this project, so invoke it with `npx eas-cli@latest ...` throughout.
+   3. `npx eas-cli@latest login` with the Apple-enrolled account.
+   4. `npx eas-cli@latest init` from the repo root. This writes
+      `expo.extra.eas.projectId` and `expo.owner` into `app.json`; commit that
+      change, because it is what links future builds to the project.
+   5. Confirm with `npx eas-cli@latest project:info`. Until this prints a
+      project, no build command will work.
+
 1. **Choose the ads path.**
    1. For no-ads 1.0, remove or hide the placeholder banner UI and any copy saying ads support the app.
    2. For ad-supported 1.0, integrate the real ad SDK, add consent, update privacy labels, add ATT if tracking, add SKAdNetwork IDs, and test real ad behavior with test ad units first.
@@ -395,12 +436,12 @@ Follow these steps in order.
 10. **Build the release.**
     1. Run `npx tsc --noEmit`.
     2. Run `npx vitest run` if time allows or if code changed.
-    3. Run `eas build --platform ios --profile production`.
+    3. Run `npx eas-cli@latest build --platform ios --profile production`.
     4. Install the build on a real iPhone or simulator-supported release channel and smoke-test age gate, local play, online room creation, stats, legal links, and ad behavior.
 11. **Submit the binary.**
     1. Follow `docs/store/EAS-SUBMIT.md`. Set `EXPO_APPLE_ID`, set `EXPO_APPLE_APP_SPECIFIC_PASSWORD` if using app-specific password auth, and let interactive EAS prompt for missing ASC values.
     2. For non-interactive submit, add `ascAppId` and, if needed, `appleTeamId` as a local one-line `eas.json` edit at submit time, then do not commit that edit.
-    3. Run `eas submit --platform ios --profile production`.
+    3. Run `npx eas-cli@latest submit --platform ios --profile production`.
     4. Wait for App Store Connect processing.
     5. Select the processed build in the 1.0.0 app version.
 12. **Final review checklist.**
@@ -415,3 +456,36 @@ Follow these steps in order.
     3. Click **Submit for Review**.
 
 Expected review focus: simulated gambling disclosure, no real-money claims, legal URL availability, placeholder ads, privacy label accuracy, age gate behavior, and whether friend rooms work if advertised.
+
+## TestFlight
+
+TestFlight is how the app gets onto a real device, including your own, before
+it is public. It is worth doing: several of this app's risk areas, notably the
+Firebase room sync and the age gate, behave differently on device than in a
+simulator.
+
+TestFlight is **not a shortcut around the paid membership**. It distributes an
+uploaded build, and uploading needs a Distribution certificate, which needs the
+Apple Developer Program. Steps 0 through 11 of the runbook all still apply. The
+only part TestFlight lets you skip is App Review's *full* review, and only for
+internal testers.
+
+Once a build has finished processing in App Store Connect:
+
+1. Open the app record, then the **TestFlight** tab.
+2. Complete **Test Information**: feedback email, and for this app a short note
+   that it is play-money only with an 18+ gate.
+3. **Internal testers**, up to 100 people. They must be members of your App
+   Store Connect team with an Apple ID, added under **Users and Access**. No
+   review is needed, so builds appear within minutes.
+4. **External testers**, up to 10,000 people. These need a short Beta App
+   Review, usually a day. Because this app carries a 17+ simulated-gambling
+   rating, expect external review to look at the same things full review does.
+5. Testers install the **TestFlight** app from the App Store and accept the
+   invite sent to their Apple ID.
+
+About `maskndafi@gmail.com` specifically: being the *developer* account does
+not automatically make it a tester. To receive builds on a device it has to be
+added under **Users and Access** and then selected in an internal tester group,
+exactly like anyone else. Builds expire after 90 days.
+

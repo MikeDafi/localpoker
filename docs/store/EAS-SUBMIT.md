@@ -11,7 +11,7 @@ Use the email address you use to sign in to App Store Connect.
 Set it at submit time with the environment variable that EAS supports:
 
 ```sh
-EXPO_APPLE_ID="you@example.com" eas submit --platform ios --profile production
+EXPO_APPLE_ID="you@example.com" npx eas-cli@latest submit --platform ios --profile production
 ```
 
 For app-specific password upload, also set:
@@ -80,4 +80,5 @@ If you must use a local JSON key path instead, keep the key outside git and make
 - Version `1.0.0`, iOS build number `1`, and Android version code `1` are valid for the first upload. Increment build number and version code before every later upload.
 - `ios.supportsTablet` is deliberately `false` for the phone-only launch.
 - `ITSAppUsesNonExemptEncryption` is `false`; keep that only if the app uses standard HTTPS/TLS and no custom non-exempt encryption.
-- `eas build --profile production` may ask to link an EAS project if `extra.eas.projectId` is not present. Run `eas init` once if EAS asks for it.
+- `npx eas-cli@latest build --profile production` may ask to link an EAS project if `extra.eas.projectId` is not present. This project is not linked yet, so run `npx eas-cli@latest init` once first and commit the `app.json` change it makes.
+- `eas-cli` is deliberately not a dependency of this project, so always invoke it through `npx eas-cli@latest`. A bare `eas` will not resolve here.
