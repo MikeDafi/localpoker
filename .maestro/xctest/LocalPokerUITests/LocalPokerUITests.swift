@@ -457,4 +457,157 @@ final class LocalPokerUITests: XCTestCase {
    _=tap("Show your cards", 4)
    for i in 0..<16 { save(String(format: "sc-%02d-reveal", i + 2)) }
  }
+
+ // App Store screenshot capture. Writes raw, unmodified frames that a separate
+ // compositor turns into captioned marketing images.
+ func storeOut(_ n:String){
+   let png=XCUIScreen.main.screenshot().pngRepresentation
+   let dir="/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/store/screenshots/raw"
+   try? png.write(to:URL(fileURLWithPath:"\(dir)/\(n).png")); print("STORE \(n)")
+ }
+ func gate(){
+   app.activate(); sleep(2)
+   if any("Confirm your age").waitForExistence(timeout:6) {
+     let f=app.textFields.firstMatch
+     if f.waitForExistence(timeout:5){ f.tap(); usleep(500_000); for d in ["1","9","9","8"]{ f.typeText(d); usleep(300_000) } }
+     app.coordinate(withNormalizedOffset: CGVector(dx:0.5,dy:0.42)).tap(); usleep(500_000); _=tap("Enter",4)
+   }
+   if any("Play as Guest").waitForExistence(timeout:6){ _=tap("Play as Guest",4) }
+ }
+ func home(){
+   for _ in 0..<4 {
+     if any("Quick Play").waitForExistence(timeout:3) { return }
+     _=tap("Back",2); usleep(500_000)
+   }
+ }
+ func testS1Store() throws {
+   gate()
+   _=any("Quick Play").waitForExistence(timeout:12)
+   storeOut("01-home")
+
+   // Setup screen: difficulty tiles and table options.
+   if tap("Quick Play",8){
+     _=any("Start Game").waitForExistence(timeout:8); sleep(1)
+     storeOut("02-difficulty")
+
+     // Play into a live hand so the board and pot are populated.
+     _=tap("Start Game",6)
+     _=any("POT").waitForExistence(timeout:20); sleep(3)
+
+     // Drive a few streets so a board is out and chips are committed.
+     for _ in 0..<7 {
+       if btn("Check").waitForExistence(timeout:2) { _=tap("Check",2) }
+       else if btn("Call").waitForExistence(timeout:2) { _=tap("Call",2) }
+       usleep(900_000)
+     }
+     sleep(2)
+     storeOut("03-table")
+     storeOut("04-holecards")
+
+     // Push to a showdown or hand result.
+     for _ in 0..<14 {
+       if btn("Next Hand").waitForExistence(timeout:1) { break }
+       if btn("Check").waitForExistence(timeout:1) { _=tap("Check",1) }
+       else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
+       usleep(800_000)
+     }
+     sleep(2)
+     storeOut("05-showdown")
+   }
+
+   // Stats, populated by the hands just played.
+   home()
+   if tap("My Stats",6){ sleep(3); storeOut("06-stats") }
+   home()
+   if tap("Friends",6){ sleep(3); storeOut("07-friends") }
+   home()
+   if tap("My Pal",6){ sleep(3); storeOut("08-pal") }
+ }
+
+ /// Back chevron is an icon with no label, so tap it by position.
+ func backTap(){
+   app.coordinate(withNormalizedOffset: CGVector(dx:0.06,dy:0.066)).tap(); usleep(900_000)
+ }
+ func toHome(){
+   for _ in 0..<5 {
+     if any("Quick Play").waitForExistence(timeout:2) { return }
+     backTap()
+   }
+ }
+ func testS2Rest() throws {
+   gate()
+   toHome()
+
+   // Mid-hand: capture the instant the hero has action buttons, which is the
+   // frame that actually sells the game.
+   if tap("Quick Play",8){
+     _=any("Start Game").waitForExistence(timeout:8)
+     _=tap("Start Game",6)
+     _=any("POT").waitForExistence(timeout:20)
+     var got=false
+     for _ in 0..<26 {
+       if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable {
+         sleep(1); storeOut("03-table"); got=true; break
+       }
+       usleep(700_000)
+     }
+     if !got { storeOut("03-table") }
+
+     // Advance a couple of streets, then grab another action frame with a board.
+     for _ in 0..<5 {
+       if btn("Check").waitForExistence(timeout:1) { _=tap("Check",1) }
+       else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
+       usleep(900_000)
+     }
+     for _ in 0..<18 {
+       if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable {
+         sleep(1); storeOut("04-action"); break
+       }
+       usleep(700_000)
+     }
+   }
+
+   toHome()
+   if tap("My Stats",6){ sleep(3); storeOut("06-stats") }
+   toHome()
+   if tap("Friends",6){ sleep(3); storeOut("07-friends") }
+   toHome()
+   if tap("My Pal",6){ sleep(3); storeOut("08-pal") }
+   toHome()
+   if tap("Store",6){ sleep(3); storeOut("09-store") }
+ }
+
+ func testS3Missing() throws {
+   gate()
+   // Force back to home from whatever screen the last run left behind.
+   for _ in 0..<8 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+
+   if tap("My Stats",6){ sleep(3); storeOut("06-stats"); }
+   for _ in 0..<6 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+
+   if tap("Quick Play",8){
+     _=any("Start Game").waitForExistence(timeout:8)
+     _=tap("Start Game",6)
+     _=any("POT").waitForExistence(timeout:20)
+     // Wait for a frame where the hero is on the clock with a board out.
+     for _ in 0..<30 {
+       if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable {
+         sleep(1); storeOut("03-table"); break
+       }
+       usleep(700_000)
+     }
+     // Play on, then grab a second action frame once the board has cards.
+     for _ in 0..<4 {
+       if btn("Check").waitForExistence(timeout:1) { _=tap("Check",1) }
+       else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
+       usleep(900_000)
+     }
+     for _ in 0..<20 {
+       if btn("Fold").waitForExistence(timeout:1) && btn("Fold").isHittable {
+         sleep(1); storeOut("04-action"); break
+       }
+       usleep(700_000)
+     }
+   }
+ }
 }

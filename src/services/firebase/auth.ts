@@ -15,6 +15,40 @@ export function getAuthUid(): string | null {
   return cachedUid;
 }
 
+/**
+ * Resolve the Auth instance, with persistence wired to AsyncStorage.
+ *
+ * `getAuth()` on React Native defaults to **memory** persistence, so the
+ * anonymous uid was regenerated on every app launch. That is far worse than it
+ * sounds here: the uid is the identity that owns the claimed handle, the friend
+ * edges and any hosted room, and handles are create-only in the rules. A fresh
+ * uid each launch therefore orphaned the previous handle permanently, with no
+ * way to reclaim it.
+ *
+ * `initializeAuth` may only be called once per app instance and throws if it
+ * has already run, so a second call falls back to reading the existing one.
+ */
+async function resolveAuth(authMod: typeof import('firebase/auth'), app: ReturnType<typeof getFirebaseApp>) {
+  if (!app) return null;
+  try {
+    const storageMod = await import('@react-native-async-storage/async-storage');
+    const storage = storageMod.default;
+    const withPersistence = authMod as unknown as {
+      getReactNativePersistence?: (s: unknown) => unknown;
+    };
+    if (typeof withPersistence.getReactNativePersistence === 'function') {
+      return authMod.initializeAuth(app, {
+        persistence: withPersistence.getReactNativePersistence(storage) as never,
+      });
+    }
+  } catch (error) {
+    // Already initialized, or the persistence helper is unavailable in this
+    // build. Either way a plain getAuth still returns a working instance.
+    captureError(error, { tags: { area: 'firebase-auth', operation: 'init-persistence' } });
+  }
+  return authMod.getAuth(app);
+}
+
 export async function ensureSignedIn(): Promise<string | null> {
   if (!isFirebaseConfigured()) return null;
   if (cachedUid) return cachedUid;
@@ -26,11 +60,25 @@ export async function ensureSignedIn(): Promise<string | null> {
       const authMod = await import('firebase/auth');
       const app = getFirebaseApp();
       if (!app) return null;
-      const auth = authMod.getAuth(app);
+      const auth = await resolveAuth(authMod, app);
+      if (!auth) return null;
 
-      const existing = auth.currentUser;
-      if (existing) {
-        cachedUid = existing.uid;
+      // Persisted sessions restore asynchronously, so currentUser can still be
+      // null immediately after init. Wait one auth state tick before deciding
+      // to sign in again, or every launch would mint a new anonymous user.
+      const restored = await new Promise<string | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 2500);
+        const unsub = authMod.onAuthStateChanged(auth, (u) => {
+          clearTimeout(timer);
+          unsub();
+          resolve(u?.uid ?? null);
+        });
+      });
+      if (restored) {
+        cachedUid = restored;
+        authMod.onAuthStateChanged(auth, (u) => {
+          cachedUid = u?.uid ?? null;
+        });
         return cachedUid;
       }
 

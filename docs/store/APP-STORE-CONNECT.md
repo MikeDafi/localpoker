@@ -193,17 +193,36 @@ Do not show placeholder ads in final App Store screenshots unless a real ad SDK 
 
 ### Captured screenshots in this repo
 
-These files were captured from a dedicated iPhone 17 Pro Max simulator with the status bar overridden to 9:41, full battery, 4 cellular bars, and 3 Wi-Fi bars. Each file is RGB PNG at `1320 x 2868`, which is an accepted 6.9-inch iPhone portrait size for the required iPhone screenshot well.
+Six captioned slides, built by `python3 scripts/build-store-images.py` from raw
+simulator captures in `docs/store/screenshots/raw/`. Each is RGB PNG at exactly
+`1320 x 2868`, an accepted 6.9-inch iPhone portrait size, and the build script
+asserts both before it writes.
 
-| File | Dimensions | App Store Connect slot | Content |
-|---|---:|---|---|
-| `docs/store/screenshots/localpoker-iphone-6.9-01-difficulty-select.png` | `1320 x 2868` | iPhone 6.9-inch | Difficulty and table setup. |
-| `docs/store/screenshots/localpoker-iphone-6.9-02-table-mid-hand.png` | `1320 x 2868` | iPhone 6.9-inch | Table mid-hand with board, pot, players, and action state. |
-| `docs/store/screenshots/localpoker-iphone-6.9-03-visible-hole-cards.png` | `1320 x 2868` | iPhone 6.9-inch | Visible hole cards during live play. |
-| `docs/store/screenshots/localpoker-iphone-6.9-04-stats.png` | `1320 x 2868` | iPhone 6.9-inch | Player stats and stack history. |
-| `docs/store/screenshots/localpoker-iphone-6.9-05-friends.png` | `1320 x 2868` | iPhone 6.9-inch | Private room create/invite screen. |
+Captions exist because the App Store renders the first images at thumbnail size
+in search, where a raw capture of this dark table is unreadable. Type is the
+app's own Fredoka and the backdrop uses the felt colours from
+`src/theme/theme.ts`, so the slides match the product.
 
-Do **not** upload these exact screenshots for App Review while the fake ad slot remains visible. Four of the five shots show the static `Reserved banner slot`, which is placeholder content and a likely rejection risk. After choosing the no-ads path or integrating real ads, recapture the same shot list.
+| File | Headline | Source capture |
+|---|---|---|
+| `localpoker-iphone-6.9-01.png` | Real Texas Hold'em. Actually free. | `04-action.png` |
+| `localpoker-iphone-6.9-02.png` | Bots that actually play poker. | `02-difficulty.png` |
+| `localpoker-iphone-6.9-03.png` | Every hand, tracked. | `06-stats.png` |
+| `localpoker-iphone-6.9-04.png` | Private tables with friends. | `01-home.png` |
+| `localpoker-iphone-6.9-05.png` | Earn coins by playing. | `09-store.png` |
+| `localpoker-iphone-6.9-06.png` | Play money only. No cash, ever. | `05-showdown.png` |
+
+Upload all six to the iPhone 6.9-inch well in that order. App Store Connect
+scales them down for smaller iPhone wells, so no other size is needed.
+
+None of the slides show the reserved ad banner, because `EXPO_PUBLIC_ADS_ENABLED`
+defaults to false and `AdBanner` returns null when it is off. If a real ad SDK is
+integrated later, every slide must be recaptured, since shipping screenshots that
+hide ads the app actually displays is a misrepresentation.
+
+Known weakness: hole cards are face down in the table slides. That is the peel
+interaction behaving correctly, but it undersells the game. The pending
+`deal-faceup` change would let slide 1 show a real hand.
 
 ## Ordered submission runbook
 
