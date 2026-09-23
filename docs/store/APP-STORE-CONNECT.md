@@ -21,7 +21,7 @@ This is the paste-ready App Store Connect sheet for `com.localpoker.app` version
 | iOS build number | `1` | Matches `app.json`. Increment for each uploaded binary after the first. |
 | Expo SDK | `~57.0.23` | Matches `package.json`. |
 | EAS CLI | `>= 5.0.0` | Required by `eas.json`. |
-| iPad support | `false` | Deliberate launch decision because the table UI is phone-tuned. No iPad support at launch, upload iPhone screenshots only. Confirmed on a 13-inch simulator: `docs/store/screenshots/raw-ipad/03-table.png` shows the felt squashed into the top third with the lower half empty. |
+| iPad support | `false` | Deliberate launch decision because the table UI is phone-tuned. No iPad support at launch, upload iPhone screenshots only. Confirmed on a 13-inch simulator: `docs/store/screenshots/felt-ipad/localpoker-13-01.png` shows the felt in the top third with the lower half empty. |
 | Export compliance | `ITSAppUsesNonExemptEncryption = false` | Use the standard encryption answer only if the app uses HTTPS/TLS and no custom non-exempt encryption. |
 | Sentry | Disabled by default | Add real DSN plus real Expo plugin org/project only if shipping diagnostics. |
 
@@ -258,29 +258,26 @@ interaction behaving correctly, but it undersells the game. The pending
 
 ### The iPad set, and why it is staged rather than shipped
 
-`scripts/build-store-images.py` carries two device profiles and will emit a
-13-inch iPad set (`2064 x 2752`, into `docs/store/screenshots/felt-ipad/`) as
-soon as all six captures exist in `docs/store/screenshots/raw-ipad/`. It skips
-that profile with a notice rather than failing when they do not, because the
-iPhone set is the one that ships.
+`scripts/build-store-images.py` carries two device profiles and emits a 13-inch
+iPad set (`2064 x 2752`) into `docs/store/screenshots/felt-ipad/` alongside the
+iPhone set. It skips that profile with a notice rather than failing when the
+captures are absent, because the iPhone set is the one that ships.
 
 One layout serves both canvases. Every measurement is a fraction of the canvas,
 and type is keyed to the canvas *diagonal* rather than to either edge: keyed to
 height it goes timid on the much wider iPad canvas, keyed to width it eats the
 slide. The fractions are set so the iPhone numbers land exactly where they were
 tuned by hand, which is the check that the iPad profile was added without
-disturbing the set that matters.
+disturbing the set that matters. All twelve slides clear AAA.
 
-**Do not upload the iPad set yet, and not only because `supportsTablet` is
-`false`.** The first iPad capture run produced the evidence: in
-`docs/store/screenshots/raw-ipad/03-table.png` the felt is squashed into the
-top third of the screen and the bottom half is empty. The table is laid out for
-a phone's aspect ratio and does not adapt, which is precisely the reason iPad
-support was declined in the first place. Shipping that frame as marketing would
-advertise a broken tablet experience and invite a Guideline 2.3.3 rejection for
-not showing the app in genuine use.
+**Do not upload the iPad set, and not only because `supportsTablet` is
+`false`.** Slide `localpoker-13-01.png` shows the problem better than any
+description: the felt occupies the top third and the bottom half of the screen
+is empty. The table is laid out for a phone's aspect ratio and does not adapt.
+Shipping that as marketing would advertise a broken tablet experience and
+invite a Guideline 2.3.3 rejection for not showing the app in genuine use.
 
-The grid screens are a different story. Home, difficulty, stats and Pal all
+The grid screens are a different story. Stats, home, difficulty and Pal all
 reflow correctly into the wider canvas and look good. So the blocker is
 specific: it is the *table* screens, which are slides 1 and 2, the two that
 carry the pitch.
@@ -291,12 +288,11 @@ Re-enabling iPad is therefore a two-part change, not a flag flip:
 2. Set `ios.supportsTablet` to `true`, which also puts the iPad experience in
    front of App Review.
 
-To refresh the iPad captures, boot the 13-inch simulator, point Expo Go at the
-dev server, and run the three capture tests against it:
+### Running the capture suite against a second device
 
 ```
 xcrun simctl boot "iPad Pro 13-inch (M5)"
-xcrun simctl openurl booted exp://127.0.0.1:8095
+xcrun simctl openurl booted exp://127.0.0.1:8095    # reload the project first
 xcodebuild test -project .maestro/xctest/UITestHarness.xcodeproj -scheme Harness \
   -derivedDataPath .maestro/DerivedData -destination 'name=iPad Pro 13-inch (M5)' \
   -only-testing:LocalPokerUITests/LocalPokerUITests/testS1Store
@@ -304,22 +300,42 @@ xcodebuild test -project .maestro/xctest/UITestHarness.xcodeproj -scheme Harness
 
 `storeOut` picks its output folder from the captured pixel width, so running
 the same test against an iPad destination cannot overwrite the iPhone set.
+`testS1Store`, `testS2Rest`, `testS5Duo` and `testS6Home` together produce
+every capture the slides use.
 
-Two harness bugs had to be fixed before an iPad run would complete, and both
-were really accessibility bugs in the app:
+Reload the project between runs. XCUITest terminates the app when a run ends,
+and because the suite drives Expo Go rather than a standalone build, that drops
+the loaded project: Expo Go comes back to its own project list with no app in
+it. A test that starts there finds nothing and, because every capture is
+guarded by `if tap(...)`, used to finish green having written no files at all.
+For the same reason nothing in the suite may call `app.terminate()` to get back
+to a known state.
 
-- Tile labels surface as static text on iPhone but only as a *button* on iPad,
-  where the Pressable groups its children into one element. Gates written
+Four things had to be fixed before an iPad run would complete, and three were
+real bugs in the app rather than in the tests:
+
+- **Leaving the table opens a confirmation alert.** `leave()` always calls
+  `Alert.alert('Leave table?')`. The alert is modal, so every element behind it
+  reports as present but not hittable. Unanswered, it stalled the entire run:
+  the next back tap hit the dimmed screen behind the sheet, and so did the one
+  after that. This was the actual cause of the stranded iPad pass. `backTap()`
+  now answers it.
+- **The back chevron had no accessibility label.** It was an icon-only
+  `Pressable` in both `ScreenHeader` and `TableScreen`, so VoiceOver announced
+  nothing and the harness had to tap a hard-coded coordinate. A coordinate
+  tuned on a 440pt-wide iPhone lands about 20pt off on a 1032pt-wide iPad,
+  because the header is laid out in points and so occupies a *smaller fraction*
+  of a larger screen. Both buttons now carry `accessibilityLabel="Go back"`.
+- **Tile labels surface as buttons on iPad**, not as static text, because the
+  Pressable groups its children into one accessibility element. Gates written
   against `app.staticTexts` alone returned false while the label was plainly on
-  screen, so the home screenshot fired before the screen had loaded and every
-  later navigation step missed. The gates now check both.
-- The back chevron was an icon-only `Pressable` with no accessibility label, so
-  VoiceOver announced nothing and the harness had to tap a hard-coded
-  coordinate. That coordinate lands on the chevron on an iPhone and about 100px
-  clear of it on an iPad. Both back buttons now carry `accessibilityLabel="Go
-  back"` and the harness matches on it.
+  screen. The gates now check both collections.
+- **Capture tests could pass having captured nothing.** `requireStored` now
+  names what each test owes and fails when it does not deliver, which is how
+  the three failures above were finally told apart instead of all presenting as
+  the same silent green run.
 
-A third failure was not a bug at all: a run that appeared to show broken guest
+A fifth symptom was not a bug at all: a run that appeared to show broken guest
 sign-in was simply an already-signed-in session. Auth persists through
 AsyncStorage now, so on any simulator that has run the app before there is no
 "Play as Guest" button to wait for. `gate()` returns early when it is already

@@ -2,6 +2,7 @@ import XCTest
 final class LocalPokerUITests: XCTestCase {
  let app=XCUIApplication(bundleIdentifier:"host.exp.Exponent")
  let outDir="/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/qa/audit"
+ var stored:[String]=[]
  // Querying `descendants(matching:.any)` walks every node in the RN tree, which
  // on the table screen is thousands of views and regularly blew XCUITest's
  // snapshot timeout. Text and buttons carry every label we match on, and that
@@ -487,6 +488,15 @@ final class LocalPokerUITests: XCTestCase {
    let dir = w >= 1800 ? "\(root)/raw-ipad" : "\(root)/raw"
    try? FileManager.default.createDirectory(atPath:dir, withIntermediateDirectories:true)
    try? png.write(to:URL(fileURLWithPath:"\(dir)/\(n).png")); print("STORE \(dir)/\(n)")
+   stored.append(n)
+ }
+ /// Every capture in this suite is guarded by `if tap(...)`, so a run that
+ /// navigated nowhere used to finish green having written no files at all.
+ /// That is how a whole iPad pass looked like a pass while producing nothing.
+ /// Name what a test owes and fail when it does not deliver.
+ func requireStored(_ names:[String], file:StaticString=#filePath, line:UInt=#line){
+   let missing=names.filter{ !stored.contains($0) }
+   XCTAssertTrue(missing.isEmpty, "captured nothing for \(missing)", file:file, line:line)
  }
  func gate(){
    app.activate(); sleep(2)
@@ -512,15 +522,36 @@ final class LocalPokerUITests: XCTestCase {
    // appears. Waiting on it unconditionally is what made the first iPad run
    // look like a broken sign-in: the button was absent because the user was
    // already signed in.
-   if present("Quick Play",4) { return }
+   if present("Quick Play",8) { return }
    if present("Play as Guest",8){ _=tap("Play as Guest",6) }
-   _=present("Quick Play",20)
+   _=present("Quick Play",45)
  }
  func home(){
    for _ in 0..<4 {
      if present("Quick Play",3) { return }
      backTap()
    }
+ }
+ /// Dump what the accessibility tree actually exposes. Guessing at why a
+ /// control cannot be found costs a five-minute simulator run per guess, so
+ /// the suite prints the real labels instead.
+ func dumpControls(_ tag:String){
+   let labels=app.buttons.allElementsBoundByIndex.prefix(40).map{ $0.label }
+   print("DUMP \(tag) buttons=\(labels)")
+ }
+ /// The screens reachable straight off the home grid. Split out from testS2Rest
+ /// so each capture starts from a known state instead of inheriting wherever
+ /// the previous navigation step left the app.
+ func testS6Home() throws {
+   gate()
+   if tap("My Stats",8){ sleep(4); storeOut("06-stats") }
+   toHome()
+   if tap("My Pal",8){ sleep(4); storeOut("08-pal") }
+   toHome()
+   if tap("Friends",8){ sleep(6); storeOut("07-friends") }
+   toHome()
+   if tap("Store",8){ sleep(4); storeOut("09-store") }
+   requireStored(["06-stats","08-pal","07-friends","09-store"])
  }
  func testS1Store() throws {
    gate()
@@ -567,16 +598,48 @@ final class LocalPokerUITests: XCTestCase {
  }
 
  /// The back chevron is icon-only. It now carries an accessibility label, so
- /// match it by name; the normalised coordinate below is only a fallback for a
- /// screen that has not been relabelled yet. The coordinate alone was not
- /// portable: 6% across and 6.6% down lands on the chevron on a 1320x2868
- /// iPhone but roughly 100px clear of it on a 2064x2752 iPad, which silently
- /// stranded every capture that had to navigate home.
+ /// match it by name and fall back to geometry only if that fails.
+ ///
+ /// The fallback is expressed in points, not in a normalised fraction of the
+ /// canvas. The header is laid out in points, so the chevron sits at about the
+ /// same point offset on every device, which is a *different* fraction of each
+ /// screen: 6% across a 440pt-wide iPhone is 26pt, but 6% across a 1032pt-wide
+ /// iPad is 62pt, well past the 44pt button. A hard-coded normalised offset
+ /// tuned on the iPhone therefore missed on iPad and silently stranded every
+ /// capture that had to navigate home.
  func backTap(){
-   let b=app.buttons["Go back"]
-   if b.waitForExistence(timeout:2) && b.isHittable { b.tap(); usleep(900_000); return }
-   app.coordinate(withNormalizedOffset: CGVector(dx:0.06,dy:0.066)).tap(); usleep(900_000)
+   let b=btn("Go back")
+   let exists=b.waitForExistence(timeout:2)
+   if exists && b.isHittable {
+     b.tap()
+   } else {
+     print("BACK labelled button exists=\(exists) hittable=\(exists && b.isHittable)")
+     dumpControls("back")
+     let f=app.frame
+     let dx = f.width  > 0 ? 42.0/f.width  : 0.06
+     let dy = f.height > 0 ? 62.0/f.height : 0.066
+     app.coordinate(withNormalizedOffset: CGVector(dx:dx, dy:dy)).tap()
+   }
+   usleep(900_000)
+   // Leaving the table always asks to confirm, and the alert is modal: every
+   // element behind it reports as present but not hittable. Left unanswered it
+   // stalled the whole capture run, because the next backTap simply tapped the
+   // dimmed screen behind the sheet and the one after that did the same. This
+   // is what actually stranded the iPad run; the missing accessibility label
+   // was a real bug but not this one.
+   let alert=app.alerts.firstMatch
+   if alert.waitForExistence(timeout:2) {
+     let confirm=alert.buttons["Leave"]
+     if confirm.exists { confirm.tap() }
+     else if alert.buttons.count > 0 { alert.buttons.element(boundBy:alert.buttons.count-1).tap() }
+     usleep(900_000)
+   }
  }
+ /// Returning to the home screen. Note that this navigates *inside* the app
+ /// rather than restarting it. Restarting looks tempting and is a trap: the
+ /// suite drives Expo Go, and terminating Expo Go drops the loaded project, so
+ /// the relaunch comes back to Expo Go's own project list with no app in it at
+ /// all. Reloading the project is the shell's job, before the test starts.
  func toHome(){
    for _ in 0..<5 {
      if present("Quick Play",2) { return }
@@ -705,7 +768,7 @@ final class LocalPokerUITests: XCTestCase {
 
  func testS5Duo() throws {
    gate()
-   for _ in 0..<8 { if present("Quick Play",2) { break }; backTap() }
+   toHome()
 
    // Heads up: the "Number of Opponents" control renders as a stepper, not a
    // UISlider, so `app.sliders` never matched it and the table stayed six-handed.
@@ -731,6 +794,7 @@ final class LocalPokerUITests: XCTestCase {
      }
      sleep(1)
      storeOut("21-headsup")
+     dumpControls("table")
 
      // Reactions sheet, opened from the table. Shows GIFs, stickers, emoji and
      // the quick-text field all at once.
@@ -740,5 +804,6 @@ final class LocalPokerUITests: XCTestCase {
        _=tap("Close reactions",3)
      }
    }
+   requireStored(["20-headsup-setup","21-headsup","22-reactions"])
  }
 }
