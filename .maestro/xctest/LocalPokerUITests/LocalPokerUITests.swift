@@ -610,4 +610,47 @@ final class LocalPokerUITests: XCTestCase {
      }
    }
  }
+
+ func testS4Extra() throws {
+   gate()
+   for _ in 0..<8 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+
+   // Friends screen, captured properly this time. The earlier run caught it
+   // mid load, which produced an unusable frame.
+   if tap("Friends",6){
+     sleep(5)
+     _=any("crew").waitForExistence(timeout:6)
+     sleep(2)
+     storeOut("10-friends")
+   }
+   for _ in 0..<6 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+
+   // Create or join room, which is the actual social hook.
+   if tap("Play with Friends",6){ sleep(4); storeOut("11-room") }
+   for _ in 0..<6 { if any("Quick Play").waitForExistence(timeout:2) { break }; backTap() }
+
+   // A showdown where the hero wins, for the "beat the bots" angle.
+   if tap("Quick Play",8){
+     _=any("Start Game").waitForExistence(timeout:8)
+     _=tap("Start Game",6)
+     _=any("POT").waitForExistence(timeout:20)
+     for _ in 0..<40 {
+       if any("wins").waitForExistence(timeout:1) { sleep(1); storeOut("12-win"); break }
+       if btn("Check").waitForExistence(timeout:1) { _=tap("Check",1) }
+       else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
+       else if btn("Next Hand").waitForExistence(timeout:1) { _=tap("Next Hand",1) }
+       usleep(700_000)
+     }
+     // An all-in or big-pot moment for drama.
+     for _ in 0..<40 {
+       if btn("All In").waitForExistence(timeout:1) && btn("All In").isHittable {
+         sleep(1); storeOut("13-allin"); break
+       }
+       if btn("Check").waitForExistence(timeout:1) { _=tap("Check",1) }
+       else if btn("Call").waitForExistence(timeout:1) { _=tap("Call",1) }
+       else if btn("Next Hand").waitForExistence(timeout:1) { _=tap("Next Hand",1) }
+       usleep(700_000)
+     }
+   }
+ }
 }

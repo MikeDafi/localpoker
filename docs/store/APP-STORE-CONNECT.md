@@ -193,36 +193,48 @@ Do not show placeholder ads in final App Store screenshots unless a real ad SDK 
 
 ### Captured screenshots in this repo
 
-Six captioned slides, built by `python3 scripts/build-store-images.py` from raw
-simulator captures in `docs/store/screenshots/raw/`. Each is RGB PNG at exactly
-`1320 x 2868`, an accepted 6.9-inch iPhone portrait size, and the build script
-asserts both before it writes.
+Four complete sets live under `docs/store/screenshots/<set>/`, each a different
+marketing angle with its own colourway. Upload **one set** to the iPhone
+6.9-inch well, since the copy and the colour are designed together. App Store
+Connect scales them for smaller iPhone wells, so no other size is needed.
+
+| Set | Angle | Slides | Lead headline |
+|---|---|---:|---|
+| `felt` | Honest value, the game's own felt | 6 | Real Texas Hold'em. Actually free. |
+| `night` | Social, invite codes and shared tables | 5 | Deal your friends in. |
+| `sharp` | Mastery, tough bots and real stats | 5 | Bots that actually fight back. |
+| `craft` | Premium craft, the deck and the peel | 5 | A real deck, drawn properly. |
+
+Rebuild with `python3 scripts/build-store-images.py`, or pass a set name to do
+one. Copy lives in the `SETS` table and colour in `WAYS`, both near the top of
+that script, so a new angle is a few lines rather than a new script.
+
+Every slide is checked before it is written:
+
+- exactly `1320 x 2868`, RGB, no alpha, asserted in the build
+- headline of seven words or fewer, so it survives a search thumbnail
+- no capture reused inside a set, which would read as padding
+- title contrast 14.3:1 or better against its backdrop, WCAG AAA on all four
+  sets; subcaptions clear AA
 
 Captions exist because the App Store renders the first images at thumbnail size
 in search, where a raw capture of this dark table is unreadable. Type is the
-app's own Fredoka and the backdrop uses the felt colours from
-`src/theme/theme.ts`, so the slides match the product.
+app's own Fredoka and each backdrop is derived from `src/theme/theme.ts`.
 
-| File | Headline | Source capture |
-|---|---|---|
-| `localpoker-iphone-6.9-01.png` | Real Texas Hold'em. Actually free. | `04-action.png` |
-| `localpoker-iphone-6.9-02.png` | Bots that actually play poker. | `02-difficulty.png` |
-| `localpoker-iphone-6.9-03.png` | Every hand, tracked. | `06-stats.png` |
-| `localpoker-iphone-6.9-04.png` | Private tables with friends. | `01-home.png` |
-| `localpoker-iphone-6.9-05.png` | Earn coins by playing. | `09-store.png` |
-| `localpoker-iphone-6.9-06.png` | Play money only. No cash, ever. | `05-showdown.png` |
+All four palettes deliberately avoid casino red and gold. LocalPoker carries a
+simulated-gambling age rating and has to read clearly as play money, so looking
+like a real-money casino would fight the rating, the store copy and the privacy
+labels at once.
 
-Upload all six to the iPhone 6.9-inch well in that order. App Store Connect
-scales them down for smaller iPhone wells, so no other size is needed.
-
-None of the slides show the reserved ad banner, because `EXPO_PUBLIC_ADS_ENABLED`
-defaults to false and `AdBanner` returns null when it is off. If a real ad SDK is
-integrated later, every slide must be recaptured, since shipping screenshots that
+No slide shows the reserved ad banner, because `EXPO_PUBLIC_ADS_ENABLED`
+defaults to false and `AdBanner` returns null when it is off. If a real ad SDK
+is integrated later, every set must be recaptured: shipping screenshots that
 hide ads the app actually displays is a misrepresentation.
 
 Known weakness: hole cards are face down in the table slides. That is the peel
 interaction behaving correctly, but it undersells the game. The pending
-`deal-faceup` change would let slide 1 show a real hand.
+`deal-faceup` change would fix it, and rerunning the build regenerates all four
+sets.
 
 ## Ordered submission runbook
 
