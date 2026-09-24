@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -43,6 +43,40 @@ SplashScreen.preventAutoHideAsync().catch((error) => {
 });
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Hiding the splash used to hang off NavigationContainer's onReady, which is
+// only fired once a navigator mounts inside it. RootNavigator renders a plain
+// View while app state hydrates and renders the age gate before that, so on a
+// fresh install no navigator ever mounted, onReady never fired, and the native
+// splash stayed up forever with the age gate stranded behind it. The app was
+// unusable on first launch. Expo Go never showed this because it does not use
+// the app's own splash screen.
+//
+// Readiness is now expressed directly: fonts are loaded and app state has
+// hydrated. The timeout is a deliberate backstop rather than belt and braces.
+// A splash that never lifts is unrecoverable for the user, so it must not be
+// possible for any single stalled promise to wedge it again; falling through
+// to the app's own loading view keeps the failure visible in testing instead
+// of fatal in production.
+function SplashGate({ fontsLoaded }: { fontsLoaded: boolean }) {
+  const { ready } = useApp();
+
+  useEffect(() => {
+    let done = false;
+    const hide = (reason: string) => {
+      if (done) return;
+      done = true;
+      SplashScreen.hideAsync().catch((error) => {
+        captureError(error, { tags: { area: 'startup', operation: 'splash-hide', reason } });
+      });
+    };
+    if (fontsLoaded && ready) hide('ready');
+    const bail = setTimeout(() => hide('timeout'), 5000);
+    return () => clearTimeout(bail);
+  }, [fontsLoaded, ready]);
+
+  return null;
+}
 
 const navTheme = {
   ...DefaultTheme,
@@ -97,14 +131,6 @@ export default function App() {
     });
   }, []);
 
-  const onReady = useCallback(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync().catch((error) => {
-        captureError(error, { tags: { area: 'startup', operation: 'splash-hide' } });
-      });
-    }
-  }, [fontsLoaded]);
-
   if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
   return (
@@ -112,7 +138,8 @@ export default function App() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <AppProvider>
-            <NavigationContainer theme={navTheme} onReady={onReady}>
+            <SplashGate fontsLoaded={fontsLoaded} />
+            <NavigationContainer theme={navTheme}>
               <StatusBar style="dark" />
               <RootNavigator />
             </NavigationContainer>

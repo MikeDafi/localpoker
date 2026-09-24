@@ -15,7 +15,8 @@
       "bundleIdentifier": "com.localpoker.app",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDisplayName": "LocalPoker"
       }
     },
     "android": {

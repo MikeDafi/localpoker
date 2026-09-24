@@ -60,6 +60,7 @@ __pycache__/
 # Xcode build output from the XCUITest harness. The harness source itself
 # (.maestro/xctest) is checked in; DerivedData is 150MB+ of build artifacts.
 .maestro/DerivedData/
+.maestro/NativeBuild/
 # xcodebuild transcripts from capture runs, regenerable and megabytes each.
 .maestro/*.log
 

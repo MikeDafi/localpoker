@@ -8,17 +8,19 @@ Verified 2026-09-23. **Nothing has been submitted, and nothing is on TestFlight.
 
 | Question | Answer | How it was checked |
 |---|---|---|
-| Linked to an EAS project? | No | `app.json` has no `expo.owner` and no `expo.extra.eas.projectId`. |
-| Has a binary ever been built? | No | No `.ipa` and no `.xcarchive` exists. |
+| Linked to an EAS project? | **Yes** | `@mike0264/localpoker`, project `0cb2ee24-24de-4ecb-b7ca-8f7a3f896373`. Done, it is free and needs no Apple account. |
+| Builds natively outside Expo Go? | **Yes** | Release configuration, simulator, unsigned. Verified reaching the age gate from a fresh install. |
+| Has a release binary been built? | No | `npx eas-cli@latest build:list` is empty. A simulator build is not a release binary. |
 | App record in App Store Connect? | No | No `ascAppId` recorded anywhere in the repo. |
-| On TestFlight? | **No** | Follows from the above. TestFlight distributes an *uploaded build*, so with no binary there is nothing to be on it. |
+| On TestFlight? | **No** | Follows from the above. TestFlight distributes an *uploaded build*, so with no release binary there is nothing to be on it. |
 | Is any Apple ID a TestFlight tester? | Not applicable | Testers are per app. With no app record there is no tester list. |
 | Distribution certificate present? | No | The only code-signing identity is `Apple Development: Michael Askndafi`. Uploading needs an **Apple Distribution** certificate. |
 
 Re-check any time with:
 
 ```
-python3 -c "import json;d=json.load(open('app.json'))['expo'];print('owner',d.get('owner'),'extra',d.get('extra'))"
+npx eas-cli@latest project:info
+npx eas-cli@latest build:list
 security find-identity -v -p codesigning
 ```
 
@@ -50,6 +52,59 @@ that step; see step 0 of the runbook.
 | iPad support | `false` | Deliberate launch decision because the table UI is phone-tuned. No iPad support at launch, upload iPhone screenshots only. Confirmed on a 13-inch simulator: `docs/store/screenshots/felt-ipad/localpoker-13-01.png` shows the felt in the top third with the lower half empty. |
 | Export compliance | `ITSAppUsesNonExemptEncryption = false` | Use the standard encryption answer only if the app uses HTTPS/TLS and no custom non-exempt encryption. |
 | Sentry | Disabled by default | Add real DSN plus real Expo plugin org/project only if shipping diagnostics. |
+
+### Build it natively before you trust it
+
+Expo Go is not a preview of the shipped app, and three defects hid behind that
+difference until the first standalone Release build. All three would have
+shipped.
+
+- **The app never got past its own splash screen.** Hiding the splash hung off
+  `NavigationContainer`'s `onReady`, which only fires once a navigator mounts
+  inside it. `RootNavigator` renders a plain view while app state hydrates, and
+  renders the age gate before that, so on a fresh install no navigator ever
+  mounted, `onReady` never fired, and the native splash stayed up forever with
+  the age gate stranded behind it. Expo Go never showed this because it uses
+  its own splash, not the app's. Readiness is now stated directly, with a
+  timeout backstop so no single stalled promise can wedge the splash again.
+- **The app icon was the Expo scaffold icon.** `assets/icon.png` was still the
+  blue chevron from `create-expo-app`. The real icon had been designed and
+  committed to `docs/design/icon-final/pokerface-v4.svg` but was never exported
+  or referenced, so the binary carried the template artwork.
+- **The splash image was the scaffold placeholder too**, the grey grid and
+  concentric circles that ship with the Expo template.
+
+Shipping either placeholder is a Guideline 4.3 and 2.3.3 problem on its own:
+it is not the app's artwork and it is visibly unfinished.
+
+To reproduce the check without any Apple account, because a simulator build
+needs no signing:
+
+```
+npx expo prebuild --platform ios
+git checkout -- package.json   # prebuild rewrites the ios/android scripts
+xcodebuild -workspace ios/LocalPokerPokerwithFriends.xcworkspace \
+  -scheme LocalPokerPokerwithFriends -configuration Release \
+  -sdk iphonesimulator -derivedDataPath .maestro/NativeBuild \
+  CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install booted <path to the built .app>
+xcrun simctl launch booted com.localpoker.app
+```
+
+Uninstall between runs. A fresh install is the case that broke, and an existing
+install hides it because the age gate has already been cleared.
+
+Note that `expo prebuild` rewrites the `ios` and `android` npm scripts to
+`expo run:*`. This project drives Expo Go on a dev server for its capture
+suite, so revert that change rather than committing it.
+
+### The home screen name is set separately
+
+`expo.name` is the full marketing name and is what App Store Connect wants. The
+home screen fits roughly twelve characters, so the full name renders there as
+`LocalPoker:Poker...`. `ios.infoPlist.CFBundleDisplayName` is set to
+`LocalPoker` for the icon label. Changing `expo.name` alone would have changed
+the store listing too, which is not the same decision.
 
 ## Metadata, paste-ready
 
