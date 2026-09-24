@@ -55,7 +55,7 @@ that step; see step 0 of the runbook.
 | Bundle ID | `com.mike0264.localpoker` | Registered in Apple Developer under team `D7VUBSSP2F`. **Not** `com.localpoker.app`: that string is already taken by another developer. Bundle IDs are unique across all of Apple, not just your account, and the portal only says so at the final Register step. |
 | Apple Team ID | `D7VUBSSP2F` | Michael Askndafi. Needed as `appleTeamId` for a non-interactive `eas submit`. |
 | App version | `1.0.0` | Matches `app.json`. |
-| iOS build number | `1` | Matches `app.json`. Increment for each uploaded binary after the first. |
+| iOS build number | `1` | Matches `app.json`, and is only the starting point. `eas.json` sets `cli.appVersionSource: "remote"` with `autoIncrement` on the production profile, so EAS owns the build number from the first build onward and raises it automatically. This matters because App Store Connect rejects a second upload that reuses a build number, which is the most common way an otherwise healthy CI release fails. |
 | Expo SDK | `~57.0.23` | Matches `package.json`. |
 | EAS CLI | `>= 5.0.0` | Required by `eas.json`. |
 | iPad support | `false` | Deliberate launch decision because the table UI is phone-tuned. No iPad support at launch, upload iPhone screenshots only. Confirmed on a 13-inch simulator: `docs/store/screenshots/felt-ipad/localpoker-13-01.png` shows the felt in the top third with the lower half empty. |
@@ -505,8 +505,13 @@ Follow these steps in order.
 10. **Build the release.**
     1. Run `npx tsc --noEmit`.
     2. Run `npx vitest run` if time allows or if code changed.
-    3. Run `npx eas-cli@latest build --platform ios --profile production`.
-    4. Install the build on a real iPhone or simulator-supported release channel and smoke-test age gate, local play, online room creation, stats, legal links, and ad behavior.
+    3. Preferred: run the **CI** workflow from Actions with **ios_release**
+       ticked. It runs the checks, builds with EAS and submits to TestFlight
+       in one pass, authenticating with an App Store Connect API key so
+       nothing waits on a two-factor prompt. See `EAS-SUBMIT.md` for the four
+       repository secrets it needs.
+    4. By hand instead: `npx eas-cli@latest build --platform ios --profile production`.
+    5. Install the build on a real iPhone or simulator-supported release channel and smoke-test age gate, local play, online room creation, stats, legal links, and ad behavior.
 11. **Submit the binary.**
     1. Follow `docs/store/EAS-SUBMIT.md`. Set `EXPO_APPLE_ID`, set `EXPO_APPLE_APP_SPECIFIC_PASSWORD` if using app-specific password auth, and let interactive EAS prompt for missing ASC values.
     2. For non-interactive submit, add `ascAppId` and, if needed, `appleTeamId` as a local one-line `eas.json` edit at submit time, then do not commit that edit.

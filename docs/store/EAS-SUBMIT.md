@@ -1,6 +1,67 @@
 # EAS submit configuration, LocalPoker
 
-The tracked `eas.json` intentionally contains no Apple ID, App Store Connect app ID, Apple team ID, or Google Play service account key path. That prevents placeholder values from being submitted by accident.
+`eas.json` now carries the real `ascAppId` (`6815726621`) and `appleTeamId`
+(`D7VUBSSP2F`). Neither is a secret: both appear in public App Store URLs and
+in any distributed binary. What it deliberately does **not** carry is the
+Apple ID email or any App Store Connect API key field, because this repository
+is public.
+
+## Releasing from CI, which is the intended path
+
+`.github/workflows/ci.yml` has an `ios-release` job that runs EAS Build and
+submits the result to TestFlight. It is opt-in per run: go to **Actions > CI >
+Run workflow** and tick **ios_release**. It depends on the `test` job, so a
+release cannot skip type-checking, lint, unit tests or the Firebase rules
+suite.
+
+It authenticates to Apple with an **App Store Connect API key only**. An Apple
+ID and password cannot work unattended, because Apple will ask for a
+two-factor code that no CI runner can answer.
+
+### The four repository secrets it needs
+
+| Secret | What it is |
+|---|---|
+| `EXPO_TOKEN` | Expo access token, from <https://expo.dev/settings/access-tokens>. |
+| `APPSTORE_CONNECT_API_KEY_P8` | The whole `.p8` private key file, pasted in including the `BEGIN`/`END` lines. |
+| `APPSTORE_CONNECT_API_KEY_ID` | The key's ID, the 10-character string in the `.p8` filename. |
+| `APPSTORE_CONNECT_ISSUER_ID` | The issuer UUID shown above the keys table. |
+
+**You very likely do not need to create a new key.** App Store Connect API keys
+are issued per *account*, not per app, so the key already configured in the
+`bestplan` repository authorises this app too. The same four values can simply
+be copied across. GitHub secrets are write-only, so they cannot be read back
+out of `bestplan`; use the original `.p8` you downloaded when the key was
+created.
+
+If you do need a fresh one: App Store Connect > **Users and Access** >
+**Integrations** > **App Store Connect API** > **+**, with the **App Manager**
+role. The `.p8` downloads exactly once and cannot be retrieved again.
+
+```sh
+gh secret set EXPO_TOKEN --repo MikeDafi/localpoker
+gh secret set APPSTORE_CONNECT_API_KEY_ID --repo MikeDafi/localpoker
+gh secret set APPSTORE_CONNECT_ISSUER_ID --repo MikeDafi/localpoker
+gh secret set APPSTORE_CONNECT_API_KEY_P8 --repo MikeDafi/localpoker < AuthKey_XXXXXXXXXX.p8
+```
+
+### Why the key fields are not in `eas.json` here
+
+The `bestplan` repository puts `ascApiKeyPath`, `ascApiKeyId` and
+`ascApiKeyIssuerId` directly in its `eas.json`. That is safe there because that
+repository is **private**. This one is **public**, so the same values would be
+published.
+
+eas-cli supports supplying them through the environment instead, which is what
+the workflow does: `resolveAscApiKeyAsync` reads `EXPO_ASC_API_KEY_PATH`,
+`EXPO_ASC_KEY_ID` and `EXPO_ASC_ISSUER_ID`, and both `eas build` and
+`eas submit` resolve credentials through it. The key itself is written to the
+runner's temp directory, never the workspace, and deleted in an `always()`
+step.
+
+## Running a submit by hand instead
+
+Everything below is the manual path, for when you are not going through CI.
 
 ## iOS values
 

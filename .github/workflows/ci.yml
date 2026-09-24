@@ -6,6 +6,14 @@ on:
       - '**'
   pull_request:
   workflow_dispatch:
+    inputs:
+      ios_release:
+        description: >-
+          Also build a native iOS binary with EAS Build and submit it to
+          TestFlight. Opt-in per run: unlike the checks above it consumes EAS
+          Build minutes and creates a real App Store Connect submission.
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -61,3 +69,80 @@ jobs:
             echo "::error::Firebase rules tests did not reach the final assertion."
             exit 1
           fi
+
+  # Builds a real native iOS binary and submits it to TestFlight. Opt-in per
+  # run via the `ios_release` input, and gated behind `test` so a release can
+  # never skip the checks.
+  #
+  # Apple authentication is an App Store Connect API key only, never an Apple
+  # ID and password, because an Apple ID login needs two-factor confirmation
+  # that nothing unattended can satisfy.
+  #
+  # Note the difference from the bestplan repo, which is where this job comes
+  # from: that repo is private, so it can keep the key ID and issuer ID as
+  # literals in `eas.json`. This repo is public, so all three key fields stay
+  # out of the committed config and arrive as environment variables instead.
+  # eas-cli supports that route directly: `resolveAscApiKeyAsync` reads
+  # EXPO_ASC_API_KEY_PATH, EXPO_ASC_KEY_ID and EXPO_ASC_ISSUER_ID, and both
+  # build and submit go through it.
+  ios-release:
+    name: Build and submit iOS (TestFlight)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'workflow_dispatch' && inputs.ios_release
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The key is a .p8 private key, so it has to reach eas-cli as a file
+      # rather than a value. `umask 077` means it is created unreadable to
+      # anyone else, and `printf %s` avoids the trailing newline and the
+      # backslash interpretation that `echo` would apply to the PEM body.
+      # *.p8 is gitignored, so the file can never be committed by accident.
+      - name: Write App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.APPSTORE_CONNECT_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ASC_API_KEY_P8:-}" ]; then
+            echo "::error::APPSTORE_CONNECT_API_KEY_P8 is not set. See docs/store/EAS-SUBMIT.md."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Build iOS (production profile)
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: D7VUBSSP2F
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
+        run: eas build --platform ios --profile production --non-interactive --wait
+
+      # --latest picks the build the previous step just finished. The same
+      # EXPO_ASC_* variables are repeated because each step gets a fresh
+      # environment.
+      - name: Submit to TestFlight
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+        run: eas submit --platform ios --latest --non-interactive
+
+      - name: Remove the API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
