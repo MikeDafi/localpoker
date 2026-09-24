@@ -52,7 +52,7 @@ export function HomeScreen({ navigation }: Props) {
             <Text style={styles.name} numberOfLines={1}>{profile.name}</Text>
           </View>
         </Pressable>
-        <Pressable style={[styles.settingsBtn, shadows.soft]} onPress={() => navigation.navigate('Settings')} hitSlop={8}>
+        <Pressable style={[styles.settingsBtn, shadows.soft]} onPress={() => navigation.navigate('Settings')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Settings">
           <SettingsIcon color={colors.inkSoft} size={24} />
         </Pressable>
       </View>
@@ -70,7 +70,7 @@ export function HomeScreen({ navigation }: Props) {
               <View style={styles.resumeDot} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.resumeTitle}>Resume game</Text>
-                <Text style={styles.resumeSub}>Hand #{savedGame.handNumber}{savedGame.roomCode ? ` · room ${savedGame.roomCode}` : ''} — tap to continue</Text>
+                <Text style={styles.resumeSub}>Hand #{savedGame.handNumber}{savedGame.roomCode ? ` · room ${savedGame.roomCode}` : ''}, tap to continue</Text>
               </View>
               <Text style={styles.resumeArrow}>›</Text>
             </Pressable>

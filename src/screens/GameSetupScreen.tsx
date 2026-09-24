@@ -39,7 +39,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
   const [local, setLocal] = useState<GameSettings>(() => ({ ...settings }));
 
   // App-wide preferences (sound, animations, accessibility) live in Settings, not
-  // in per-table Game Setup — only show game/table-relevant sections here.
+  // in per-table Game Setup, only show game/table-relevant sections here.
   const setupSections = useMemo(
     () => SETTINGS_SCHEMA.filter((s) => !['sound', 'animations', 'a11y'].includes(s.id)),
     [],
@@ -103,12 +103,18 @@ export function GameSetupScreen({ navigation, route }: Props) {
     const tableSettings = normalizeSettings(local);
     sound.play('start');
     updateSettings(local);
+    // A friends table is not dealt from here: the host configures it, then the
+    // lobby waits for the other players and creates the room with these rules.
+    if (isFriends && route.params.roomCode) {
+      navigation.replace('Lobby', { roomCode: route.params.roomCode, host: true, settings: tableSettings });
+      return;
+    }
     navigation.replace('Table', {
       settings: tableSettings,
       seed: Math.floor(Math.random() * 1e9),
       roomCode: route.params.roomCode,
     });
-  }, [local, navigation, route.params.roomCode, updateSettings]);
+  }, [local, navigation, route.params.roomCode, updateSettings, isFriends]);
 
   return (
     <ScreenBackground variant="menu">
@@ -163,7 +169,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
               style={compact ? undefined : styles.resetButton}
             />
             <WiiButton
-              label="Start Game"
+              label={isFriends ? 'Open Lobby' : 'Start Game'}
               variant="green"
               size="lg"
               onPress={handleStart}
@@ -490,7 +496,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: fonts.bold,
     fontSize: 21,
-    // #9: stakes are data, not a status — keep them in the ink colour
+    // #9: stakes are data, not a status, keep them in the ink colour
     color: colors.ink,
     ...numeric,
   },
@@ -734,7 +740,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   settingCopy: {
-    flex: 1,
+    // Grows into spare room, but never shrinks below what a long single word
+    // needs. Without the floor, a fixed-width control slot could squeeze this
+    // column narrower than "Animation", and iOS falls back to breaking mid-word
+    // when a single word cannot fit the line ("Animatio" / "n Speed").
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 0,
+    minWidth: 150,
     paddingRight: spacing.sm,
   },
   settingCopyCompact: {
@@ -753,11 +766,16 @@ const styles = StyleSheet.create({
     color: colors.inkMuted,
   },
   controlSlot: {
-    width: 252,
+    // Yields to the label column rather than holding a fixed width: the option
+    // pills already wrap, so a narrower slot costs a row instead of a word.
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 252,
     alignItems: 'flex-end',
   },
   controlSlotCompact: {
     width: '100%',
+    flexBasis: 'auto',
     alignItems: 'stretch',
   },
   toggleWrap: {

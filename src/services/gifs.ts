@@ -2,7 +2,7 @@
  * Curated, key-free GIF reaction pack.
  *
  * Giphy's media CDN serves GIFs without an API key, so this pack needs no
- * credentials and no network API — the whole thing is shown in the emote sheet.
+ * credentials and no network API, the whole thing is shown in the emote sheet.
  * Tags are kept for grouping/intent, not for a search box.
  *
  * Pure module (no React Native imports) so the catalog stays unit-testable.

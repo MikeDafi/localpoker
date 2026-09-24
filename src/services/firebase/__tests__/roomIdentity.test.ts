@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * Regression guard for the bug that made online play impossible.
  *
- * `database.rules.json` scopes every room write to `auth.uid` — the room's
+ * `database.rules.json` scopes every room write to `auth.uid`, the room's
  * `hostId`, the `players/$uid` path and each action's `playerId` must all equal
  * it. The lobby passed the locally generated `profile.id` instead, so the moment
  * the hardened rules were published every online write (create, join, act) would
@@ -116,7 +116,7 @@ describe('room writes are keyed by auth.uid', () => {
     });
 
     // palSeed is cosmetic (it seeds the avatar), so it deliberately keeps the
-    // local profile id — the player's avatar shouldn't change when they sign in.
+    // local profile id, the player's avatar shouldn't change when they sign in.
     expect(room.players[AUTH_UID].palSeed).toBe(LOCAL_PROFILE_ID);
     expect(disconnectWrites).toContainEqual({
       path: 'localpoker/rooms/ROOM12',

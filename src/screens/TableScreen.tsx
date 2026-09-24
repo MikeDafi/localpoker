@@ -29,6 +29,7 @@ import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
 import { boardDealDelay } from '../game/boardDeal';
+import { isRunningOut, runoutAction, runoutFelt, runoutLabel } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
 import {
   actionReadDelayMs,
@@ -92,7 +93,7 @@ export function TableScreen({ navigation, route }: Props) {
    * The table stage is a *fixed* height, derived only from the window.
    *
    * It used to be `flex: 1`, which meant it silently absorbed whatever space the
-   * controls below it didn't use — and the controls are ~65pt shorter during a
+   * controls below it didn't use, and the controls are ~65pt shorter during a
    * showdown (a compact result card) than on your turn (timer + action bar). The
    * felt, the seats and the community lane therefore grew and shifted every time
    * the hand ended. Pinning the stage and letting the *controls* flex instead
@@ -163,6 +164,7 @@ export function TableScreen({ navigation, route }: Props) {
       {
         smallBlind: settings.smallBlind,
         bigBlind: settings.bigBlind,
+        ante: settings.ante,
         startingStack: settings.startingStack,
         maxPlayers: Math.max(settings.numOpponents + 1, settings.maxPlayers),
         turnTimerSec: settings.turnTimerSec,
@@ -255,6 +257,25 @@ export function TableScreen({ navigation, route }: Props) {
   // if we resume directly into a finished (showdown) hand, treat it as recorded.
   const recorded = useRef(resuming && state.street === 'showdown');
   const prevBoard = useRef(state.board.length);
+  /**
+   * How much of the board the felt is currently showing.
+   *
+   * Normally this just tracks `state.board`, but a hand that ends with everyone
+   * all in arrives fully dealt, so it lags behind on purpose while the run-out
+   * is played out street by street.
+   */
+  const [revealedBoard, setRevealedBoard] = useState(state.board.length);
+  /**
+   * Whether this hand's betting closed before the board was complete, so the
+   * hands were turned face up and the rest of the board run out underneath them.
+   *
+   * Latched for the whole hand rather than recomputed, because it has to stay
+   * true once the result lands: a hand that has been tabled cannot be taken back
+   * and mucked, so auto-muck must not close it again.
+   */
+  const [tabledHand, setTabledHand] = useState(false);
+  /** Whether the result of a settled hand may be shown yet. */
+  const [resultsOpen, setResultsOpen] = useState(state.street === 'showdown');
   const [earned, setEarned] = useState(0);
   const [sessionHands, setSessionHands] = useState(0);
   const [statsOpen, setStatsOpen] = useState(false);
@@ -267,7 +288,7 @@ export function TableScreen({ navigation, route }: Props) {
    *
    * Opponent stats are inferred from state transitions rather than from the
    * action handlers, because online opponents never pass through this screen's
-   * handlers at all — their moves arrive as whole synced states. Watching the
+   * handlers at all, their moves arrive as whole synced states. Watching the
    * state covers bots, local play and networked players with one code path.
    */
   const [observed, setObserved] = useState(() => emptyObservedTable());
@@ -284,7 +305,7 @@ export function TableScreen({ navigation, route }: Props) {
   const [area, setArea] = useState({ w: width, h: 0 });
   // Pod heights are measured, but kept as *high-water marks*: a pod grows and
   // shrinks as bet chips and "Folded" tags come and go, and the community lane
-  // is derived from them — so taking the running maximum is what stops the board
+  // is derived from them, so taking the running maximum is what stops the board
   // and pot drifting up and down mid-hand.
   const [podH, setPodH] = useState(78);
   const [heroH, setHeroH] = useState(96);
@@ -322,16 +343,42 @@ export function TableScreen({ navigation, route }: Props) {
     Object.values(emoteTimers.current).forEach(clearTimeout);
   }, []);
 
-  const human = state.players.find((p) => p.id === localPlayerId)
-    ?? state.players.find((p) => p.id === HUMAN_ID)
-    ?? state.players[0]!;
-  const current = state.players[state.currentPlayerIndex];
+  /**
+   * Whether the settled hand on screen still has board left to deal.
+   *
+   * `runningOut` drives the pacing; `handOver` stays the engine's own answer,
+   * so anything that must not run after the hand ends (bots, the turn timer)
+   * keeps checking that rather than the presentational `isShowdown` below.
+   */
+  const handOver = state.street === 'showdown';
+  const runningOut = isRunningOut(state, revealedBoard);
+
+  /**
+   * The hand the felt draws.
+   *
+   * While a board is running out this is the hand as it stood with the chips in
+   * the middle and only the streets dealt so far showing, so the seats, the pot
+   * and the hand hint all stay honest instead of giving the result away three
+   * cards early. Every other read below is derived from it, which is what keeps
+   * the whole felt consistent with itself.
+   */
+  const felt = useMemo(
+    () => (runningOut ? runoutFelt(state, revealedBoard) : state),
+    [state, runningOut, revealedBoard],
+  );
+
+  const human = felt.players.find((p) => p.id === localPlayerId)
+    ?? felt.players.find((p) => p.id === HUMAN_ID)
+    ?? felt.players[0]!;
+  const current = felt.players[felt.currentPlayerIndex];
   const isAwaitingOnlineState = !!roomCode && firebaseOnline && !onlineSyncActive;
-  const isHumanTurn = current?.id === human?.id && state.street !== 'showdown' && !isAwaitingOnlineState;
-  const isShowdown = state.street === 'showdown';
+  const isHumanTurn = current?.id === human?.id && !handOver && !isAwaitingOnlineState;
+  // Presentational: true only once the run-out has finished and the result has
+  // been held back for its beat.
+  const isShowdown = handOver && resultsOpen;
   const legal = useMemo(() => (isHumanTurn && human ? legalActions(state, human.id) : null), [state, isHumanTurn, human]);
-  const displayedPot = displayedPotAmount(state);
-  const wageringPot = totalCommittedChips(state);
+  const displayedPot = displayedPotAmount(felt);
+  const wageringPot = totalCommittedChips(felt);
 
   // Track when the current turn's countdown began so leaving/resuming carries
   // over the remaining time instead of resetting the timer to full.
@@ -346,13 +393,33 @@ export function TableScreen({ navigation, route }: Props) {
     }
   }, [turnKey]);
 
-  const humanWon = isShowdown && state.winners.some((w) => w.playerId === human.id && w.amount > 0);
-  const remainingAtEnd = state.players.filter((p) => !p.folded && !p.sittingOut).length;
+  const humanWon = isShowdown && felt.winners.some((w) => w.playerId === human.id && w.amount > 0);
+  const remainingAtEnd = felt.players.filter((p) => !p.folded && !p.sittingOut).length;
 
+  /**
+   * Whether the hands still in the pot are lying face up on the felt.
+   *
+   * Turning them up is what gives a run-out its tension: you can see what each
+   * player is holding, so every card that lands means something before the
+   * result says so.
+   */
+  const handsTabled = tabledHand && remainingAtEnd > 1;
+
+  /**
+   * What the table is waiting on while a board runs out, or null when it is not
+   * running one. Covers the beat after the river too, which is still part of the
+   * wait even though there are no cards left to deal.
+   */
+  const runoutStatus = runningOut || (handOver && tabledHand)
+    ? runoutLabel(revealedBoard, state.board.length)
+    : null;
+
+  // Reads the felt's board, so during a run-out it climbs with each street the
+  // player is watching land rather than jumping straight to the final hand.
   const handHint = useMemo(() => {
     if (human.holeCards.length < 2 || human.folded) return null;
     try {
-      const evalCards = [...human.holeCards, ...state.board];
+      const evalCards = [...human.holeCards, ...felt.board];
       if (evalCards.length < 5) return null;
       return handName(evaluateHand(evalCards).category);
     } catch (error) {
@@ -362,38 +429,42 @@ export function TableScreen({ navigation, route }: Props) {
       }
       return null;
     }
-  }, [human.holeCards, human.folded, state.board]);
+  }, [human.holeCards, human.folded, felt.board]);
 
   // The exact 5 cards that make up the winning hand(s), to highlight at showdown.
   const winningCardKeys = useMemo(() => {
     const keys = new Set<string>();
     if (!isShowdown) return keys;
-    for (const w of state.winners) {
+    for (const w of felt.winners) {
       w.hand?.cards?.forEach((c) => keys.add(`${c.rank}${c.suit}`));
     }
     return keys;
-  }, [isShowdown, state.winners]);
+  }, [isShowdown, felt.winners]);
 
   // Whether the human's cards are visible to the table at showdown.
   // Mucking is the default: you only ever expose your hand by explicitly tapping
   // "Show cards" (or by turning Auto-muck off, which tables a winning hand).
-  const humanCardsShown = isShowdown
-    ? reveal === 'show' || (reveal === 'auto' && !settings.autoMuck && humanWon)
-    : true;
+  // A hand that was turned up for a run-out is already public, and auto-muck
+  // cannot put it back.
+  const humanCardsShown = handsTabled && !human.folded
+    ? true
+    : isShowdown
+      ? reveal === 'show' || (reveal === 'auto' && !settings.autoMuck && humanWon)
+      : true;
 
   /**
    * The hand that gets laid out in the middle at showdown: the winner's two hole
    * cards, which are flipped, lifted and pushed across to join the board so all
    * seven cards are on show and the best five can be ringed.
    *
-   * Null when the pot was won without a showdown (everybody folded) — there is
+   * Null when the pot was won without a showdown (everybody folded): there is
    * no hand to lay out, and the winner is entitled to keep it hidden.
    */
   const showdownHand = useMemo(() => {
     if (!isShowdown) return null;
-    const w = state.winners.find((x) => x.hand?.cards?.length);
+    const w = felt.winners.find((x) => x.hand?.cards?.length);
     if (!w) return null;
-    const p = state.players.find((pp) => pp.id === w.playerId);
+    const p = felt.players.find((pp) => pp.id === w.playerId);
     if (!p || p.holeCards.length < 2) return null;
     if (p.id === human.id && !humanCardsShown) return null;
     return {
@@ -402,7 +473,7 @@ export function TableScreen({ navigation, route }: Props) {
       hole: p.holeCards.slice(0, 2),
       label: handName(w.hand!.category),
     };
-  }, [isShowdown, state.winners, state.players, humanCardsShown]);
+  }, [isShowdown, felt.winners, felt.players, humanCardsShown]);
 
   const actionSound = (action: PlayerAction) => {
     if (action === 'fold') sound.play('fold');
@@ -421,7 +492,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   const onHumanAction = (action: PlayerAction, amount?: number) => {
     if (action === 'fold' && settings.confirmFoldWhenCheckAvailable && legal?.actions.includes('check')) {
-      Alert.alert('Fold this hand?', 'You can check for free — are you sure you want to fold?', [
+      Alert.alert('Fold this hand?', 'You can check for free. Are you sure you want to fold?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Fold', style: 'destructive', onPress: () => doHumanAction(action, amount) },
       ]);
@@ -485,7 +556,7 @@ export function TableScreen({ navigation, route }: Props) {
   };
 
   const onTimerExpire = useCallback(() => {
-    if (isShowdown) return;
+    if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
     if (!actor) return;
     if (actor.id === human.id) {
@@ -497,7 +568,7 @@ export function TableScreen({ navigation, route }: Props) {
       const decision = decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
       step(decision.action, decision.amount, actor.id);
     }
-  }, [isShowdown, state, legal, botDiff, settings.difficulty, step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [handOver, state, legal, botDiff, settings.difficulty, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentActorName = current?.id === human.id
     ? 'You'
@@ -518,10 +589,61 @@ export function TableScreen({ navigation, route }: Props) {
     });
   };
 
+  /**
+   * Walk the felt through a board the engine has already finished dealing.
+   *
+   * When the last player who could act goes all in, the engine deals the rest of
+   * the board and settles the pot in one step, so the table would otherwise get
+   * the flop, turn, river and the winner in a single frame. This holds the
+   * remaining streets back and lets them land one at a time, then waits a beat
+   * more before the result is allowed on screen: the cards get to decide the
+   * hand in front of the player rather than behind them.
+   *
+   * Outside a run-out it just keeps the felt in step with the engine, which is
+   * what every normally dealt street and every new hand goes through.
+   */
   useEffect(() => {
-    if (state.board.length > prevBoard.current) sound.play('deal');
-    prevBoard.current = state.board.length;
-  }, [state.board.length]);
+    const action = runoutAction({
+      handOver,
+      animationsOff: animsOff,
+      revealed: revealedBoard,
+      boardLength: state.board.length,
+      resultsOpen,
+      tabled: tabledHand,
+    });
+
+    switch (action.kind) {
+      case 'reset':
+        if (revealedBoard !== action.revealed) setRevealedBoard(action.revealed);
+        if (resultsOpen) setResultsOpen(false);
+        if (tabledHand) setTabledHand(false);
+        return undefined;
+      case 'settle':
+        if (revealedBoard !== action.revealed) setRevealedBoard(action.revealed);
+        if (!resultsOpen) setResultsOpen(true);
+        return undefined;
+      case 'deal': {
+        const { step } = action;
+        if (!tabledHand) setTabledHand(true);
+        sound.play(step.cue);
+        const timer = setTimeout(() => setRevealedBoard(step.revealed), step.delayMs);
+        return () => clearTimeout(timer);
+      }
+      case 'result': {
+        const timer = setTimeout(() => setResultsOpen(true), action.delayMs);
+        return () => clearTimeout(timer);
+      }
+      default:
+        return undefined;
+    }
+  }, [handOver, animsOff, revealedBoard, state.board.length, resultsOpen, tabledHand]);
+
+  // Follows the felt rather than the engine, so during a run-out each street is
+  // dealt with a sound as it lands instead of all five at once.
+  useEffect(() => {
+    if (revealedBoard > prevBoard.current) sound.play('deal');
+    prevBoard.current = revealedBoard;
+  }, [revealedBoard]);
 
   useEffect(() => {
     if (isHumanTurn) sound.play('turn');
@@ -560,7 +682,7 @@ export function TableScreen({ navigation, route }: Props) {
    * Flush a save the moment the table goes away.
    *
    * The debounced save above stamps `savedAt` ~600ms after a turn begins, then
-   * never again while you sit and think — so the "time already spent on this
+   * never again while you sit and think, so the "time already spent on this
    * turn" it recorded was always ~600ms and the countdown restarted from full on
    * resume. Writing once more on unmount stamps `savedAt` at the instant you
    * actually left, which is what makes the timer pick up where it was.
@@ -582,7 +704,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   // Drive bots on their turn.
   useEffect(() => {
-    if (isShowdown) return;
+    if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
     if (roomCode && firebaseOnline) return;
     if (!actor || actor.id === human.id || !actor.isBot) return;
@@ -704,13 +826,13 @@ export function TableScreen({ navigation, route }: Props) {
       return;
     }
 
-    Alert.alert('Leave table?', 'Your game is saved — you can resume it from the home screen.', [
+    Alert.alert('Leave table?', 'Your game is saved. You can resume it from the home screen.', [
       { text: 'Stay', style: 'cancel' },
       { text: 'Leave', style: 'destructive', onPress: () => navigation.replace('Home') },
     ]);
   };
 
-  const opponents = state.players.filter((p) => p.id !== human.id);
+  const opponents = felt.players.filter((p) => p.id !== human.id);
   const reportablePlayers = opponents.filter((p) => !p.isBot && p.id !== HUMAN_ID);
   const dealerId = state.players[state.dealerIndex]?.id;
   const cardSize = width < 380 ? 46 : 52;
@@ -768,8 +890,8 @@ export function TableScreen({ navigation, route }: Props) {
   // A subtle in-game reaction for each Pal (uses the expressions they support).
   const reactionFor = (pid: string): 'happy' | 'sad' | 'think' | undefined => {
     if (isShowdown) {
-      if (state.winners.some((w) => w.playerId === pid && w.amount > 0)) return 'happy';
-      const pl = state.players.find((p) => p.id === pid);
+      if (felt.winners.some((w) => w.playerId === pid && w.amount > 0)) return 'happy';
+      const pl = felt.players.find((p) => p.id === pid);
       if (pl?.folded) return 'sad';
       return undefined;
     }
@@ -779,7 +901,7 @@ export function TableScreen({ navigation, route }: Props) {
   // Opponents sit high on the felt's top arc, hugging the rail, so their pods
   // (name + bet chip) always clear the community-card lane below them. The felt
   // is narrower than 5 board cards + two side pods, so the side seats can never
-  // sit *beside* the board — they must sit *above* it, which this arc ensures.
+  // sit *beside* the board; they must sit *above* it, which this arc ensures.
   /**
    * Avatar size scales with how crowded the table is: heads-up there is plenty
    * of felt, so faces can be large and readable; at a full ring they must shrink
@@ -805,13 +927,13 @@ export function TableScreen({ navigation, route }: Props) {
   /**
    * The community-card lane: the band of felt between the lowest seat pod and
    * the hero's pod. Pod heights are tracked as high-water marks (see `setPodH`)
-   * so the lane never jumps when a bet chip or "Folded" tag comes and goes —
+   * so the lane never jumps when a bet chip or "Folded" tag comes and goes,
    * the table has to stay put between "your turn" and "hand over".
    *
    * The top is taken from where the pods *actually* sit rather than from the
    * arc formula, because `seatPos` clamps pods to the top of the felt. Heads-up
    * the clamp bites hard, and deriving the lane from the unclamped arc threw
-   * away ~25pt of felt — enough that the board and pot overflowed the lane and
+   * away ~25pt of felt, enough that the board and pot overflowed the lane and
    * slid underneath the hero, which is how the pot ended up unreadable.
    */
   const lowestSeatTop = opponents.length
@@ -832,12 +954,12 @@ export function TableScreen({ navigation, route }: Props) {
   }, [state.players, state.dealerIndex]);
   const dealDelay = (playerId: string, cardIndex: number) =>
     ((cardIndex * state.players.length) + (dealOrder[playerId] ?? 0)) * DEAL_STEP;
-  /** Middle of the felt — where the dealer pitches cards from. */
+  /** Middle of the felt, where the dealer pitches cards from. */
   const tableH = stageH;
   const dealOrigin = { x: area.w / 2, y: stageH * 0.45 };
   // The hand a resumed game comes back to is already in progress, so it should
   // simply be there rather than being pitched across the felt again. Every hand
-  // dealt *after* that is a real deal and gets the real animation — gating on
+  // dealt *after* that is a real deal and gets the real animation, gating on
   // `resuming` alone killed the deal for the rest of the session, which is a
   // long time to go without one.
   const restoredHand = useRef(restoredDealHandNumber(resuming, state.handNumber));
@@ -858,7 +980,7 @@ export function TableScreen({ navigation, route }: Props) {
    * The board is also capped by how tall the lane is, not just how wide it is.
    * Sizing on width alone let the row grow past the bottom of the lane, and
    * since the hero pod is drawn over the felt the overflow simply vanished
-   * behind it — taking the pot with it. Fitting the height means the pot always
+   * behind it, taking the pot with it. Fitting the height means the pot always
    * has somewhere to sit.
    */
   const POT_BLOCK_H = 40; // pot pill plus the gap above it
@@ -883,8 +1005,8 @@ export function TableScreen({ navigation, route }: Props) {
     const idx = opponents.findIndex((p) => p.id === showdownHand.playerId);
     if (idx < 0) return { x: area.w / 2, y: Math.max(0, stageH - heroH / 2) };
     const pos = seatPos(idx, opponents.length);
-    // Beside the avatar rather than on top of it — squarely over the pod the
-    // grown cards hide the face of the player who just won — and nudged toward
+    // Beside the avatar rather than on top of it, squarely over the pod the
+    // grown cards hide the face of the player who just won, and nudged toward
     // the middle, which is where they're headed anyway.
     const cx = pos.left + SEAT_W / 2;
     const inward = cx < area.w / 2 ? 18 : -18;
@@ -902,7 +1024,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   /**
    * Community cards are pitched in from the dealer's spot like the hole cards,
-   * rather than fading in on the spot. They arrive already face-up (`noFlip`) —
+   * rather than fading in on the spot. They arrive already face-up (`noFlip`),
    * a dealer turns the flop as it's placed, and a mid-air flip here reads as the
    * board "changing" rather than being dealt.
    */
@@ -920,16 +1042,16 @@ export function TableScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (animsOff) {
-      chipMotionFrom.current = state;
+      chipMotionFrom.current = felt;
       setChipFlights((flights) => (flights.length > 0 ? [] : flights));
       return;
     }
     if (area.h <= 0) return;
 
     const prev = chipMotionFrom.current;
-    if (prev === state) return;
-    const events = prev ? chipMotionEvents(prev, state) : resuming ? [] : chipMotionEvents(null, state);
-    chipMotionFrom.current = state;
+    if (prev === felt) return;
+    const events = prev ? chipMotionEvents(prev, felt) : resuming ? [] : chipMotionEvents(null, felt);
+    chipMotionFrom.current = felt;
     if (events.length === 0) return;
 
     const potPoint = potChipPoint({ areaWidth: area.w, laneTop, boardBox });
@@ -978,7 +1100,7 @@ export function TableScreen({ navigation, route }: Props) {
     seatPos,
     SEAT_W,
     stageH,
-    state,
+    felt,
   ]);
 
   return (
@@ -1013,7 +1135,7 @@ export function TableScreen({ navigation, route }: Props) {
             </Pressable>
           ) : null}
           {settings.showLiveStats && (
-            <Pressable onPress={() => { sound.play('tap'); setStatsOpen(true); }} style={[styles.iconBtn, shadows.soft]} hitSlop={8}>
+            <Pressable onPress={() => { sound.play('tap'); setStatsOpen(true); }} style={[styles.iconBtn, shadows.soft]} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open live stats">
               <StatsIcon size={22} color={colors.blueLight} />
             </Pressable>
           )}
@@ -1025,11 +1147,11 @@ export function TableScreen({ navigation, route }: Props) {
           <Text style={styles.friendsBannerText}>
             {firebaseOnline
               ? room?.status === 'ended'
-                ? `Room ${roomCode} ended — host disconnected or left`
+                ? `Room ${roomCode} ended, host disconnected or left`
                 : onlineSyncActive
                   ? `Room ${roomCode} · live synced table`
                   : `Room ${roomCode} · connecting to live table…`
-              : `Room ${roomCode} · practice vs bots — live friend play needs Firebase setup`}
+              : `Room ${roomCode} · practice vs bots, live friend play needs Firebase setup`}
           </Text>
         </View>
       )}
@@ -1075,7 +1197,7 @@ export function TableScreen({ navigation, route }: Props) {
                   </View>
                 );
               }
-              const card = state.board[i];
+              const card = felt.board[i];
               if (!card) {
                 return (
                   <View key={i} style={[styles.boardCardWrap, layingOut && styles.boardCardTight]}>
@@ -1155,10 +1277,12 @@ export function TableScreen({ navigation, route }: Props) {
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
                 showBet={!isShowdown}
-                showCards={isShowdown && !p.folded && remainingAtEnd > 1}
+                showCards={(isShowdown || handsTabled) && !p.folded && remainingAtEnd > 1}
+                back={settings.cardBack}
+                showName={settings.showAvatarNames}
                 handOff={showdownHand?.playerId === p.id}
                 avatarSize={avatarSize}
-                won={isShowdown && state.winners.some((w) => w.playerId === p.id && w.amount > 0)}
+                won={isShowdown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
                 reaction={reactionFor(p.id)}
                 idleMotion={settings.avatarIdleMotion && !animsOff}
                 emote={visibleEmote(p.id)}
@@ -1182,6 +1306,8 @@ export function TableScreen({ navigation, route }: Props) {
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
               showBet={!isShowdown}
+              back={settings.cardBack}
+              showName={settings.showAvatarNames}
               won={humanWon}
               reaction={reactionFor(human.id)}
               idleMotion={settings.avatarIdleMotion && !animsOff}
@@ -1223,8 +1349,9 @@ export function TableScreen({ navigation, route }: Props) {
             // the cards shrinking just read as the hand being taken away.
             const cardW = width < 380 ? 76 : 86;
             // Out of the hand, or at a showdown where the hand is tabled, the
-            // card is simply open - there is nothing left to protect.
-            const openAlways = isShowdown && humanCardsShown;
+            // card is simply open - there is nothing left to protect. A hand
+            // turned up for a run-out is open for the same reason, early.
+            const openAlways = (isShowdown || handsTabled) && humanCardsShown;
             return (
               <HoleCards
                 key={`h${state.handNumber}`}
@@ -1241,6 +1368,7 @@ export function TableScreen({ navigation, route }: Props) {
                 forceOpen={openAlways && reveal !== 'show'}
                 // thrown down from the middle of the felt, which sits above this row
                 fromY={-(tableH * 0.5 + 40)}
+                back={settings.cardBack}
                 onPeek={() => sound.play('tap')}
               />
             );
@@ -1309,7 +1437,7 @@ export function TableScreen({ navigation, route }: Props) {
             )}
 
             {/* Mucking is the default, so this is a single opt-in toggle rather
-                than a two-button choice — it also keeps the panel short enough
+                than a two-button choice, it also keeps the panel short enough
                 not to slice through the hole cards above it. */}
             <View style={styles.muckRow}>
               <Pressable
@@ -1364,7 +1492,9 @@ export function TableScreen({ navigation, route }: Props) {
                 label={`${currentActorName}'s turn`}
               />
             ) : null}
-            <Text style={styles.waitingText}>{current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…'}</Text>
+            <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText]}>
+              {runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
+            </Text>
             {human.folded && !isShowdown && (
               <Text style={styles.foldedNote}>You folded this hand</Text>
             )}
@@ -1412,7 +1542,7 @@ const styles = StyleSheet.create({
   friendsBannerText: { fontFamily: fonts.medium, fontSize: 11, color: colors.onDarkSoft, textAlign: 'center' },
   tableArea: { marginTop: spacing.xs, marginHorizontal: spacing.sm, position: 'relative' },
   feltOval: { position: 'absolute', top: 8, left: 8, right: 8, bottom: 8, borderRadius: 200, borderWidth: 10, borderColor: colors.feltRail, overflow: 'hidden' },
-  // top-lit sliver along the inside of the rail — the single light source
+  // top-lit sliver along the inside of the rail, the single light source
   railHighlight: { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', borderTopLeftRadius: 190, borderTopRightRadius: 190, backgroundColor: colors.feltRailEdge, opacity: 0.35 },
   // inner shadow where the felt meets the rail, so the surface reads as recessed
   feltInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 190, borderWidth: 14, borderColor: colors.feltInnerShadow, opacity: 0.55 },
@@ -1424,8 +1554,8 @@ const styles = StyleSheet.create({
   humanSeatAbs: { position: 'absolute', left: 0, right: 0, bottom: 2, alignItems: 'center' },
   board: { flexDirection: 'row', alignItems: 'center' },
   // The board always occupies five slots so the cards never jump sideways as
-  // streets are dealt. The empty ones therefore have to be *visible* — as shallow
-  // recesses in the cloth — or a 3- or 4-card board reads as being off-centre.
+  // streets are dealt. The empty ones therefore have to be *visible*, as shallow
+  // recesses in the cloth, or a 3- or 4-card board reads as being off-centre.
   cardSlot: { borderRadius: radii.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', backgroundColor: 'rgba(0,0,0,0.22)' },
   handNamePill: { backgroundColor: 'rgba(214,180,92,0.18)', borderWidth: 1, borderColor: colors.gold, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   handNameText: { ...type.label, color: colors.gold },
@@ -1438,6 +1568,9 @@ const styles = StyleSheet.create({
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },
   waitingText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDarkSoft },
+  // A run-out is the loudest moment in the hand, so its status line is the one
+  // thing in this row that is allowed to shout.
+  runoutText: { fontFamily: fonts.bold, fontSize: 17, color: colors.onDark, letterSpacing: 0.3 },
   foldedNote: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkMuted, marginTop: spacing.xs },
   resultCard: { position: 'absolute', left: 0, right: 0, bottom: spacing.sm, marginHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.surfaceBorder, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, zIndex: 40, ...shadows.panel },
   resultHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },

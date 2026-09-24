@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { ClipPath, Defs, G, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { CardFaceContent, PlayingCard } from './PlayingCard';
-import { cardBackColors, cardBackGeometry } from './CardBack';
+import { cardBackGeometry, cardBackTheme, type CardBackVariant } from './CardBack';
 import { motion, easings, colors, radii } from '../theme/theme';
 import type { Suit } from '../game/cardFace';
 import type { Affine } from '../game/peelFold';
@@ -33,8 +33,8 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedLine = Animated.createAnimatedComponent(Line);
 const AnimatedSvgText = Animated.createAnimatedComponent(SvgText);
 /**
- * `matrix` is a real prop on the native group — `G.setNativeProps` looks for it
- * first and skips its transform parser when it finds it — but react-native-svg
+ * `matrix` is a real prop on the native group, `G.setNativeProps` looks for it
+ * first and skips its transform parser when it finds it, but react-native-svg
  * only declares it on that method's signature, not on `GProps`. Widening the
  * type here is what lets the fold be driven by numbers instead of a string the
  * library cannot read back.
@@ -87,13 +87,15 @@ export interface PeekCardProps {
   forceOpen?: boolean;
   /** Turn the card over to the table: peel it open, then rotate it to face them. */
   showToTable?: boolean;
+  /** Which card back design to print, from Settings. */
+  variant?: CardBackVariant;
 }
 
 /**
  * A hole card you lift to look at.
  *
  * The card is dealt face up, lays itself down after a beat, and from then on is
- * only readable while you physically peel it — which is how a real player
+ * only readable while you physically peel it, which is how a real player
  * protects a hand, and means the default state is always hidden.
  *
  * The peel models what actually happens when you lift part of a card, and that
@@ -106,7 +108,7 @@ export interface PeekCardProps {
  *
  * Where the crease goes is decided by `peelFold` from where you grabbed and
  * where you dragged it, so a corner gives a dog-ear, an edge gives a lifted
- * strip, and a side folds inwards — all out of one drag. The version this
+ * strip, and a side folds inwards, all out of one drag. The version this
  * replaced could only ever fold one fixed corner, at 45°.
  *
  * RN cannot clip a view to a diagonal, so the whole card is drawn as SVG while
@@ -125,11 +127,13 @@ function PeekCardInner({
   showOnDealMs = 1400,
   forceOpen = false,
   showToTable = false,
+  variant,
 }: PeekCardProps) {
   const h = size * 1.42;
   const back = useMemo(() => cardBackGeometry(size), [size]);
+  const backTheme = cardBackTheme(variant);
   // Gradient ids share one namespace across the whole document, so each card
-  // needs its own — and it must be *stable*. Deriving it from the card's size
+  // needs its own, and it must be *stable*. Deriving it from the card's size
   // looked like cheap insurance and was the opposite: the hole cards shrink
   // when the hand ends, the id changed with them, and for that frame the fills
   // referenced an id that no longer existed. react-native-svg does not leave an
@@ -196,7 +200,7 @@ function PeekCardInner({
    * Everything the fold needs to draw, worked out once per frame.
    *
    * The shapes all derive from the same crease, so computing it separately
-   * inside each animated prop would repeat the whole clip eight times a frame —
+   * inside each animated prop would repeat the whole clip eight times a frame,
    * and, worse, would let the pieces disagree by a rounding error and show
    * hairline gaps along the bend.
    */
@@ -271,7 +275,7 @@ function PeekCardInner({
   // They are siblings rather than the peel being nested inside the face's
   // rotation and counter-rotated by a further 180°. That nesting is what the
   // previous version did, and on device the two rotations did not cancel: the
-  // whole peel — including the value printed on the flap — rendered mirrored.
+  // whole peel, including the value printed on the flap, rendered mirrored.
   // It went unnoticed for so long because the only thing ever drawn on that
   // layer was the card back, whose every mark happens to be symmetric.
   const faceStyle = useAnimatedStyle(() => ({
@@ -299,12 +303,12 @@ function PeekCardInner({
   }));
   const markProps = useAnimatedProps(() => ({ opacity: frame.value.markOpacity }));
   /**
-   * The fold's transform — and nothing at all while nothing is folded.
+   * The fold's transform, and nothing at all while nothing is folded.
    *
    * `matrix`, not `transform`, and that is the whole fix for a stream of parse
    * errors while peeling. react-native-svg animates a group through
    * `setNativeProps`, and `G`'s implementation runs its JavaScript transform
-   * parser on every frame — which cannot read the only spelling the native side
+   * parser on every frame, which cannot read the only spelling the native side
    * accepts. Handed a `matrix` prop instead, it skips the parser entirely and
    * passes the six numbers straight through.
    *
@@ -336,9 +340,9 @@ function PeekCardInner({
                 y2={h}
                 gradientUnits="userSpaceOnUse"
               >
-                <Stop offset="0" stopColor={colors.cardBackEdge} />
-                <Stop offset="0.5" stopColor={colors.cardBack} />
-                <Stop offset="1" stopColor={colors.cardBackDeep} />
+                <Stop offset="0" stopColor={backTheme.gradient[0]} />
+                <Stop offset="0.5" stopColor={backTheme.gradient[1]} />
+                <Stop offset="1" stopColor={backTheme.gradient[2]} />
               </LinearGradient>
               {/* The lifted piece is card stock seen from the front and tilted
                   toward the light, so it is paper-white and brightest furthest
@@ -356,8 +360,8 @@ function PeekCardInner({
                 <Stop offset="1" stopColor="#DFE6ED" />
               </LinearGradient>
               {/* The card's own outline. Every shape the fold draws is built
-                  from a plain rectangle — a polygon has no notion of a rounded
-                  corner — so without this the back of your own cards came out
+                  from a plain rectangle, a polygon has no notion of a rounded
+                  corner, so without this the back of your own cards came out
                   square while the opponents', drawn straight from `CardBack`,
                   were rounded. */}
               <ClipPath id={`${gradId}-card`}>
@@ -374,21 +378,21 @@ function PeekCardInner({
             <AnimatedPath
               animatedProps={flatProps}
               fill={`url(#${gradId}-back)`}
-              stroke={cardBackColors.rim}
+              stroke={backTheme.rim}
               strokeWidth={back.rim}
               strokeLinejoin="round"
             />
             <AnimatedPath
               animatedProps={panelProps}
               fill="none"
-              stroke={cardBackColors.panel}
+              stroke={backTheme.panel}
               strokeWidth={back.panel.stroke}
               strokeLinejoin="round"
             />
             <AnimatedPath
               animatedProps={emblemProps}
-              fill={cardBackColors.emblemFill}
-              stroke={cardBackColors.emblemStroke}
+              fill={backTheme.emblemFill}
+              stroke={backTheme.emblemStroke}
               strokeWidth={back.emblem.stroke}
             />
             <AnimatedSvgText
@@ -396,10 +400,10 @@ function PeekCardInner({
               x={back.emblem.cx}
               y={back.emblem.baseline}
               fontSize={back.emblem.fontSize}
-              fill={cardBackColors.mark}
+              fill={backTheme.mark}
               textAnchor="middle"
             >
-              ♠
+              {backTheme.glyph}
             </AnimatedSvgText>
 
             {/* Shadow on the table, where the card no longer is. */}
@@ -441,8 +445,8 @@ function PeekCardInner({
  * Memoised, and load-bearing rather than an optimisation.
  *
  * The fold runs entirely on the UI thread, so a card being peeled does not need
- * React at all. But every ordinary re-render of the table — the turn timer
- * alone is one a second — would otherwise re-render this card, and each render
+ * React at all. But every ordinary re-render of the table, the turn timer
+ * alone is one a second, would otherwise re-render this card, and each render
  * hands the group's current transform to react-native-svg's JavaScript parser,
  * which cannot read the only spelling the native side accepts. That logs an
  * error per render for as long as a finger is down. Every prop here is a

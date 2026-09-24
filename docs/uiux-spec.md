@@ -1,8 +1,8 @@
-# UI/UX Design Specification — Wii-Style Mobile Poker
+# UI/UX Design Specification: Wii-Style Mobile Poker
 
 **Stack:** React Native + Expo (SDK 57) · react-native-svg · react-native-reanimated · moti · expo-haptics · @expo-google-fonts
 **Design target:** September 2026 modern-mobile craft × Nintendo **Wii Menu / Mii** visual identity.
-**Principle:** Bright, friendly, tactile, glossy — never flat "AI slop." Every value below is codeable.
+**Principle:** Bright, friendly, tactile, glossy, never flat "AI slop." Every value below is codeable.
 
 ---
 
@@ -10,15 +10,15 @@
 
 What reads as *current & premium* in 2026:
 
-- **Spatial depth via soft, layered shadows** — not one hard drop shadow. Stack a tight contact shadow + a wide ambient shadow. Ambient shadows are tinted with the surface's own hue (e.g. blue-tinted shadow under a blue tile), never pure `#000`.
-- **Tactile / physical feel** — surfaces look pressable: subtle top gloss, 1px inner highlight, and a press-state that *insets* (scale `0.96`, shadow shrinks, brightness `−4%`). Motion mimics real mass.
-- **Spring-based motion, not linear timing** — everything settles with a spring. Durations are *emergent*, not fixed. Use `withSpring`, reserve `withTiming` for opacity/color only.
-- **Generous spacing & strong typographic hierarchy** — 8pt spacing grid, big display sizes (28–40pt) paired with calm body (16pt). White space is a feature, not wasted room.
-- **Accessible contrast & tap targets** — body text ≥ 4.5:1, large text ≥ 3:1. Minimum interactive target **44×44pt** (56pt for primary actions). Never rely on color alone (win/fold also use icon + label).
-- **Reduced-motion support** — honor `AccessibilityInfo.isReduceMotionEnabled()`; swap springs for 120ms fades and disable parallax/confetti.
-- **Dark mode as a real design, not an inversion** — Wii is a light-first identity, so dark mode is a *dim* variant (deep slate `#12171F` bg, tiles stay glossy but desaturated). Ship both, driven by the theme object.
-- **Micro-interactions** — button "squish," chip count roll-up counters, tile hover-lift on focus, card flip on reveal, toast slide + settle.
-- **Haptics** — pair key state changes with `expo-haptics`. Physicality sells the Wii feel.
+- **Spatial depth via soft, layered shadows**, not one hard drop shadow. Stack a tight contact shadow + a wide ambient shadow. Ambient shadows are tinted with the surface's own hue (e.g. blue-tinted shadow under a blue tile), never pure `#000`.
+- **Tactile / physical feel**, surfaces look pressable: subtle top gloss, 1px inner highlight, and a press-state that *insets* (scale `0.96`, shadow shrinks, brightness `−4%`). Motion mimics real mass.
+- **Spring-based motion, not linear timing**, everything settles with a spring. Durations are *emergent*, not fixed. Use `withSpring`, reserve `withTiming` for opacity/color only.
+- **Generous spacing & strong typographic hierarchy**, 8pt spacing grid, big display sizes (28–40pt) paired with calm body (16pt). White space is a feature, not wasted room.
+- **Accessible contrast & tap targets**, body text ≥ 4.5:1, large text ≥ 3:1. Minimum interactive target **44×44pt** (56pt for primary actions). Never rely on color alone (win/fold also use icon + label).
+- **Reduced-motion support**, honor `AccessibilityInfo.isReduceMotionEnabled()`; swap springs for 120ms fades and disable parallax/confetti.
+- **Dark mode as a real design, not an inversion**, Wii is a light-first identity, so dark mode is a *dim* variant (deep slate `#12171F` bg, tiles stay glossy but desaturated). Ship both, driven by the theme object.
+- **Micro-interactions**, button "squish," chip count roll-up counters, tile hover-lift on focus, card flip on reveal, toast slide + settle.
+- **Haptics**, pair key state changes with `expo-haptics`. Physicality sells the Wii feel.
 
 ### Anti-patterns to AVOID (the "AI slop" tells)
 
@@ -26,7 +26,7 @@ What reads as *current & premium* in 2026:
 - ❌ Centered giant emoji as a substitute for real iconography/illustration.
 - ❌ Generic bootstrap/Material cards with 8px radius and `#00000029` shadow.
 - ❌ Low-contrast gray-on-gray text (`#999` on `#EEE`).
-- ❌ Over-rounded "pill everything" — pills only for buttons/tags, not containers.
+- ❌ Over-rounded "pill everything", pills only for buttons/tags, not containers.
 - ❌ Meaningless glassmorphism (blur with no depth logic).
 - ❌ Uniform 100% saturation neon; no gloss; no hierarchy; equal-weight everything.
 - ❌ Symmetric dead-centered layouts with no focal point.
@@ -39,10 +39,10 @@ Deconstructing the Wii Menu / Channels:
 
 - **Bright, near-white canvas** with a faint cool gradient (top slightly brighter than bottom).
 - **Glossy rounded-square channel tiles** (~`22px` radius) with a **thin gray border**, a **top gloss highlight** (upper half lighter), and a **soft ambient shadow**.
-- **Signature light-blue accent** — the Wii blue used on the round bottom button, selection glows, and links.
+- **Signature light-blue accent**, the Wii blue used on the round bottom button, selection glows, and links.
 - **Bottom bar** with the round blue **"Wii" button** flanked by smaller round pills (mail/settings analog).
 - **Soft ambient shadows** everywhere; nothing has a harsh edge.
-- Overall tone: **clean, friendly, confident** — lots of white, restrained color, playful gloss.
+- Overall tone: **clean, friendly, confident**, lots of white, restrained color, playful gloss.
 
 ### Exact Palette
 
@@ -84,26 +84,26 @@ For a **colored (blue) channel tile**, swap the base gradient to `#7FD4F5 → #2
 
 ## 3. Mii Character Design Language
 
-Mii avatars: **simple round head**, **pastel skin**, **big simple eyes**, **minimal mouth/brows**, sitting on a **flat pastel circle** background, all **clean vector**. No shading gradients on the face — flat fills with crisp edges.
+Mii avatars: **simple round head**, **pastel skin**, **big simple eyes**, **minimal mouth/brows**, sitting on a **flat pastel circle** background, all **clean vector**. No shading gradients on the face, flat fills with crisp edges.
 
 ### Procedural Mii SVG component (`react-native-svg`)
 
 Compose these layers inside an `<Svg viewBox="0 0 100 100">`:
 
-1. **Background circle** — `<Circle cx=50 cy=50 r=50 fill={bg} />` (pastel).
-2. **Head** — rounded shape. Offer 3 head shapes:
+1. **Background circle**, `<Circle cx=50 cy=50 r=50 fill={bg} />` (pastel).
+2. **Head**, rounded shape. Offer 3 head shapes:
    - `round`: `<Circle cx=50 cy=52 r=30 />`
    - `oval`: ellipse `rx=27 ry=32`
    - `square-round`: `<Rect x=22 y=24 width=56 height=58 rx=24 />`
-3. **Ears** — two small circles `r=5` at `x≈20/80, y≈54`, skin fill.
-4. **Hair** — a top cap path over the head (a filled arc); vary with 4 style paths (short, swoop, bun, bald=none).
-5. **Brows** — two short rounded rects, `width=10 height=3 rx=1.5`, at `y≈44`.
-6. **Eyes** — pick a style:
+3. **Ears**, two small circles `r=5` at `x≈20/80, y≈54`, skin fill.
+4. **Hair**, a top cap path over the head (a filled arc); vary with 4 style paths (short, swoop, bun, bald=none).
+5. **Brows**, two short rounded rects, `width=10 height=3 rx=1.5`, at `y≈44`.
+6. **Eyes**, pick a style:
    - `dot`: `<Circle r=4 />`
    - `oval`: ellipse `rx=3.5 ry=5`
    - `happy`: an upward arc `<Path d="M.. Q.." stroke fill=none />`
    Positioned at `x≈38/62, y≈52`.
-7. **Mouth** — pick: `smile` (quadratic arc), `neutral` (rounded rect), `open` (small filled ellipse), at `y≈66`.
+7. **Mouth**, pick: `smile` (quadratic arc), `neutral` (rounded rect), `open` (small filled ellipse), at `y≈66`.
 
 Keep strokes at `strokeWidth ≈ 2`, `strokeLinecap="round"`. Face features use `#2B2F36`; brows/hair use the hair color.
 
@@ -138,7 +138,7 @@ Same id ⇒ same Mii forever (stable avatars across sessions/devices).
 
 ## 4. Typography
 
-**Primary:** **Fredoka** (`@expo-google-fonts/fredoka`) — rounded, friendly, humanist; the closest free match to the soft Wii feel. Weights: `Fredoka_400Regular`, `Fredoka_500Medium`, `Fredoka_600SemiBold`, `Fredoka_700Bold`.
+**Primary:** **Fredoka** (`@expo-google-fonts/fredoka`), rounded, friendly, humanist; the closest free match to the soft Wii feel. Weights: `Fredoka_400Regular`, `Fredoka_500Medium`, `Fredoka_600SemiBold`, `Fredoka_700Bold`.
 **Alt if a softer/wider look is wanted:** Baloo 2 or Quicksand. Body-heavy screens can use **Nunito** for longer text comfort.
 **Numeric / chip counts:** **Nunito** tabular or **Space Grotesk / JetBrains Mono** (`@expo-google-fonts/jetbrains-mono`) for aligned digits in stacks and pots. Enable `fontVariant: ['tabular-nums']`.
 
@@ -177,7 +177,7 @@ export const springs = {
 
 ### Transitions
 
-- **Channel tiles (lobby):** staggered entrance — each tile `from {opacity:0, scale:0.8, translateY:12}` → `animate {opacity:1, scale:1, translateY:0}` with `springs.bouncy`, `delay = index * 45ms`. On press: `scale 0.96` + shadow shrink; on release: overshoot back via `springs.bouncy`.
+- **Channel tiles (lobby):** staggered entrance, each tile `from {opacity:0, scale:0.8, translateY:12}` → `animate {opacity:1, scale:1, translateY:0}` with `springs.bouncy`, `delay = index * 45ms`. On press: `scale 0.96` + shadow shrink; on release: overshoot back via `springs.bouncy`.
 - **Cards (panels/sheets):** slide-up + `springs.snappy`; exit fade+drop 120ms.
 - **PlayingCard reveal:** rotateY flip 0→180°, swap face at 90°, `springs.gentle`.
 - **Chip fly / pot:** animate chip `translate` along a slight arc to pot, `springs.chip`, then pot counter rolls up (animated number).
@@ -202,10 +202,10 @@ If `isReduceMotionEnabled`: replace springs with `withTiming(…, {duration: 120
 
 ## 6. Screen-by-Screen Visual Direction
 
-### (a) Home / Lobby — Wii-channel grid
+### (a) Home / Lobby: Wii-channel grid
 2-column grid of glossy `WiiChannelTile`s on Wii-white canvas with faint cool gradient. Each channel = a game mode / action (Play, Create Room, Join, Stats, Profile, Store). Tiles have icon/illustration in the top ~65% and a label strip below. Staggered bouncy entrance. **Bottom bar** pinned: round **Wii button** (blue, center) opens quick-menu; small round pills left/right (settings, notifications). Subtle horizontal "shelf" line behind tiles for that channel-shelf feel.
 
-### (b) Poker Table — Wii Sports felt, Wii chrome
+### (b) Poker Table: Wii Sports felt, Wii chrome
 Center **felt green** oval table (`#2E8B57` with `#1F6B41` vignette edge, faint radial light center). Seats around the arc, each a `WiiPanel` pod with a **MiiAvatar**, name, stack (tabular numerals), and a dealer button chip. Community cards centered on a subtle white rounded tray. Pot shown above cards in a gold pill. Action buttons (Fold/Check/Call/Raise) as glossy Wii pill buttons docked bottom; raise uses a slider in a Wii panel. Top-left round back button (Wii pill).
 
 ### (c) Create / Join Room
@@ -244,7 +244,7 @@ export const wiiChannelTile = {
 //   borderTopWidth 1, borderTopColor '#E1E7ED', Heading text #3A4650 centered.
 ```
 
-### WiiButton — glossy round + pill
+### WiiButton: glossy round + pill
 
 ```ts
 export const wiiButtonRound = {

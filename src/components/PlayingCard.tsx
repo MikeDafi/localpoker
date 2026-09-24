@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { colors, radii, shadows } from '../theme/theme';
-import { CardBack } from './CardBack';
+import { CardBack, type CardBackVariant } from './CardBack';
 import { courtArt } from '../game/courtArt';
 import {
   SUIT_PATH,
@@ -26,6 +26,8 @@ export interface PlayingCardProps {
   faceDown?: boolean;
   size?: number; // width in px
   dimmed?: boolean;
+  /** Which card back design to print when face down. */
+  back?: CardBackVariant;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -34,7 +36,7 @@ export interface PlayingCardProps {
  *
  * Separate from the card itself because the peel has to draw exactly this,
  * folded over. When the two were drawn from different code the lifted corner
- * showed a stand-in — a single large rank and suit — which is not what is on
+ * showed a stand-in, a single large rank and suit, which is not what is on
  * the card and so never looked like paper folding back. Anything added to a
  * card face now automatically appears on the fold as well.
  *
@@ -130,7 +132,7 @@ export function CardFaceContent({
  * outlines, so a ten has ten pips in the places a printed ten has them. The
  * version this replaced drew a single oversized suit symbol in the middle,
  * which meant every card of a suit was the same picture with a different corner
- * number — legible, but it did not look like a card, and at a glance you could
+ * number: legible, but it did not look like a card, and at a glance you could
  * not tell a seven from a three without reading.
  *
  * Drawn as SVG rather than nested views for the same reason the back is: one
@@ -138,7 +140,7 @@ export function CardFaceContent({
  * opponent's card up to an 86pt hole card, instead of a pile of size
  * thresholds that quietly switch detail off.
  */
-export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, corners }: PlayingCardProps) {
+export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, corners, back }: PlayingCardProps) {
   const g = useMemo(() => faceGeometry(size), [size]);
   const cardOpacity = dimmed ? 0.55 : 1;
 
@@ -147,7 +149,7 @@ export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, co
     // artwork as your 86pt hole card, just smaller.
     return (
       <View style={[styles.card, { width: g.w, height: g.h, opacity: cardOpacity }, shadows.soft, style]}>
-        <CardBack size={size} />
+        <CardBack size={size} variant={back} />
       </View>
     );
   }
@@ -165,7 +167,7 @@ export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, co
  * The middle of a jack, queen or king: the real thing.
  *
  * Court cards are the one part of a deck you cannot derive from a layout table
- * — they are illustrations, and a bad imitation of one looks far worse at 46pt
+ *, they are illustrations, and a bad imitation of one looks far worse at 46pt
  * than an honest abstraction. This draws the actual public-domain figures,
  * cropped to the central panel so the app's own corner index is the only index
  * on the card.
@@ -177,7 +179,7 @@ export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, co
  *
  * `meet` fits the figure inside its box without distorting it. The box is the
  * panel measured off the source deck, but those cards are 2:3 where these are
- * 1:1.42, so the height is what binds — a stretched king would be obvious.
+ * 1:1.42, so the height is what binds, a stretched king would be obvious.
  */
 function CourtFigure({
   geometry: g,

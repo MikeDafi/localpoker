@@ -44,7 +44,7 @@ export function CreateJoinScreen({ navigation }: Props) {
     } catch {}
   };
 
-  const startCreate = () => navigation.navigate('Lobby', { roomCode, host: true });
+  const startCreate = () => navigation.navigate('GameSetup', { mode: 'friends', roomCode });
   const startJoin = () => {
     if (joinCode.trim().length < 4) {
       Alert.alert('Invalid code', 'Enter the 6-character room code your friend shared.');
@@ -71,9 +71,9 @@ export function CreateJoinScreen({ navigation }: Props) {
               <Text style={styles.label}>Invite code</Text>
               <View style={styles.codeBox}><Text style={styles.code}>{roomCode}</Text></View>
               <WiiButton label="Share invite" variant="blue" size="md" fullWidth onPress={share} />
-              <Text style={styles.note}>Share this code, then open the lobby. Real friends join here — no bots are added to friends games.</Text>
+              <Text style={styles.note}>Share this code, then open the lobby. Real friends join here, no bots are added to friends games.</Text>
             </WiiPanel>
-            <WiiButton label="Open Lobby →" variant="green" size="lg" fullWidth onPress={startCreate} />
+            <WiiButton label="Set up table →" variant="green" size="lg" fullWidth onPress={startCreate} />
 
             <WiiPanel padding={16}>
               <Text style={styles.suggestTitle}>Invite friends</Text>

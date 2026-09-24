@@ -17,12 +17,12 @@ import {
   type RoomState, type RoomPlayer,
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
-import { DEFAULT_GAME_SETTINGS } from '../game/settings';
+import { DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
 export function LobbyScreen({ navigation, route }: Props) {
-  const { roomCode, host } = route.params;
+  const { roomCode, host, settings: hostSettings } = route.params;
   const { profile } = useApp();
   const online = isFirebaseConfigured();
 
@@ -38,7 +38,7 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   /**
    * Players are stored under their Firebase `auth.uid`, because that is what the
-   * database rules scope writes to — not the local `profile.id`. Own-row checks
+   * database rules scope writes to, not the local `profile.id`. Own-row checks
    * below must therefore compare against the uid, falling back to the local id
    * when running offline where no uid exists.
    */
@@ -48,11 +48,27 @@ export function LobbyScreen({ navigation, route }: Props) {
   const [status, setStatus] = useState<string>(online ? 'Connecting…' : 'Offline');
   const navigatedRef = useRef(false);
 
-  const goToTable = () => {
+  /**
+   * The table's rules come from the room, not from this device.
+   *
+   * The host chose them in Game Setup and they were written into the room, so
+   * reading them back is what makes every seat agree: a joiner used to be sent
+   * to the table with the built-in defaults while the engine ran the host's
+   * blinds, so the screen showed one game and the pot played another.
+   */
+  const goToTable = (current: RoomState | null) => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
+    let tableSettings = hostSettings ?? DEFAULT_GAME_SETTINGS;
+    if (current?.settingsJson) {
+      try {
+        tableSettings = normalizeSettings(JSON.parse(current.settingsJson) as Partial<typeof tableSettings>);
+      } catch {
+        // A corrupt room falls back to whatever this device already had.
+      }
+    }
     navigation.replace('Table', {
-      settings: DEFAULT_GAME_SETTINGS,
+      settings: tableSettings,
       seed: Date.now(),
       roomCode,
     });
@@ -67,7 +83,7 @@ export function LobbyScreen({ navigation, route }: Props) {
     let cancelled = false;
     (async () => {
       const res = host
-        ? await createRoom(roomCode, me, JSON.stringify(DEFAULT_GAME_SETTINGS))
+        ? await createRoom(roomCode, me, JSON.stringify(hostSettings ?? DEFAULT_GAME_SETTINGS))
         : await joinRoom(roomCode, me);
       if (cancelled) return;
       if (!res.ok) {
@@ -81,7 +97,7 @@ export function LobbyScreen({ navigation, route }: Props) {
         if (cancelled) return;
         setRoom(r);
         if (r?.status === 'playing' && r.publicState) {
-          goToTable();
+          goToTable(r);
         } else if (r?.status === 'ended') {
           setStatus('Room ended because the host disconnected or left.');
         }
@@ -119,7 +135,7 @@ export function LobbyScreen({ navigation, route }: Props) {
       Alert.alert('Could not start', res.reason || 'Try again in a moment.');
       return;
     }
-    goToTable();
+    goToTable(room);
   };
 
   return (
@@ -168,7 +184,7 @@ export function LobbyScreen({ navigation, route }: Props) {
             <Text style={styles.noteTitle}>Enable live play</Text>
             <Text style={styles.note}>
               Firebase config is wired. Set the Realtime Database rules from `database.rules.json` in the
-              Firebase console (or use test mode), then reopen this room — real friends will appear here.
+              Firebase console (or use test mode), then reopen this room, real friends will appear here.
               No bots are ever added to friends games.
             </Text>
           </WiiPanel>

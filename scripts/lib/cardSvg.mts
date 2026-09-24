@@ -2,7 +2,7 @@
  * The card face as an SVG string, for the design preview sheets.
  *
  * A second implementation of the face is a real risk, so it is written once
- * here and used by every preview — and it takes all of its geometry from
+ * here and used by every preview, and it takes all of its geometry from
  * `cardFace`, the module the app itself lays out from. Only the emission is
  * duplicated; every position, size and pip arrangement comes from the app.
  */
@@ -105,7 +105,7 @@ export function faceSvg(rank: number, suit: Suit, size: number, opts: FaceOption
  * Pad a sheet out to a square before writing it.
  *
  * `qlmanage`, the only rasteriser available here, ignores `viewBox` and renders
- * everything into a square — so a wide sheet comes out vertically stretched and
+ * everything into a square, so a wide sheet comes out vertically stretched and
  * every judgement made from it about proportion is wrong.
  */
 export function squareCanvas(w: number, h: number, bg: string, content: string): string {

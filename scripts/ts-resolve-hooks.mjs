@@ -4,7 +4,7 @@
  * Node requires an explicit extension on relative imports, while the app's
  * source (and Metro, and TypeScript) omit them. Rather than litter `.ts` across
  * real source files to suit a preview script, this hook fills the extension in
- * during resolution — so the design previews import exactly the modules the app
+ * during resolution, so the design previews import exactly the modules the app
  * ships, unmodified, and cannot drift from them.
  *
  * Used as: node --experimental-strip-types --import ./scripts/ts-resolve.mjs <script>

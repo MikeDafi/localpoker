@@ -4,7 +4,7 @@ import type { GameState } from '../engine';
  * Opponent stats worked out by watching the table, not by asking anyone.
  *
  * The obvious way to show an opponent's VPIP online is to have every client
- * publish its own lifetime figures — but a client can publish whatever it
+ * publish its own lifetime figures, but a client can publish whatever it
  * likes, so those numbers are unverifiable, and they leak a player's history to
  * everyone they sit with. Worse, they would be unavailable for bots, so the
  * feature would vanish in single-player.
@@ -15,8 +15,8 @@ import type { GameState } from '../engine';
  * networked opponents, needs nothing added to the wire format, and cannot be
  * faked: the only evidence used is money that actually moved.
  *
- * The cost is sample size — a few dozen hands is not enough for a percentage to
- * settle — so the hand count is always shown alongside.
+ * The cost is sample size, a few dozen hands is not enough for a percentage to
+ * settle: so the hand count is always shown alongside.
  */
 
 export interface ObservedCounters {
@@ -68,7 +68,7 @@ export function emptyObservedTable(): ObservedTable {
 /**
  * Fetch a player's counters, copying them first.
  *
- * `observeTransition` spreads `counters`, which is only a shallow copy — the
+ * `observeTransition` spreads `counters`, which is only a shallow copy, the
  * per-player objects underneath would still be shared with the previous
  * observation. Mutating one of those would rewrite history, and would double
  * count under React's development-mode double invocation of state updaters.

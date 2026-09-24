@@ -569,7 +569,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   settingCopy: {
-    flex: 1,
+    // Grows into spare room, but never shrinks below what a long single word
+    // needs. Without the floor, a fixed-width control slot could squeeze this
+    // column narrower than "Animation", and iOS falls back to breaking mid-word
+    // when a single word cannot fit the line ("Animatio" / "n Speed").
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 0,
+    minWidth: 150,
     paddingRight: spacing.sm,
   },
   settingCopyCompact: {
@@ -588,7 +595,11 @@ const styles = StyleSheet.create({
     color: colors.inkMuted,
   },
   controlSlot: {
-    width: 272,
+    // Yields to the label column rather than holding a fixed width: the option
+    // pills already wrap, so a narrower slot costs a row instead of a word.
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 272,
     alignItems: 'flex-end',
   },
   toggleSlot: {
@@ -597,6 +608,7 @@ const styles = StyleSheet.create({
   },
   controlSlotCompact: {
     width: '100%',
+    flexBasis: 'auto',
     alignItems: 'stretch',
   },
   togglePill: {

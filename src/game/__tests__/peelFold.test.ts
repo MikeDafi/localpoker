@@ -97,7 +97,7 @@ describe('peel fold geometry', () => {
     // A direction of zero length is what a gesture reports the instant a finger
     // lands, before it has moved. Without a guard every point of the card tests
     // as being exactly on the crease, so the card comes out both flat *and*
-    // fully folded — the flap is a perfect copy of the whole card drawn over
+    // fully folded; the flap is a perfect copy of the whole card drawn over
     // the top of it, which on device is a blank white rectangle where the card
     // should be.
     const dead = creaseFor({ x: 0, y: H }, 0, 0, 40);
@@ -285,7 +285,7 @@ describe('grabbing the card', () => {
       for (let y = 0; y <= H; y += 3) {
         const a = grabAnchor(W, H, { x, y }, 14, minY);
         expect(a.y, `${x},${y} -> ${a.x},${a.y}`).toBeGreaterThanOrEqual(minY);
-        // Still on a real edge of the card — `minY` is a limit, not a new edge
+        // Still on a real edge of the card, `minY` is a limit, not a new edge
         // to fold from.
         const onEdge = a.x === 0 || a.x === W || a.y === H;
         expect(onEdge, `${x},${y} -> ${a.x},${a.y}`).toBe(true);
@@ -306,7 +306,7 @@ describe('grabbing the card', () => {
     // Dragging away from the card leaves no room to fold into, and the obvious
     // arithmetic divides zero by zero. The `NaN` that produced travelled into
     // the fold's transform and the card's lift, where it surfaced as a stream
-    // of errors from inside the rendering libraries — during hand-peeling only,
+    // of errors from inside the rendering libraries, during hand-peeling only,
     // which is why no scripted animation ever caught it.
     const inputs = [-5, 0, 0.0001, 3, 40, 1e6];
     for (const dist of inputs) {
@@ -430,7 +430,7 @@ describe('keeping the peel in the bottom half', () => {
     // what it exposes: a grab on the side at the midline starts legally and
     // still folds the card across its full height, laying the whole face open.
     //
-    // What a peel exposes is the region it lifts off the table — not the flap,
+    // What a peel exposes is the region it lifts off the table, not the flap,
     // which is paper landing on top of the card and may legitimately cover the
     // half it came from. A point is uncovered exactly when it falls on the
     // peeled side of the crease.
@@ -620,7 +620,7 @@ describe('placing the value on the flap', () => {
         const { flap } = foldParts(W, H, c);
         if (flap.length < 3) continue;
         const fit = fitInside(flap, centroid(flap), r);
-        // Either it found room, or it honestly says it could not — never a
+        // Either it found room, or it honestly says it could not, never a
         // glyph sitting outside the paper.
         if (fit.clearance >= r) {
           expect(clearanceAt(flap, fit), `${g.name} @${t.toFixed(2)}`).toBeGreaterThan(0);
@@ -645,7 +645,7 @@ describe('placing the value on the flap', () => {
 describe('drawing the fold', () => {
   it('turns the card’s own face without mirroring it', () => {
     // A true fold shows the back of the paper, so everything printed on it
-    // comes out mirrored — correct, and unreadable. The transform is the
+    // comes out mirrored, correct, and unreadable. The transform is the
     // reflection composed with a flip about the card's centre line, which
     // cancels the mirroring and leaves the turn. Checked as exactly that
     // composition rather than by restating the arithmetic.

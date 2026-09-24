@@ -235,7 +235,7 @@ export const createRoom = async (
  * `database.rules.json` scopes all room writes to `auth.uid`: the room's
  * `hostId`, the `players/$uid` path and each action's `playerId` must equal it.
  * The lobby previously passed the locally-generated `profile.id`, so publishing
- * the rules would have rejected *every* online write — create, join and act
+ * the rules would have rejected *every* online write, create, join and act
  * alike. Identity is therefore resolved here rather than trusted from the
  * caller, so no call site can get it wrong.
  *
@@ -422,6 +422,7 @@ const settingsFromRoom = (room: Partial<RoomState> | null): GameSettings => {
 const gameConfigFromSettings = (settings: GameSettings, playerCount: number): GameConfig => ({
   smallBlind: settings.smallBlind,
   bigBlind: settings.bigBlind,
+  ante: settings.ante,
   startingStack: settings.startingStack,
   maxPlayers: Math.max(playerCount, settings.maxPlayers),
   turnTimerSec: settings.turnTimerSec,

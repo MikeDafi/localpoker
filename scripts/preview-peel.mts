@@ -3,7 +3,7 @@
  *
  * The fold is the one part of this app you cannot judge from a screenshot: it
  * is a continuum, and any single frame of it looks plausible. Laying the whole
- * range out at once is how the previous version's real faults were found — a
+ * range out at once is how the previous version's real faults were found, a
  * value drawn at low opacity *outside* a flap too small to hold it, and a fold
  * deep enough to take half the card with it.
  *
@@ -44,7 +44,7 @@ const SUIT = 'h' as const;
  * Every grab the gesture can actually produce.
  *
  * Only the bottom half: a fold may not start above the card's midline, because
- * that is how a hand is held. The top corners are deliberately absent — if they
+ * that is how a hand is held. The top corners are deliberately absent, if they
  * ever appear here again, the limit has been lost.
  */
 const GRABS: Array<{ name: string; anchor: Pt; dir: [number, number] }> = [

@@ -34,7 +34,7 @@ export function ScreenBackground({
     <LinearGradient colors={gradient} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.fill}>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {isFelt ? (
-          /* carpeted room lit by overhead spots — see CasinoFloor */
+          /* carpeted room lit by overhead spots, see CasinoFloor */
           <CasinoFloor width={winW} height={winH} />
         ) : (
           <>

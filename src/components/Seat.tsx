@@ -9,6 +9,7 @@ import type { PalConfig } from '../avatar/palConfig';
 import type { PalExpression } from './PalAvatar';
 import type { Emote } from './EmoteBar';
 import type { Player } from '../engine';
+import type { CardBackVariant } from './CardBack';
 
 export interface SeatProps {
   player: Player;
@@ -20,13 +21,13 @@ export interface SeatProps {
   won?: boolean;
   reaction?: PalExpression;
   idleMotion?: boolean;
-  /** Compact vertical pod (avatar over a small name tag) — used for opponents. */
+  /** Compact vertical pod (avatar over a small name tag), used for opponents. */
   compact?: boolean;
   /** A reaction the player is currently "saying" (shown as a bubble). */
   emote?: Emote | null;
   /** Changes each hand so the deal animation replays. */
   dealKey?: string;
-  /** Offset (px) the cards are thrown from — the middle of the felt. */
+  /** Offset (px) the cards are thrown from, the middle of the felt. */
   dealFrom?: { x: number; y: number };
   /** Delay before this player's first card is thrown. */
   dealDelay?: number;
@@ -46,10 +47,17 @@ export interface SeatProps {
    * flying them to the middle, so the pod must stop drawing its own copy.
    */
   handOff?: boolean;
+  /** Which card back design to print, from Settings. */
+  back?: CardBackVariant;
+  /**
+   * Whether to print the player's name. Off leaves the avatar and stack, which
+   * is the point: you still know whose seat it is and what they have.
+   */
+  showName?: boolean;
 }
 
 /** A player pod around the felt: animated Pal, name, stack, status, and cards. */
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, avatarSize = 42 }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -70,7 +78,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
 
   // Hole cards sit tiny beside the avatar while they're face down. Once they're
   // turned over they have to be readable, so they're rendered at full size and
-  // scaled *down* while hidden — scaling a 18pt card up would just look soft.
+  // scaled *down* while hidden, scaling a 18pt card up would just look soft.
   const HOLE_SIZE = 24;
   const HOLE_MIN = 18 / HOLE_SIZE;
   const shown = useSharedValue(showCards ? 1 : HOLE_MIN);
@@ -105,6 +113,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
                 suit={player.holeCards[0]?.suit as any}
                 size={HOLE_SIZE}
                 dimmed={dimmed}
+                back={back}
                 faceUp={!!showCards}
                 animate={dealAnimate}
                 delay={dealDelay}
@@ -118,6 +127,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
                 suit={player.holeCards[1]?.suit as any}
                 size={HOLE_SIZE}
                 dimmed={dimmed}
+                back={back}
                 faceUp={!!showCards}
                 animate={dealAnimate}
                 delay={dealDelay + dealStep}
@@ -145,7 +155,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
           {isDealer && <View style={styles.cDealer}><Text style={styles.dealerText}>D</Text></View>}
         </View>
         <View style={[styles.cTag, won && styles.cTagWon, { opacity: dimmed ? 0.45 : 1 }]}>
-          <Text style={styles.cName} numberOfLines={1}>{player.name}</Text>
+          {showName && <Text style={styles.cName} numberOfLines={1}>{player.name}</Text>}
           <Text style={styles.cChips}>{player.chips.toLocaleString()}</Text>
         </View>
         {player.allIn && <View style={styles.allIn}><Text style={styles.allInText}>ALL IN</Text></View>}
@@ -166,8 +176,8 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
       {emote && <EmoteBubble emote={emote} />}
       {!isHuman && player.holeCards.length > 0 && (
         <View style={styles.cards}>
-          <PlayingCard faceDown={!showCards} rank={player.holeCards[0]?.rank} suit={player.holeCards[0]?.suit as any} size={26} dimmed={dimmed} />
-          <PlayingCard faceDown={!showCards} rank={player.holeCards[1]?.rank} suit={player.holeCards[1]?.suit as any} size={26} dimmed={dimmed} style={{ marginLeft: -10 }} />
+          <PlayingCard faceDown={!showCards} rank={player.holeCards[0]?.rank} suit={player.holeCards[0]?.suit as any} size={26} dimmed={dimmed} back={back} />
+          <PlayingCard faceDown={!showCards} rank={player.holeCards[1]?.rank} suit={player.holeCards[1]?.suit as any} size={26} dimmed={dimmed} back={back} style={{ marginLeft: -10 }} />
         </View>
       )}
 
@@ -181,7 +191,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
           </View>
           <View style={styles.info}>
             <View style={styles.nameRow}>
-              <Text style={styles.name} numberOfLines={1}>{player.name}</Text>
+              {showName && <Text style={styles.name} numberOfLines={1}>{player.name}</Text>}
               {isDealer && (
                 <View style={styles.dealer}><Text style={styles.dealerText}>D</Text></View>
               )}
@@ -230,7 +240,7 @@ function EmoteBubble({ emote }: { emote: Emote }) {
   const isText = emote.type === 'text';
   const isGif = emote.type === 'gif';
   // Text/GIF slide in gently; emoji & stickers keep a lively pop.
-  // Fast, small, eased — no springy overshoot.
+  // Fast, small, eased, no springy overshoot.
   const entering = isText || isGif
     ? FadeInDown.duration(motion.fast).easing(Easing.bezier(...easings.out))
     : ZoomIn.duration(motion.fast).easing(Easing.bezier(...easings.out));
@@ -297,7 +307,7 @@ const styles = StyleSheet.create({
 
   // Compact vertical opponent pod
   cWrap: { alignItems: 'center', width: 84 },
-  // Tucked against the avatar's right edge — stacked above the head they read
+  // Tucked against the avatar's right edge, stacked above the head they read
   // as goggles/ears rather than as playing cards.
   // Rendered at full size and scaled down (see HOLE_SIZE), so the box is sized
   // for the big cards; the offsets keep the shrunken pair tucked beside the head.

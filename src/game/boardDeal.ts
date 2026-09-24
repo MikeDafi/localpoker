@@ -6,7 +6,7 @@
  * from `board.length`, which meant that when the turn landed, the second and
  * third flop cards had their delay change (140ms and 280ms both became 0). The
  * card component re-runs its throw animation when its delay changes, and the
- * throw starts from fully transparent — so two already-placed cards blinked out
+ * throw starts from fully transparent, so two already-placed cards blinked out
  * of existence and flew back in every time a new street was dealt.
  */
 

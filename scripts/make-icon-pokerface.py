@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Poker Face — v4.
+"""The Poker Face: v4.
 
 Keeps v1's face and hair character (the version that was liked) but fixes the
 one thing wrong with it: v1's hair was drawn as an arc whose peak sat ~47px

@@ -12,7 +12,7 @@ import { compareHands, evaluateHand } from './handEvaluator';
  *  - **Monte Carlo rollout equity** for postflop. Deal the opponents random
  *    hands, run the board out, and count how often we actually win at showdown.
  *    This is how equity calculators work, and unlike a made-hand lookup it
- *    values draws correctly — four to a flush on the turn is ~18% equity, not
+ *    values draws correctly, four to a flush on the turn is ~18% equity, not
  *    "high card".
  *
  * Everything is dependency-free and driven by the engine's seeded PRNG, so bot
@@ -78,7 +78,7 @@ function cardKey(card: Card): string {
  * raw win count.
  *
  * `sims` trades accuracy for CPU time; the caller scales it by difficulty. The
- * standard error is ~0.5/sqrt(sims), so 200 trials is ±3.5% — deliberately a
+ * standard error is ~0.5/sqrt(sims), so 200 trials is ±3.5%, deliberately a
  * little noisy at low difficulties, which reads as an opponent who misjudges
  * their hand.
  */

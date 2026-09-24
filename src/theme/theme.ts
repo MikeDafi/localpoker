@@ -1,5 +1,5 @@
 /**
- * Design tokens — modern matte poker table (2026).
+ * Design tokens, modern matte poker table (2026).
  *
  * Visual language: a dark, matte felt with a desaturated green cast; a single
  * top-light source with flat, restrained elevation (no glossy rims); one brand
@@ -11,7 +11,7 @@
  */
 
 export const colors = {
-  // Backgrounds — cool near-white menus
+  // Backgrounds, cool near-white menus
   bg: '#E9F1F6',
   bgGradientTop: '#F4FAFD',
   bgGradientBottom: '#D7E6EF',
@@ -22,7 +22,7 @@ export const colors = {
   glossTop: 'rgba(255,255,255,0.9)',
   glossBottom: 'rgba(255,255,255,0.0)',
 
-  // Brand blue (the single accent) — desaturated from the old channel blue
+  // Brand blue (the single accent), desaturated from the old channel blue
   blueLight: '#8AC9E4',
   blue: '#2F9FD4',
   blueMid: '#2189BC',
@@ -39,7 +39,7 @@ export const colors = {
   inkMuted: '#8598A3',
   onBlue: '#FFFFFF',
 
-  // Felt (poker table) — matte near-black with a desaturated green cast.
+  // Felt (poker table), matte near-black with a desaturated green cast.
   // Depth hierarchy, darkest to lightest: room -> rail -> felt surface.
   feltRoom: '#070A09',
   feltRoomTop: '#0B100E',
@@ -59,7 +59,7 @@ export const colors = {
   /** Inner shadow where the felt meets the rail. */
   feltInnerShadow: 'rgba(0,0,0,0.50)',
 
-  // On-felt surfaces — dark, flat, hairline-bordered
+  // On-felt surfaces, dark, flat, hairline-bordered
   surface: '#1C2622',
   surfaceAlt: '#25302B',
   surfaceBorder: 'rgba(255,255,255,0.10)',
@@ -69,7 +69,7 @@ export const colors = {
   /** 0.56 is the lowest alpha that still clears WCAG AA (4.5:1) on `surface`. */
   onDarkMuted: 'rgba(237,242,240,0.58)',
 
-  // Accents / semantics — restrained, only red/green carry meaning
+  // Accents / semantics, restrained, only red/green carry meaning
   gold: '#D6B45C',
   goldDeep: '#A98A38',
   red: '#D65A4B',
@@ -96,7 +96,7 @@ export const colors = {
 
   shadow: '#05090B',
 
-  // Secondary accents — desaturated so they stop competing with the brand blue
+  // Secondary accents, desaturated so they stop competing with the brand blue
   accent: '#6B63C9',
   accentAlt: '#3FA9D6',
   accentPink: '#C9718F',
@@ -129,7 +129,7 @@ export const radii = {
 } as const;
 
 /**
- * Elevation — one light source directly above, so every shadow is a small
+ * Elevation: one light source directly above, so every shadow is a small
  * straight-down offset. Deliberately flat: depth comes from hairline borders
  * and surface contrast, not from soft glows.
  */
@@ -172,7 +172,7 @@ export const fonts = {
 } as const;
 
 /**
- * Lining, fixed-width figures. Chip counts and pot sizes animate constantly —
+ * Lining, fixed-width figures. Chip counts and pot sizes animate constantly,
  * tabular numerals stop them jittering as digits change.
  */
 export const numeric = { fontVariant: ['tabular-nums' as const] };
@@ -186,7 +186,7 @@ export const type = {
   bodyStrong: { fontFamily: fonts.medium, fontSize: 16, lineHeight: 22 },
   caption: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 17 },
   tiny: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 14 },
-  /** Sentence-case section label — replaces the old ALL-CAPS tracked labels. */
+  /** Sentence-case section label, replaces the old ALL-CAPS tracked labels. */
   label: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
   num: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, ...numeric },
 } as const;
@@ -220,11 +220,11 @@ export const motion = {
  * dependency-free; build them with `Easing.bezier(...easings.out)`.
  */
 export const easings = {
-  /** ease-out-quart — the default for anything entering or settling. */
+  /** ease-out-quart, the default for anything entering or settling. */
   out: [0.25, 1, 0.5, 1] as const,
-  /** ease-in-quad — for things leaving the screen. */
+  /** ease-in-quad, for things leaving the screen. */
   in: [0.5, 0, 0.75, 0] as const,
-  /** ease-in-out-quart — for reversible state changes. */
+  /** ease-in-out-quart, for reversible state changes. */
   inOut: [0.76, 0, 0.24, 1] as const,
 };
 

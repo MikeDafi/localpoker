@@ -35,9 +35,9 @@ export function StatsScreen({ navigation }: Props) {
     handsWon: { value: `${stats.handsWon}`, color: colors.green },
     coinsEarned: { value: `${stats.coinsEarned.toLocaleString()}`, color: colors.goldDeep },
     biggestPot: { value: `${stats.biggestPotWon.toLocaleString()}`, color: colors.accent },
-    handsSession: { value: '—', color: colors.inkSoft },
+    handsSession: { value: '-', color: colors.inkSoft },
     netChips: { value: `${stats.netChips >= 0 ? '+' : ''}${stats.netChips.toLocaleString()}`, color: colors.inkSoft },
-    winChance: { value: '—', color: colors.inkSoft },
+    winChance: { value: '-', color: colors.inkSoft },
   };
 
   const onReset = () =>

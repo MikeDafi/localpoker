@@ -38,7 +38,7 @@ function dims(buf) {
     const d = j[g.appid]?.data;
     if (!d) { console.log('FAIL meta', g.slug); continue; }
     const shots = (d.screenshots || []).slice(0, 6);
-    console.log(`\n${d.name}  (${d.developers?.join(', ')}, ${d.release_date?.date}) — ${shots.length} shots`);
+    console.log(`\n${d.name}  (${d.developers?.join(', ')}, ${d.release_date?.date}), ${shots.length} shots`);
     for (const [i, s] of shots.entries()) {
       try {
         const res = await fetch(s.path_full, { headers: UA });

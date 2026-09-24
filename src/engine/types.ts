@@ -22,6 +22,8 @@ export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
 export interface GameConfig {
   smallBlind: number;
   bigBlind: number;
+  /** Posted by every player in the hand before the blinds. 0 disables antes. */
+  ante?: number;
   startingStack: number;
   maxPlayers: number;
   turnTimerSec: number;

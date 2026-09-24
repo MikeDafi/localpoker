@@ -1,7 +1,7 @@
 /**
  * Plain-English explanations for every figure the app shows.
  *
- * Poker stats are jargon by nature — VPIP and PFR mean nothing until someone
+ * Poker stats are jargon by nature, VPIP and PFR mean nothing until someone
  * tells you, and a number you cannot interpret is worse than no number at all
  * because it invites the wrong conclusion. So every stat surfaced anywhere in
  * the app has an entry here, and the screens build their rows from these keys
@@ -34,7 +34,7 @@ export const STAT_HELP = {
     label: 'PFR',
     expands: 'Pre-Flop Raise',
     what: 'How often you raise before the flop.',
-    reading: 'Read it next to VPIP. The closer the two are, the more you raise rather than call — and raising is usually the stronger move.',
+    reading: 'Read it next to VPIP. The closer the two are, the more you raise rather than call, and raising is usually the stronger move.',
   },
   af: {
     label: 'Aggression',
@@ -45,7 +45,7 @@ export const STAT_HELP = {
   winRate: {
     label: 'Win rate',
     what: 'The share of hands you finish having won some part of the pot.',
-    reading: 'It falls as the table gets bigger, simply because there are more players to beat — so compare it against tables of a similar size.',
+    reading: 'It falls as the table gets bigger, simply because there are more players to beat, so compare it against tables of a similar size.',
   },
   showdownWin: {
     label: 'Showdown win',

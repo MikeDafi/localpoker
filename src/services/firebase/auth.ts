@@ -3,7 +3,7 @@ import { captureError } from '../telemetry';
 
 /**
  * Best-effort anonymous authentication. Gives the app a real `auth.uid` to build
- * secure rules and a real identity graph on top of — while still working in Expo
+ * secure rules and a real identity graph on top of, while still working in Expo
  * Go. No-ops gracefully when Firebase isn't configured or the Anonymous provider
  * isn't enabled in the console, so nothing breaks before that setup is done.
  */

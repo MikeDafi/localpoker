@@ -38,6 +38,7 @@ function normalizeConfig(config: GameConfig): GameConfig {
   }
   if (config.startingStack <= 0) throw new Error('startingStack must be positive');
   if (config.maxPlayers < 2) throw new Error('maxPlayers must be at least 2');
+  if (config.ante !== undefined && config.ante < 0) throw new Error('ante cannot be negative');
   return { ...config };
 }
 
@@ -128,8 +129,26 @@ function commitChips(state: GameState, playerIndex: number, requestedAmount: num
   return amount;
 }
 
-export function buildSidePots(players: readonly Player[], contributions: Record<string, number>): Pot[] {
-  const positiveLevels = Array.from(new Set(Object.values(contributions).filter((amount) => amount > 0))).sort((a, b) => a - b);
+/**
+ * Post an ante: chips go straight to the pot without becoming a bet.
+ *
+ * An ante is not part of the betting round, so unlike a blind it must never
+ * raise `currentBet` or count toward what anyone has to call. Recording it only
+ * in `contributions` is also what makes it behave correctly when the hand ends:
+ * it is already in the pot, it is forfeited by folding, and `buildSidePots`
+ * accounts for a short ante the same way it accounts for a short all-in.
+ */
+function commitAnte(state: GameState, playerIndex: number, requestedAmount: number): number {
+  const player = state.players[playerIndex];
+  const amount = Math.max(0, Math.min(player.chips, requestedAmount));
+  if (amount === 0) return 0;
+  player.chips -= amount;
+  player.allIn = player.chips === 0 && isParticipating(player) && !player.folded;
+  state.contributions[player.id] = (state.contributions[player.id] ?? 0) + amount;
+  return amount;
+}
+
+export function buildSidePots(players: readonly Player[], contributions: Record<string, number>): Pot[] {  const positiveLevels = Array.from(new Set(Object.values(contributions).filter((amount) => amount > 0))).sort((a, b) => a - b);
   const pots: Pot[] = [];
   let previousLevel = 0;
 
@@ -420,6 +439,18 @@ export function startHand(state: GameState): GameState {
   const smallBlindIndex = participatingCount === 2 ? next.dealerIndex : nextParticipatingIndex(next.players, next.dealerIndex);
   const bigBlindIndex = nextParticipatingIndex(next.players, smallBlindIndex);
   const firstActionIndex = participatingCount === 2 ? next.dealerIndex : nextParticipatingIndex(next.players, bigBlindIndex);
+
+  // Antes come before the blinds, from everyone dealt in. A player whose last
+  // chips go to the ante is all in for it and simply posts nothing further.
+  const ante = Math.max(0, Math.floor(next.config.ante ?? 0));
+  if (ante > 0) {
+    let antesPosted = 0;
+    next.players.forEach((player, index) => {
+      if (!isParticipating(player)) return;
+      antesPosted += commitAnte(next, index, ante);
+    });
+    if (antesPosted > 0) next.log.push(`Antes posted: ${antesPosted}`);
+  }
 
   const smallPosted = commitChips(next, smallBlindIndex, next.config.smallBlind);
   const bigPosted = commitChips(next, bigBlindIndex, next.config.bigBlind);

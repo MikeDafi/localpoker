@@ -7,7 +7,7 @@
  *
  *  - **All-in must stay exact.** Rounding a shove down to the nearest ten would
  *    quietly leave chips behind; rounding up would be an illegal bet.
- *  - **Some legal ranges contain no multiple of ten at all** — a min-raise of
+ *  - **Some legal ranges contain no multiple of ten at all**, a min-raise of
  *    15 against a 18-chip stack, say. Rounding there has to fall back to a legal
  *    amount rather than produce one the engine will reject.
  */

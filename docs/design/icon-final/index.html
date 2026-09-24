@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LocalPoker — The Poker Face, v4 &amp; v5</title>
+<title>LocalPoker: The Poker Face, v4 &amp; v5</title>
 <style>
   :root{--bg:#0e1113;--panel:#171b1e;--line:rgba(255,255,255,.12);--ink:#eef3f1;
         --soft:rgba(238,243,241,.75);--muted:rgba(238,243,241,.5);
@@ -44,7 +44,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>The Poker Face — v4 &amp; v5</h1>
+  <h1>The Poker Face: v4 &amp; v5</h1>
   <p class="sub">v4 kept for reference; v5 spaces the hand and adds a craft pass.</p>
 
   <div class="card">
@@ -72,11 +72,11 @@
   <div class="card">
     <h2>v4 &mdash; what changed from v1</h2>
     <ul>
-      <li><span class="done">&#10003;</span> <b>Kept v1's face and hair.</b> The brow-bar sunglasses, the deadpan mouth bar and the rounded hair mass are v1's — not the wayfarer/clipped treatment from v2&ndash;v3.</li>
+      <li><span class="done">&#10003;</span> <b>Kept v1's face and hair.</b> The brow-bar sunglasses, the deadpan mouth bar and the rounded hair mass are v1's, not the wayfarer/clipped treatment from v2&ndash;v3.</li>
       <li><span class="done">&#10003;</span> <b>Hair now fits the top of the head.</b> This was the one real fault in v1: its hair was an arc peaking at y&nbsp;=&nbsp;139 while the skull topped out at y&nbsp;=&nbsp;186, so it floated roughly 47&nbsp;px proud of the head like a wig. v4 clips the head's own circle, so the hair cannot sit anywhere but on the skull.</li>
       <li><span class="done">&#10003;</span> <b>Person bigger.</b> Head radius 262 &rarr; 300, filling far more of the tile.</li>
-      <li><span class="done">&#10003;</span> <b>Cards bigger</b> — and lowered so they no longer cover the mouth, since the expression is the whole point.</li>
-      <li><span class="done">&#10003;</span> <b>10&#9829; and 2&#9824;, offsuit</b> — one red, one black — instead of a pair of aces.</li>
+      <li><span class="done">&#10003;</span> <b>Cards bigger</b>, and lowered so they no longer cover the mouth, since the expression is the whole point.</li>
+      <li><span class="done">&#10003;</span> <b>10&#9829; and 2&#9824;, offsuit</b>, one red, one black, instead of a pair of aces.</li>
       <li><span class="done">&#10003;</span> <b>Rank and suit mirrored into opposite corners</b> on both cards: upright at the top-left, rotated 180&deg; at the bottom-right, the way a real card is printed.</li>
       <li><span class="done">&#10003;</span> <b>The cards are real cards.</b> They are the English-pattern 10&#9829; and 2&#9824; faces by Dmitry Fomin, released <b>CC0 / public domain</b> on Wikimedia Commons, placed and scaled rather than redrawn. A render of the extracted face was diffed against the source: <b>maximum channel delta 0</b> &mdash; pixel-identical.</li>
       <li><span class="done">&#10003;</span> <b>Cards now cast a shadow</b> so they sit in front of the face instead of looking pasted on. Built from stacked translucent shapes because <code>feDropShadow</code> is silently ignored by several SVG rasterisers &mdash; the first attempt rendered nothing at all.</li>
@@ -93,7 +93,7 @@
       <div class="size"><div style="width:40px;height:40px"><img src="pokerface-v5.svg"></div><span>40 &middot; spotlight</span></div>
     </div>
     <p style="color:var(--soft);font-size:14.6px;margin-top:16px">
-      Every element is verified inside the iOS squircle crop, which the rounded corners above simulate — an earlier card placement ran off the bottom edge.
+      Every element is verified inside the iOS squircle crop, which the rounded corners above simulate, an earlier card placement ran off the bottom edge.
     </p>
   </div>
 
@@ -108,7 +108,7 @@
   <footer>
     Source: <code>scripts/make-icon-pokerface.py</code> &rarr; <code>docs/design/icon-final/pokerface-v4.svg</code>.
     Suit glyphs are Bootstrap Icons (MIT), credited in <code>assets/textures/CREDITS.md</code>.
-    Vector — exports losslessly to every iOS/Android size. Direction concept, not production art.
+    Vector, exports losslessly to every iOS/Android size. Direction concept, not production art.
   </footer>
 </div>
 </body>

@@ -12,6 +12,7 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import { PEEL_TIMING, PeekCard, type PeelControl } from './PeekCard';
+import type { CardBackVariant } from './CardBack';
 import type { Suit } from '../game/cardFace';
 import { easings, motion } from '../theme/theme';
 import {
@@ -43,13 +44,15 @@ export interface HoleCardsProps {
   showToTable?: boolean;
   /** Fired once per peel, when the cards have been lifted far enough to read. */
   onPeek?: () => void;
+  /** Which card back design to print, from Settings. */
+  back?: CardBackVariant;
 }
 
 /**
  * The fraction of the card a peel may work in, measured from the bottom.
  *
- * Only the bottom half. That is how a hand is actually held — the near edge is
- * lifted towards you — and it means you can never lay your whole hand open by
+ * Only the bottom half. That is how a hand is actually held, the near edge is
+ * lifted towards you, and it means you can never lay your whole hand open by
  * accident.
  *
  * It governs two different things, and both are needed. Where a fold may
@@ -66,7 +69,7 @@ const PEEL_HALF = 0.5;
  * Deliberately short of the hard geometric cap by exactly the overshoot the
  * gesture allows, so that dragging past the end resists and comes to rest *on*
  * the cap rather than sailing through it. Without that the rubber band was
- * worth a further twelve per cent — enough to carry the crease past the midline
+ * worth a further twelve per cent, enough to carry the crease past the midline
  * and lay open most of the card, which is the whole thing the limit exists to
  * prevent.
  */
@@ -84,7 +87,7 @@ function reachFor(size: number, h: number, anchor: { x: number; y: number }, dx:
  *
  * Both cards share one peel because that is how a hand is actually looked at:
  * you hold the pair together and lift them together. Giving each card its own
- * gesture — which is what this replaced — meant a drag lifted whichever card it
+ * gesture - which is what this replaced - meant a drag lifted whichever card it
  * happened to start on and left the other lying flat, so reading your hand took
  * two separate drags and never looked like holding cards.
  *
@@ -103,6 +106,7 @@ export function HoleCards({
   forceOpen = false,
   showToTable = false,
   onPeek,
+  back,
 }: HoleCardsProps) {
   const h = size * 1.42;
   const step = size + gap;
@@ -182,7 +186,7 @@ export function HoleCards({
           if (locked) return;
           ticked.value = 0;
           // Which card is under the finger, so the grab is resolved in that
-          // card's own coordinates — then applied to all of them.
+          // card's own coordinates, then applied to all of them.
           grabbed.value = cardUnder(e.x, step, count);
           const local = { x: e.x - grabbed.value * step, y: e.y };
           // A corner counts as grabbed from a good way in, because fingers are
@@ -193,7 +197,7 @@ export function HoleCards({
           grabY.value = anchor.y;
           peel.fold.value = 0;
           // Start pointing into the card. A fold's direction has to lead
-          // inwards from the edge it starts at — see the guard in `onUpdate` —
+          // inwards from the edge it starts at, see the guard in `onUpdate`,
           // and until the finger has moved there is nothing else to derive it
           // from.
           const inX = size / 2 - anchor.x;
@@ -216,7 +220,7 @@ export function HoleCards({
 
           // The crease follows where the finger *is*, not how far it has moved.
           // Translation-based peeling breaks whenever the gesture starts
-          // tracking late — the first frames of a fast drag get swallowed —
+          // tracking late, the first frames of a fast drag get swallowed,
           // which leaves the card stuck barely open. Distance from the pinned
           // point has no such problem and is the more natural mapping anyway.
           let vx = local.x - anchor.x;
@@ -241,7 +245,7 @@ export function HoleCards({
           }
 
           // The crease enters the card at the point furthest back against the
-          // drag, not at the finger — otherwise a slanted pull starts with a
+          // drag, not at the finger, otherwise a slanted pull starts with a
           // corner already lifted, and an outward one lifts the whole card.
           const origin = foldOrigin(size, h, peel.dirX.value, peel.dirY.value);
           peel.anchorX.value = origin.x;
@@ -253,7 +257,7 @@ export function HoleCards({
           peel.fold.value = foldAmount(dist, reach, size * 0.08);
 
           // One light tap at the moment the value becomes legible, which is the
-          // point of the whole gesture — you can feel when you have lifted
+          // point of the whole gesture, you can feel when you have lifted
           // enough instead of having to watch for it.
           if (ticked.value === 0 && reach > 0 && peel.fold.value > reach * 0.7) {
             ticked.value = 1;
@@ -292,6 +296,7 @@ export function HoleCards({
               showToTable={showToTable}
               fromX={(i === 0 ? 1 : -1) * (step / 2)}
               fromY={fromY}
+              variant={back}
             />
           </View>
         ))}

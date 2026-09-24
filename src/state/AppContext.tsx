@@ -6,6 +6,8 @@ import {
   Stats, HandResult, DEFAULT_STATS, applyHandResult, derivedStats as computeDerived, mergeStats,
 } from '../game/stats';
 import { sound } from '../services/sound';
+import { installTextScaling, setLargeText } from '../theme/textScale';
+import { setAppReduceMotion } from '../theme/motionPreference';
 import { captureError } from '../services/telemetry';
 import {
   acceptFriendRequest as acceptFirebaseFriendRequest,
@@ -175,6 +177,12 @@ interface AppContextValue {
   settings: GameSettings;
   savedGame: SavedGame | null;
   blockedUsers: BlockedUser[];
+  /**
+   * Bumped when the Large Text scale changes. Nothing reads the value: it is
+   * here so the context identity changes and every screen re-renders at the
+   * new size.
+   */
+  textScaleTick: number;
   login: (provider: AuthState['provider'], handle?: string, name?: string) => ActionResult;
   logout: () => void;
   updateProfile: (patch: Partial<Profile>) => ActionResult;
@@ -247,6 +255,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     sound.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume / 100 });
   }, [settings.soundEnabled, settings.soundVolume]);
 
+  /**
+   * Large Text is a global scale rather than a prop, so nothing re-renders on
+   * its own when it changes. Bumping a counter that rides along in the context
+   * value is what pushes the new size out to every screen reading `useApp`.
+   */
+  const [textScaleTick, setTextScaleTick] = useState(0);
+  useEffect(() => {
+    installTextScaling();
+    if (setLargeText(settings.largeText)) setTextScaleTick((n) => n + 1);
+  }, [settings.largeText]);
+
+  // Reduce Motion has to reach presentational components that never see the
+  // settings object, so it is published rather than passed.
+  useEffect(() => {
+    setAppReduceMotion(settings.reduceMotion || settings.animationSpeed === 'off');
+  }, [settings.reduceMotion, settings.animationSpeed]);
+
   const persist = useCallback((key: string, value: unknown) => {
     AsyncStorage.setItem(key, JSON.stringify(value)).catch((error) => {
       reportStorageError('persist', key, error);
@@ -296,8 +321,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       handle: normalizeHandle(handle ?? '') ?? normalizeHandle(nextProfile.name) ?? profileHandleFallback(nextProfile),
     };
     persistAuth(nextAuth);
-    // Commit the current device identity (id, pal, coins) so signing in — including
-    // "Play as Guest" with no name — always resolves to the same persisted user.
+    // Commit the current device identity (id, pal, coins) so signing in, including
+    // "Play as Guest" with no name, always resolves to the same persisted user.
     persistProfile(nextProfile);
     publishDirectory(nextAuth, nextProfile).catch((error) => {
       captureError(error, { tags: { area: 'firebase-friends', operation: 'login-publish-directory' } });
@@ -567,9 +592,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers,
+    ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers, textScaleTick,
     login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame]);
+  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

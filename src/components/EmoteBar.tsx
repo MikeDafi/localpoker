@@ -11,7 +11,7 @@ export type Emote = { type: 'emoji' | 'text' | 'sticker' | 'gif'; value: string;
 /** Big, clear emoji reactions. */
 export const EMOJIS = ['👍', '😂', '😮', '😎', '🔥', '🎉', '😤', '🤔', '😅', '🙌', '😱', '🤯', '💪', '🍀', '😴', '🤝'];
 
-/** Animated "sticker" reactions — each plays a looping animation in the bubble. */
+/** Animated "sticker" reactions, each plays a looping animation in the bubble. */
 export const STICKERS: Emote[] = [
   { type: 'sticker', value: '🎉', anim: 'burst' },
   { type: 'sticker', value: '🔥', anim: 'pulse' },
@@ -121,7 +121,7 @@ export function EmoteBar({ onEmote }: { onEmote: (emote: Emote) => void }) {
               </View>
             </ScrollView>
 
-            {/* Pinned bottom bar — text input sits right above the keyboard, so
+            {/* Pinned bottom bar, text input sits right above the keyboard, so
                 opening it lifts only this row (no bouncy full-sheet jump). */}
             <View style={styles.bottomBar}>
               <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow} keyboardShouldPersistTaps="handled">

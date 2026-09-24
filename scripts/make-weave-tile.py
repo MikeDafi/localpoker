@@ -5,7 +5,7 @@ proportional to how far that thread deviates from the cloth's average tone. Laid
 over the felt with normal alpha blending it darkens and lightens exactly like a
 real weave, without shifting the felt's hue.
 
-Poly Haven assets are CC0 (public domain) — https://polyhaven.com/license
+Poly Haven assets are CC0 (public domain), https://polyhaven.com/license
 """
 import sys
 from PIL import Image, ImageOps, ImageStat

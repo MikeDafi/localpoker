@@ -1,4 +1,4 @@
-# 🃏 Poker iOS App — Design Document
+# 🃏 Poker iOS App: Design Document
 
 > **Implementation note (update):** The shipped local prototype pivoted from
 > native SwiftUI to **React Native + Expo (SDK 57)** for a faster cross-platform
@@ -12,7 +12,7 @@
 A **free, ad-supported social poker app** for playing Texas Hold'em (and later
 variants) with friends in private rooms, backed by rich personal stats.
 
-**Play-money only — no real-money gambling.** This keeps the app clear of the App
+**Play-money only, no real-money gambling.** This keeps the app clear of the App
 Store's real-gambling restrictions and the associated legal/licensing minefield.
 
 **Core pillars**
@@ -93,7 +93,7 @@ others' cards / manipulating outcomes).
 
 ### D. Ads (AdMob)
 - **Interstitial:** between sessions / after leaving a table (never mid-hand)
-- **Rewarded video:** "watch to top up play chips" — good UX + revenue
+- **Rewarded video:** "watch to top up play chips", good UX + revenue
 - **Banner:** lobby/stats screens only, never at the table
 - Frequency capping + a cheap **remove-ads IAP** as secondary revenue
 
@@ -104,16 +104,16 @@ others' cards / manipulating outcomes).
 
 ## 5. Screens / UX Flow
 
-1. **Onboarding** — Sign in with Apple, pick avatar/username
-2. **Home/Lobby** — Play with friends · Quick play (bots) · Daily bonus · banner ad
-3. **Create/Join Room** — invite code, configure stakes, share sheet
-4. **Poker Table** (hero screen) — felt, community cards, chip animations, hole
+1. **Onboarding**, Sign in with Apple, pick avatar/username
+2. **Home/Lobby**, Play with friends · Quick play (bots) · Daily bonus · banner ad
+3. **Create/Join Room**, invite code, configure stakes, share sheet
+4. **Poker Table** (hero screen), felt, community cards, chip animations, hole
    cards, action bar (Fold/Check/Call/Raise + slider), turn timer, avatars &
    stacks, emotes/chat
-5. **Showdown** — reveal + pot award animation
-6. **Stats Dashboard** — graphs, key metrics, filters, hand replays
-7. **Profile** — avatar, lifetime stats, achievements, friends list
-8. **Store** — remove ads, chip packs, cosmetics (card backs/table themes)
+5. **Showdown**, reveal + pot award animation
+6. **Stats Dashboard**, graphs, key metrics, filters, hand replays
+7. **Profile**, avatar, lifetime stats, achievements, friends list
+8. **Store**, remove ads, chip packs, cosmetics (card backs/table themes)
 
 **UI direction:** dark premium felt, smooth chip/card animations (matched
 geometry + spring), haptics on actions, SF Symbols, clean typography. Cosmetic
@@ -137,18 +137,18 @@ cost per minute of real time.
 | 100ms | ~$4 / 1k min | ~$1.5 / 1k min | 10k min/mo |
 | Vonage Video | ~$4.75 / 1k min | cheaper | trial credit |
 | LiveKit (self-host) | server + egress only | same | open source |
-| Twilio Video | ❌ discontinued | — | — |
+| Twilio Video | ❌ discontinued |, |, |
 
 ### Poker math (6 players, 1-hour session, HD video @ ~$4/1k part-min)
 ```
 6 players × 60 min = 360 participant-minutes
 360 × $0.004 = $1.44 per table-hour ≈ $0.24 / player / hour
 ```
-AdMob for a casual free user yields ~$0.02–0.15 per session — **video costs more
+AdMob for a casual free user yields ~$0.02–0.15 per session, **video costs more
 than it earns.** Audio-only is ~4× cheaper (~$0.36/table-hour).
 
 ### Self-hosting LiveKit
-No per-minute fee — only server + **egress bandwidth**. An SFU relaying 6 players
+No per-minute fee, only server + **egress bandwidth**. An SFU relaying 6 players
 at ~1 Mbps ≈ 13 GB/table-hour egress:
 - AWS/GCP egress (~$0.09/GB) → ~$1.20/hr (no cheaper than managed)
 - Cheap-egress hosts (Hetzner ~€1/TB, DigitalOcean/OVH bundled) → **~$0.01–0.05/table-hour** 🏆

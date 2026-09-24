@@ -171,3 +171,57 @@ describe('holdem engine', () => {
     expect(legal.maxRaiseTo).toBe(100);
   });
 });
+
+describe('antes', () => {
+  const seats = [
+    { id: 'a', name: 'A', chips: 1000, seatIndex: 0 },
+    { id: 'b', name: 'B', chips: 1000, seatIndex: 1 },
+    { id: 'c', name: 'C', chips: 1000, seatIndex: 2 },
+  ];
+  const config = { smallBlind: 5, bigBlind: 10, startingStack: 1000, maxPlayers: 6, turnTimerSec: 30 };
+
+  it('takes an ante from everyone dealt in, on top of the blinds', () => {
+    const anted = startHand(createGame({ ...config, ante: 2 }, seats, 5));
+    const plain = startHand(createGame(config, seats, 5));
+    const potOf = (s: GameState) => s.pots.reduce((sum, p) => sum + p.amount, 0);
+    // Three players at 2 each is 6 more than the same hand without antes.
+    expect(potOf(anted) - potOf(plain)).toBe(6);
+    for (const player of anted.players) {
+      expect(anted.contributions[player.id]).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('does not make the ante part of the bet to call', () => {
+    const anted = startHand(createGame({ ...config, ante: 2 }, seats, 5));
+    const plain = startHand(createGame(config, seats, 5));
+    // An ante is dead money, so the price of playing is still one big blind.
+    expect(anted.currentBet).toBe(plain.currentBet);
+    const actor = anted.players[anted.currentPlayerIndex]!;
+    expect(legalActions(anted, actor.id).toCall).toBe(legalActions(plain, plain.players[plain.currentPlayerIndex]!.id).toCall);
+  });
+
+  it('leaves the blinds themselves unchanged', () => {
+    const anted = startHand(createGame({ ...config, ante: 2 }, seats, 5));
+    const posted = anted.players.filter((p) => p.currentBet > 0).map((p) => p.currentBet).sort((x, y) => x - y);
+    expect(posted).toEqual([5, 10]);
+  });
+
+  it('is off by default, so existing games are untouched', () => {
+    const withZero = startHand(createGame({ ...config, ante: 0 }, seats, 5));
+    const without = startHand(createGame(config, seats, 5));
+    expect(withZero.contributions).toEqual(without.contributions);
+  });
+
+  it('takes only what a short stack has and puts them all in', () => {
+    const short = [{ id: 'a', name: 'A', chips: 1, seatIndex: 0 }, ...seats.slice(1)];
+    const anted = startHand(createGame({ ...config, ante: 50 }, short, 5));
+    const a = anted.players.find((p) => p.id === 'a')!;
+    expect(a.chips).toBe(0);
+    expect(a.allIn).toBe(true);
+    expect(anted.contributions.a).toBe(1);
+  });
+
+  it('rejects a negative ante rather than quietly paying one out', () => {
+    expect(() => createGame({ ...config, ante: -5 }, seats, 5)).toThrow();
+  });
+});

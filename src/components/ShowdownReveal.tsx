@@ -21,7 +21,7 @@ export interface ShowdownRevealProps {
   bigSize: number;
   /** Whether each card is part of the winning five. */
   highlight: boolean[];
-  /** Off when animations are disabled — cards are simply placed, face up. */
+  /** Off when animations are disabled, cards are simply placed, face up. */
   animate?: boolean;
   /** Changes per hand so the sequence replays. */
   revealKey?: string;

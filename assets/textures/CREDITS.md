@@ -5,14 +5,14 @@ by hand. Regenerate the texture with `scripts/make-weave-tile.py`.
 
 ---
 
-## `felt-weave.png` — woven cloth texture
+## `felt-weave.png`: woven cloth texture
 
 | | |
 |---|---|
-| **Source** | Poly Haven — "Stretch Poplin" fabric texture (`stretch_poplin`, 1K diffuse) |
+| **Source** | Poly Haven, "Stretch Poplin" fabric texture (`stretch_poplin`, 1K diffuse) |
 | **URL** | https://polyhaven.com/a/stretch_poplin |
 | **Authors** | colormass, Rico Cilliers |
-| **License** | **CC0 1.0 Universal (public domain)** — https://polyhaven.com/license |
+| **License** | **CC0 1.0 Universal (public domain)**, https://polyhaven.com/license |
 
 > "Our assets are all licensed as CC0, which is effectively Public Domain even in
 > jurisdictions that do not support the Public Domain."
@@ -22,7 +22,7 @@ asset can be traced and regenerated.
 
 **Processing** (`scripts/make-weave-tile.py`): the seamless 1K photo is converted
 to greyscale, auto-contrasted, resized whole to 256×256 (never cropped, which
-would break tiling), then re-encoded as an RGBA mask — each pixel is black or
+would break tiling), then re-encoded as an RGBA mask, each pixel is black or
 white with alpha proportional to how far that thread deviates from the cloth's
 mean tone. Composited with normal alpha blending it darkens and lightens like a
 real weave without shifting the felt's hue.
@@ -34,11 +34,11 @@ noise on a dark felt), `rough_linen` (weave too coarse), `poly_wool_herringbone`
 **Also reused for the casino carpet** (`src/components/CasinoFloor.tsx`): the same
 CC0 tile is laid over the room background at a higher opacity and tinted with the
 warm `floor*` theme colours, so the floor reads as carpet pile. One licensed
-source, two surfaces — no second download, and the CC0 grant covers both uses.
+source, two surfaces, no second download, and the CC0 grant covers both uses.
 
 ---
 
-## Suit watermark glyphs — `src/components/FeltSurface.tsx`
+## Suit watermark glyphs: `src/components/FeltSurface.tsx`
 
 | | |
 |---|---|
@@ -85,11 +85,11 @@ the app, and all rights remain with their respective owners.
 
 ---
 
-## App-icon and suit-pip playing cards — `docs/design/icon-final/ref/*.svg`
+## App-icon and suit-pip playing cards: `docs/design/icon-final/ref/*.svg`
 
 | | |
 |---|---|
-| **Source** | Wikimedia Commons — "English pattern 10 of hearts", "English pattern 2 of spades", "English pattern 2 of clubs", and "English pattern 2 of diamonds" |
+| **Source** | Wikimedia Commons, "English pattern 10 of hearts", "English pattern 2 of spades", "English pattern 2 of clubs", and "English pattern 2 of diamonds" |
 | **Author** | Дмитрий Фомин (Dmitry Fomin) |
 | **License** | **CC0 1.0 Universal (public domain dedication)** |
 
@@ -103,7 +103,7 @@ set. The normalised suit pip paths in `src/game/suitPaths.ts` are derived from
 the large body pips in these four SVGs.
 
 Drawing the cards by hand was tried first and was wrong in ways that are hard to
-eyeball: a 10 needs ten pips in a specific arrangement (not one central pip —
+eyeball: a 10 needs ten pips in a specific arrangement (not one central pip,
 that is how an *ace* is printed), card faces are 360×540 (2:3) rather than the
 squarer shape guessed, pips are taller than wide, and the "10" index is
 condensed with separately kerned digits. Using the source artwork gets all of
@@ -111,11 +111,11 @@ that right by construction.
 
 ---
 
-## Court-card figure panels — `assets/cards/court/*.png`
+## Court-card figure panels: `assets/cards/court/*.png`
 
 | | |
 |---|---|
-| **Source** | Wikimedia Commons — "English pattern {jack,queen,king} of {clubs,diamonds,hearts,spades}" |
+| **Source** | Wikimedia Commons, "English pattern {jack,queen,king} of {clubs,diamonds,hearts,spades}" |
 | **Author** | Дмитрий Фомин (Dmitry Fomin) |
 | **License** | **CC0 1.0 Universal (public domain dedication)** |
 
@@ -139,11 +139,11 @@ keeps the cards sharp at app sizes with a much smaller runtime cost.
 
 ---
 
-## Card-layout reference deck — `docs/design/cards/ref/*.svg`
+## Card-layout reference deck: `docs/design/cards/ref/*.svg`
 
 | | |
 |---|---|
-| **Source** | Wikimedia Commons — "English pattern {3,4,5,6,7,8,9} of hearts" |
+| **Source** | Wikimedia Commons, "English pattern {3,4,5,6,7,8,9} of hearts" |
 | **Author** | Дмитрий Фомин (Dmitry Fomin) |
 | **License** | **CC0 1.0 Universal (public domain dedication)** |
 
@@ -153,8 +153,8 @@ recalled, with `scripts/measure-ref-card.py`. Every rank's columns and rows are
 asserted against the measured positions in `cardFace.test.ts`.
 
 Measuring them settled two things that guessing had got wrong. The pip grid is
-startlingly regular — three columns at ¼, ½ and ¾ of card width, rows on odd
-eighteenths of card height — and a **seven is genuinely not symmetric**: its odd
+startlingly regular, three columns at ¼, ½ and ¾ of card width, rows on odd
+eighteenths of card height, and a **seven is genuinely not symmetric**: its odd
 pip sits between the top and middle rows, in the upper half only. An earlier
 test asserted that every rank was symmetric about its centre and was simply
 wrong about how a seven is printed.

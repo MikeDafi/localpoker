@@ -8,7 +8,7 @@ import { COURT_ASPECT } from '../cardFace';
  * geometry, so they are checked as files.
  *
  * `courtArt.ts` itself cannot be imported here: it is a list of `require()`
- * calls for PNGs, which only Metro can resolve — node throws on the first one.
+ * calls for PNGs, which only Metro can resolve, node throws on the first one.
  * Reading the directory tests the same thing the module depends on, and rather
  * more usefully, since it catches a figure that failed to download, came back
  * as a rate-limit page, or got copied from the card next to it.
@@ -33,7 +33,7 @@ function pngHeader(bytes: Buffer) {
  *
  * Colour types 4 and 6 carry an alpha channel outright; a palette image (type
  * 3) gets its transparency from a `tRNS` chunk instead, which is how these end
- * up after being quantised — so checking for an alpha channel alone would
+ * up after being quantised, so checking for an alpha channel alone would
  * wrongly reject a perfectly good figure.
  */
 function hasTransparency(bytes: Buffer): boolean {
@@ -81,7 +81,7 @@ describe('court card artwork', () => {
     for (const f of files) {
       const bytes = readFileSync(`${DIR}/${f}`);
       expect(bytes.length, `${f} is suspiciously small`).toBeGreaterThan(4000);
-      // A well-formed PNG ends with the IEND chunk — a zero length, the type,
+      // A well-formed PNG ends with the IEND chunk, a zero length, the type,
       // and its CRC. A download cut short by a rate limit does not.
       expect(bytes.subarray(-12).toString('hex'), `${f} is truncated`).toBe('0000000049454e44ae426082');
     }

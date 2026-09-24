@@ -5,7 +5,7 @@ visual identity and customizable **Pal** characters, built with **React Native +
 Expo (SDK 57)**. Play against difficulty-tunable bots now; private friend rooms
 have a Firebase real-time scaffold (see `docs/FIREBASE_SETUP.md`).
 
-> Play-money only — no real-money gambling (keeps it App-Store friendly).
+> Play-money only, no real-money gambling (keeps it App-Store friendly).
 
 ## Run it locally (Expo Go)
 
@@ -20,17 +20,17 @@ Requires Node 18+ and the **Expo Go** app on your device (iOS 16+).
 
 ## What's built
 
-- **Wii-style UI** — glossy channel tiles, bouncy spring buttons, felt table,
+- **Wii-style UI**, glossy channel tiles, bouncy spring buttons, felt table,
   procedural **Mii avatars** (deterministic SVG faces from a seed).
 - **Home lobby** as a Wii channel grid, **Poker table**, **Create/Join room**,
   **Stats dashboard**, and **Profile** screens.
-- **Poker engine** (`src/engine`) — pure TypeScript, dependency-free: seeded
+- **Poker engine** (`src/engine`), pure TypeScript, dependency-free: seeded
   shuffle, 5–7 card hand evaluator, full Hold'em state machine (blinds, betting,
   side pots, showdown), and a heuristic bot. Fully unit-tested.
-- **Stats** — VPIP, PFR, aggression factor, win rate, stack history chart,
+- **Stats**, VPIP, PFR, aggression factor, win rate, stack history chart,
   persisted locally via AsyncStorage.
-- **Economy** — starting chips + daily bonus.
-- **Ads** — placeholder banner slots reflecting the ad-supported design.
+- **Economy**, starting chips + daily bonus.
+- **Ads**, placeholder banner slots reflecting the ad-supported design.
 
 ## Scripts
 
@@ -62,9 +62,9 @@ DESIGN.md               # product/architecture design doc
 These are designed for but intentionally stubbed so the app runs in **Expo Go**
 without a custom native dev client or cloud project:
 
-- **AdMob** (`react-native-google-mobile-ads`) — needs a dev client; see
+- **AdMob** (`react-native-google-mobile-ads`), needs a dev client; see
   `src/components/AdBanner.tsx`. Currently a visual placeholder.
-- **Firebase** real-time friend rooms — invite codes/UI exist; multiplayer sync
+- **Firebase** real-time friend rooms, invite codes/UI exist; multiplayer sync
   is not connected. Local play vs. bots is fully functional.
 - **In-app purchases** (remove-ads, chip packs) and push notifications.
 

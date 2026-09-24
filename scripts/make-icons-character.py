@@ -114,7 +114,7 @@ def shades(cx, cy, r):
 
 
 # =====================================================================
-# A. The Peek — only the eyes clear the top of the hand.
+# A. The Peek: only the eyes clear the top of the hand.
 # The single most recognisable gesture in poker.
 # =====================================================================
 def peek():
@@ -133,7 +133,7 @@ def peek():
 
 
 # =====================================================================
-# B. The Poker Face — shades, deadpan, cards reflected in the lenses.
+# B. The Poker Face: shades, deadpan, cards reflected in the lenses.
 # =====================================================================
 def pokerface():
     defs = f"<defs>{grad('bgB', '#5FC2E8', BLUE_INK)}</defs>"
@@ -150,7 +150,7 @@ def pokerface():
 
 
 # =====================================================================
-# C. The Reveal — grinning, laying down the winning hand.
+# C. The Reveal: grinning, laying down the winning hand.
 # The emotional payoff moment rather than the tense one.
 # =====================================================================
 def reveal():
@@ -182,7 +182,7 @@ def reveal():
 
 
 # =====================================================================
-# D. Head to Head — two players, one pot. The "with friends" read.
+# D. Head to Head: two players, one pot. The "with friends" read.
 # =====================================================================
 def headtohead():
     defs = f"<defs>{grad('bgD', FELT_LIGHT, RAIL)}</defs>"
@@ -209,7 +209,7 @@ def headtohead():
 
 
 # =====================================================================
-# E. The Medallion — the character as an emblem inside a chip, with the
+# E. The Medallion: the character as an emblem inside a chip, with the
 # hand fanned behind it. Borrows the chip's strong circular silhouette.
 # =====================================================================
 def medallion():

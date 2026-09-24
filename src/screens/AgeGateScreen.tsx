@@ -22,7 +22,7 @@ const LEGAL_COPY: Record<LegalKind, { title: string; body: string }> = {
     title: 'Privacy Policy',
     body:
       'Your profile, coins, stats, settings and saved game stay on your device. We do not ask for your real name, and creating an account is not required to play.\n\n' +
-      'If you play online with friends, we sign you in anonymously and send only what the table needs — an anonymous ID, your display name and the game state — to our Firebase server. Reaction GIFs load from Giphy\u2019s public CDN, which receives the usual network request details such as your IP address.\n\n' +
+      'If you play online with friends, we sign you in anonymously and send only what the table needs (an anonymous ID, your display name and the game state) to our Firebase server. Reaction GIFs load from Giphy\u2019s public CDN, which receives the usual network request details such as your IP address.\n\n' +
       'If crash reporting is enabled in this build, error and device diagnostics are sent to our crash-reporting provider so we can fix bugs. LocalPoker does not currently include an ads or analytics SDK; if that changes we will update this notice and ask for any consent the law requires first.\n\n' +
       'LocalPoker never handles real-money gambling. For privacy questions or deletion requests, contact maskndafi@gmail.com.',
   },

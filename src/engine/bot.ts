@@ -80,7 +80,7 @@ interface DifficultyProfile {
   /**
    * Minimum Chen score this bot will open/raise with preflop. Chen is a
    * starting-hand *ranking*, which is exactly the right tool for "is this worth
-   * playing aggressively" — unlike equity, it knows AKo is a better hand to
+   * playing aggressively", unlike equity, it knows AKo is a better hand to
    * raise than 76s even when their raw equity is similar. Lower = raises wider.
    *
    * Calibrated against the actual distribution over all 1326 starting hands,
@@ -113,7 +113,7 @@ interface DifficultyProfile {
  * correctly they act on it*, rather than in arbitrary thresholds:
  *
  *  - easy runs few simulations, so its equity estimate is genuinely noisy
- *    (~±6%), and it calls far too wide — it misjudges hands rather than being
+ *    (~±6%), and it calls far too wide, it misjudges hands rather than being
  *    handicapped after the fact.
  *  - expert samples enough to be accurate to ~±2%, plays close to correct pot
  *    odds, uses position, and bluffs the most.
@@ -198,7 +198,7 @@ function preflopRaiseChance(chen: number, profile: DifficultyProfile): number {
  * Monte Carlo at every street, including preflop.
  *
  * It is tempting to use the Chen score preflop since it is far cheaper, but Chen
- * produces a *ranking*, not a probability — 72o scores 0 on a normalised Chen
+ * produces a *ranking*, not a probability, 72o scores 0 on a normalised Chen
  * scale while its real heads-up equity is ~0.36. Feeding a ranking into a
  * pot-odds comparison made every bot fold far too much preflop, and the tighter
  * the profile the worse it bled blinds. A rollout also knows something Chen
@@ -316,7 +316,7 @@ export function decideAction(state: GameState, playerId: string, difficulty: Dif
   const edge = equity - fairShare;
 
   const ceiling = commitCeiling(equity, stack);
-  // Bluffs stay small — never a stack-off.
+  // Bluffs stay small, never a stack-off.
   const bluffCap = Math.min(Math.floor(stack * 0.4), Math.max(0, stack - 1));
   // A bluff has to get through everyone still in the hand, so it is worth far
   // less multiway. The profile rate is the heads-up rate.

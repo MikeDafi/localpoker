@@ -80,7 +80,6 @@ export interface GameSettings {
   mixedDifficulty: boolean;
 
   // Table appearance
-  tableTheme: 'classic' | 'midnight' | 'sunset' | 'emerald' | 'royal' | 'candy';
   feltPattern: 'plain' | 'speckle' | 'logo' | 'grid';
   cardBack: 'blue' | 'red' | 'black' | 'holo' | 'retro';
   cardFace: 'classic' | 'large' | 'fourcolor' | 'minimal';
@@ -104,13 +103,11 @@ export interface GameSettings {
   chipAnimation: boolean;
   avatarIdleMotion: boolean;
   avatarReactions: boolean;
-  confettiOnWin: boolean;
   reduceMotion: boolean;
 
   // Accessibility
   largeText: boolean;
   highContrast: boolean;
-  colorBlindMode: 'off' | 'deuteranopia' | 'protanopia' | 'tritanopia';
   leftHandedLayout: boolean;
   fourColorDeck: boolean;
   alwaysShowOdds: boolean;
@@ -119,8 +116,6 @@ export interface GameSettings {
   chatEnabled: boolean;
   emotesEnabled: boolean;
   quickChatOnly: boolean;
-  showHandStrengthHints: boolean;
-  showWinProbability: boolean;
   allowSpectators: boolean;
   friendsOnly: boolean;
 
@@ -130,7 +125,6 @@ export interface GameSettings {
   autoRebuyThresholdBB: number;
   sitOutNextHand: boolean;
   waitForBigBlind: boolean;
-  confirmAllIn: boolean;
   confirmFoldWhenCheckAvailable: boolean;
   handHistory: boolean;
   showdownAllHands: boolean;
@@ -204,7 +198,6 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   adaptiveDifficulty: false,
   mixedDifficulty: false,
 
-  tableTheme: 'classic',
   feltPattern: 'plain',
   cardBack: 'blue',
   cardFace: 'classic',
@@ -226,12 +219,10 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   chipAnimation: true,
   avatarIdleMotion: true,
   avatarReactions: true,
-  confettiOnWin: true,
   reduceMotion: false,
 
   largeText: false,
   highContrast: false,
-  colorBlindMode: 'off',
   leftHandedLayout: false,
   fourColorDeck: false,
   alwaysShowOdds: false,
@@ -239,8 +230,6 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   chatEnabled: true,
   emotesEnabled: true,
   quickChatOnly: false,
-  showHandStrengthHints: true,
-  showWinProbability: false,
   allowSpectators: true,
   friendsOnly: false,
 
@@ -249,7 +238,6 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   autoRebuyThresholdBB: 20,
   sitOutNextHand: false,
   waitForBigBlind: true,
-  confirmAllIn: true,
   confirmFoldWhenCheckAvailable: true,
   handHistory: true,
   showdownAllHands: false,
@@ -300,10 +288,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     id: 'ingame', title: 'In-Game', icon: '🎯',
     fields: [
       { key: 'showLiveStats', label: 'Live Stats Overlay', type: 'toggle', help: 'Show VPIP / PFR / win rate during play.' },
-      { key: 'showHandStrengthHints', label: 'Hand Strength Hints', type: 'toggle' },
-      { key: 'showWinProbability', label: 'Win Probability', type: 'toggle' },
       { key: 'autoMuck', label: 'Auto Muck Losers', type: 'toggle' },
-      { key: 'confirmAllIn', label: 'Confirm All-in', type: 'toggle' },
       { key: 'confirmFoldWhenCheckAvailable', label: 'Confirm Fold (can check)', type: 'toggle' },
     ],
   },
@@ -321,14 +306,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     fields: [
       { key: 'animationSpeed', label: 'Animation Speed', type: 'select', options: [{ value: 'slow', label: 'Slow' }, { value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }, { value: 'off', label: 'Off' }] },
       { key: 'avatarIdleMotion', label: 'Avatar Idle Motion', type: 'toggle' },
-      { key: 'confettiOnWin', label: 'Confetti on Win', type: 'toggle' },
       { key: 'reduceMotion', label: 'Reduce Motion', type: 'toggle' },
     ],
   },
   {
     id: 'appearance', title: 'Appearance', icon: '🎨',
     fields: [
-      { key: 'tableTheme', label: 'Table Theme', type: 'select', options: [{ value: 'classic', label: 'Classic' }, { value: 'midnight', label: 'Midnight' }, { value: 'sunset', label: 'Sunset' }, { value: 'emerald', label: 'Emerald' }, { value: 'royal', label: 'Royal' }, { value: 'candy', label: 'Candy' }] },
       { key: 'cardBack', label: 'Card Back', type: 'select', options: [{ value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }] },
       { key: 'showAvatarNames', label: 'Show Names', type: 'toggle' },
     ],
@@ -336,9 +319,8 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'a11y', title: 'Accessibility', icon: '♿',
     fields: [
-      { key: 'largeText', label: 'Large Text', type: 'toggle' },
+      { key: 'largeText', label: 'Large Text', type: 'toggle', help: 'Bigger type across menus and the table.' },
       { key: 'highContrast', label: 'High Contrast', type: 'toggle' },
-      { key: 'colorBlindMode', label: 'Color Blind Mode', type: 'select', options: [{ value: 'off', label: 'Off' }, { value: 'deuteranopia', label: 'Deuteranopia' }, { value: 'protanopia', label: 'Protanopia' }, { value: 'tritanopia', label: 'Tritanopia' }] },
     ],
   },
 ];

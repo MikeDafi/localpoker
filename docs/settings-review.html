@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LocalPoker — Game Settings Prioritization</title>
+<title>LocalPoker: Game Settings Prioritization</title>
 <style>
 :root{--bg:#0f1c26;--card:#16283440;--ink:#e9f1f6;--muted:#9fb3c0;--blue:#22abe4;--green:#3fb56b;--red:#e8503a;--gold:#f5c518;--amber:#f5a623;}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(160deg,#0b141b,#14303f);color:var(--ink);padding:32px 20px 60px}
@@ -21,7 +21,7 @@ th{color:var(--muted);font-weight:600}
 .pill{background:rgba(255,255,255,.08);border-radius:8px;padding:1px 7px;font-size:11px;color:var(--muted)}
 footer{margin-top:36px;color:var(--muted);font-size:12px}
 </style></head><body><div class="wrap">
-<h1>🎛️ LocalPoker — Game Settings, Prioritized</h1>
+<h1>🎛️ LocalPoker: Game Settings, Prioritized</h1>
 <p class="sub">Trimmed from <b>102</b> settings to <b>29</b> that are implemented and meaningful. Below: what stays (by priority) and what was cut and why.</p>
 <div class="legend">
 <span><span class="badge b-ess">ESSENTIAL</span> core to a game</span>
@@ -29,7 +29,7 @@ footer{margin-top:36px;color:var(--muted);font-size:12px}
 <span><span class="badge b-cut">CUT</span> removed from the UI</span>
 </div>
 
-<h2>✅ Kept <span class="count">— 29 settings, 7 sections</span></h2>
+<h2>✅ Kept <span class="count">: 23 settings, 7 sections, every one of them wired up</span></h2>
 
 <h3>🎲 Table <span class="badge b-ess">ESSENTIAL</span></h3>
 <div class="grid">
@@ -51,10 +51,7 @@ footer{margin-top:36px;color:var(--muted);font-size:12px}
 <h3>🎯 In-Game <span class="badge b-use">USEFUL</span></h3>
 <div class="grid">
 <div class="item"><div class="n">Live Stats Overlay</div><div class="d">VPIP/PFR/win rate during play</div></div>
-<div class="item"><div class="n">Hand Strength Hints</div><div class="d">names your current hand</div></div>
-<div class="item"><div class="n">Win Probability</div><div class="d">rough equity readout</div></div>
 <div class="item"><div class="n">Auto Muck Losers</div><div class="d">show/muck control</div></div>
-<div class="item"><div class="n">Confirm All-in</div><div class="d">safety tap</div></div>
 <div class="item"><div class="n">Confirm Fold (can check)</div><div class="d">avoid misclicks</div></div>
 </div>
 
@@ -65,17 +62,19 @@ footer{margin-top:36px;color:var(--muted);font-size:12px}
 <div class="item"><div class="n">Win Fanfare</div></div>
 <div class="item"><div class="n">Animation Speed</div></div>
 <div class="item"><div class="n">Avatar Idle Motion</div></div>
-<div class="item"><div class="n">Confetti on Win</div></div>
 <div class="item"><div class="n">Reduce Motion</div></div>
-<div class="item"><div class="n">Table Theme</div></div>
 <div class="item"><div class="n">Card Back</div></div>
 <div class="item"><div class="n">Show Names</div></div>
 <div class="item"><div class="n">Large Text</div></div>
 <div class="item"><div class="n">High Contrast</div></div>
-<div class="item"><div class="n">Color Blind Mode</div></div>
 </div>
 
-<h2>🗑️ Cut <span class="count">— 73 settings removed from the UI</span></h2>
+<h2>🗑️ Cut <span class="count">: 79 settings removed from the UI</span></h2>
+<p>Six more were cut after an audit found they had a control but no effect: <b>Hand Strength Hints</b>,
+<b>Win Probability</b>, <b>Confirm All-in</b>, <b>Confetti on Win</b>, <b>Table Theme</b> and
+<b>Color Blind Mode</b>. Nothing in the app ever read them, so the toggle moved and the game did not.
+<b>Card Back</b>, <b>Show Names</b>, <b>Large Text</b> and <b>Ante</b> were in the same state and were
+implemented instead of cut.</p>
 <table>
 <tr><th>Reason</th><th>Settings</th></tr>
 <tr><td class="k">Not wired to the engine (aspirational)</td><td class="reason">Run It Twice, Rabbit Hunt, Bomb Pots (+frequency), 7-2 Bonus, All-in Insurance, Chop Blinds, Posting Rule, Show 1 on Fold, Straddle (+type), Big Blind Ante, blind-increase schedule, game type (only Hold'em), dead button, seating choice, time bank (+per-hand, auto-extension)</td></tr>

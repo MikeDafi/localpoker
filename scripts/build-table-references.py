@@ -11,7 +11,7 @@ from PIL import Image
 
 BASE = "docs/research/table-refs"
 
-# Boxes below were verified by eye against a contact sheet — each sits on bare
+# Boxes below were verified by eye against a contact sheet: each sits on bare
 # felt, clear of hands, chips and cards.
 REFS = [
     {
@@ -24,7 +24,7 @@ REFS = [
         "box": (700, 618, 770, 640),
         "read": "Near-black felt with a cool violet cast, gold line-art inlay, and a thick black padded rail over a wooden base.",
         "takeaways": [
-            "Felt is essentially black — the colour comes from the lighting, not the cloth.",
+            "Felt is essentially black; the colour comes from the lighting, not the cloth.",
             "Ornament lives in a single metallic accent (gold) on an otherwise dead-flat surface.",
             "A wide matte rail separates the felt from the room and grounds the table.",
         ],
@@ -39,7 +39,7 @@ REFS = [
         "box": (1500, 450, 1850, 650),
         "read": "Matte desaturated navy felt carrying a tonal suit-pattern watermark, lit evenly with no specular sheen.",
         "takeaways": [
-            "Texture is tonal — the suit motif is only a few percent lighter than the base.",
+            "Texture is tonal, the suit motif is only a few percent lighter than the base.",
             "Blue reads as 'premium casino' without the toy-green association.",
             "Cards and chips are the only saturated objects; the cloth never competes.",
         ],

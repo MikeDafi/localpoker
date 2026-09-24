@@ -1,5 +1,5 @@
 // Build-time helper: discover public Giphy IDs for the in-app reaction pack.
-// Not shipped with the app — run manually, then paste validated ids into EmoteBar.
+// Not shipped with the app, run manually, then paste validated ids into EmoteBar.
 const QUERIES = process.argv.slice(2);
 
 const PATTERNS = [

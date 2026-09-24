@@ -1,4 +1,4 @@
-# LocalPoker — Production Readiness Audit
+# LocalPoker: Production Readiness Audit
 
 _Last verified: 2026-09-19._  
 _App: LocalPoker: Poker with Friends (`com.mike0264.localpoker`), Expo SDK 57 / React Native / TypeScript / Firebase Realtime Database + anonymous auth scaffold._

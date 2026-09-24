@@ -61,7 +61,7 @@ describe('card face layout', () => {
     }
   });
 
-  it('lays out every rank symmetrically — except the seven, which really is not', () => {
+  it('lays out every rank symmetrically, except the seven, which really is not', () => {
     // Measured off the CC0 reference deck rather than assumed. A seven's odd
     // pip sits between the top and middle rows, in the upper half only, so the
     // card is genuinely not symmetric about its centre. My first version of
@@ -157,11 +157,11 @@ describe('card face layout', () => {
     // what keeps them apart is that the index column ends before the pip column
     // begins. Demanding a real gap rather than mere non-overlap, because an
     // index that exactly touches the pips passes an overlap check and still
-    // looks like a printing error — this is what forces a ten's digits to be
+    // looks like a printing error; this is what forces a ten's digits to be
     // condensed.
     //
     // Both columns are checked explicitly rather than argued from symmetry,
-    // because your own cards are printed four-index — you peel them from
+    // because your own cards are printed four-index, you peel them from
     // whichever corner your thumb reaches, and a two-index card shows nothing
     // but pips from half of them.
     for (const size of [40, 56, 86]) {
@@ -194,7 +194,7 @@ describe('card face layout', () => {
       // Single characters are drawn essentially unsqueezed.
       expect(indexScaleX(rankLabel(r), g), `rank ${r}`).toBeGreaterThan(0.94);
     }
-    // A ten is two characters in a space meant for one, and is squeezed hard —
+    // A ten is two characters in a space meant for one, and is squeezed hard,
     // but still drawn wider, relative to its height, than the reference deck's
     // own ten, which is narrower again.
     expect(indexScaleX('10', g)).toBeLessThan(0.7);

@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { View, AccessibilityInfo } from 'react-native';
 import Animated, {
   useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, Easing, cancelAnimation,
 } from 'react-native-reanimated';
 import { PalAvatar, PalAvatarProps, PalExpression } from './PalAvatar';
+import { getAppReduceMotion, subscribeAppReduceMotion } from '../theme/motionPreference';
 
 export interface AnimatedPalProps extends PalAvatarProps {
   /** enable organic idle motion + natural blinking */
@@ -37,18 +38,23 @@ export function AnimatedPal({
   const reactionScaleX = useSharedValue(1);
   const reactionScaleY = useSharedValue(1);
   const [blinking, setBlinking] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [osReduceMotion, setOsReduceMotion] = useState(false);
+  // The app's own Reduce Motion setting, which must stop idle motion just as
+  // the system one does. Read from a store rather than a prop so no caller can
+  // forget to pass it.
+  const appReduceMotion = useSyncExternalStore(subscribeAppReduceMotion, getAppReduceMotion, getAppReduceMotion);
+  const reduceMotion = osReduceMotion || appReduceMotion;
   const blinkTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled()
       .then((enabled) => {
-        if (mounted) setReduceMotion(enabled);
+        if (mounted) setOsReduceMotion(enabled);
       })
       .catch(() => {});
 
-    const subscription = AccessibilityInfo.addEventListener?.('reduceMotionChanged', setReduceMotion);
+    const subscription = AccessibilityInfo.addEventListener?.('reduceMotionChanged', setOsReduceMotion);
     return () => {
       mounted = false;
       subscription?.remove?.();

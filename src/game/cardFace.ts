@@ -12,8 +12,8 @@ export { SUIT_ASPECT, SUIT_PATH };
  * numbers turned out to be a strikingly regular grid:
  *
  *   - pips sit in three columns at ¼, ½ and ¾ of the card's width;
- *   - pip rows land on odd eighteenths of the card's height — 3, 5, 7, 9, 11,
- *     13, 15 — which is why a ten's four side rows (3, 7, 11, 15) interleave
+ *   - pip rows land on odd eighteenths of the card's height, 3, 5, 7, 9, 11,
+ *     13, 15, which is why a ten's four side rows (3, 7, 11, 15) interleave
  *     perfectly with its two centre pips (5, 13);
  *   - a pip is ⅙ of the card's width across and ¼ tall, so exactly 2:3;
  *   - the corner index is half-scale: a ¹⁄₁₂-width suit under the rank.
@@ -115,7 +115,7 @@ const LAYOUT: Record<number, [number, number][]> = {
  * A property of the generated PNGs rather than a choice, so `courtArt.test.ts`
  * measures the real files and fails if they stop matching. It lives here rather
  * than beside the images because `courtArt.ts` is nothing but `require()` calls,
- * which only Metro can resolve — importing it from a test crashes the runner.
+ * which only Metro can resolve, importing it from a test crashes the runner.
  */
 export const COURT_ASPECT = 200 / 319;
 
@@ -127,7 +127,7 @@ export function isCourt(rank: number): boolean {
 /**
  * The pips for a rank, in normalised card coordinates.
  *
- * Court cards have none — they are a picture, not a count — and an ace has one,
+ * Court cards have none; they are a picture, not a count, and an ace has one,
  * printed large.
  */
 export function pipLayout(rank: number): Pip[] {
@@ -164,7 +164,7 @@ export interface FaceGeometry {
      *
      * Measured off the source deck: the figure panel runs from 0.080 to 0.920
      * across its card and 0.054 to 0.946 down it. Kept as fractions rather than
-     * absolute sizes because the source cards are 2:3 and these are 1:1.42 —
+     * absolute sizes because the source cards are 2:3 and these are 1:1.42,
      * the artwork is fitted inside this box preserving its own aspect, so a
      * shorter card gives a slightly narrower figure rather than a squashed one.
      */
@@ -196,7 +196,7 @@ const CAP_RATIO = 0.715;
  *
  * It cannot go much further than this. The reference deck's digits are drawn
  * far narrower than any normal typeface's, so at equal height ours take much
- * more width — and the index has only the strip between the card's edge and the
+ * more width, and the index has only the strip between the card's edge and the
  * first pip column to live in.
  */
 const INDEX_CAP = 0.15;
@@ -266,7 +266,7 @@ export function pipWidth(suit: Suit, height: number): number {
  * Roughly how wide one character of the rank is, as a multiple of font size.
  *
  * Only used to decide whether a label needs condensing, so an estimate is
- * enough — and it has to be an estimate, because the real advance width lives
+ * enough: and it has to be an estimate, because the real advance width lives
  * inside the platform's font and is not available while laying out SVG.
  */
 const CHAR_EM = 0.6;
@@ -278,7 +278,7 @@ const CHAR_EM = 0.6;
  * less a margin so the two never touch. Everything except a ten fits it at
  * full width; a ten is two characters in a space meant for one, so it gets
  * condensed, which is precisely what real decks do (their tens are drawn with
- * separately kerned narrow digits rather than a normal "10" — in fact rather
+ * separately kerned narrow digits rather than a normal "10", in fact rather
  * more tightly than this).
  *
  * Squeezing rather than shrinking is deliberate: it keeps every rank's digits

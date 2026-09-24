@@ -48,7 +48,7 @@ yarn-error.*
 .env.*
 !.env.example
 
-# Short-lived gcloud access token used for Firebase admin calls — never commit
+# Short-lived gcloud access token used for Firebase admin calls: never commit
 .tok
 
 # Throwaway python env for scripts/measure-ref-card.py (see its docstring)

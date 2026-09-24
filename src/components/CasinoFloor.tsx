@@ -20,7 +20,7 @@ export interface CasinoFloorProps {
  *
  * The weave is the same CC0 Poly Haven cloth photograph used for the felt (see
  * assets/textures/CREDITS.md), tiled smaller and tinted warm so it reads as
- * carpet pile rather than table baize. Beams and pools are SVG gradients — the
+ * carpet pile rather than table baize. Beams and pools are SVG gradients, the
  * only way to get a soft-edged cone without shipping a bitmap per screen size.
  */
 export function CasinoFloor({ width, height }: CasinoFloorProps) {

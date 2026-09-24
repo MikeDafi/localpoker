@@ -99,7 +99,7 @@ export function WiiButton({
           end={{ x: 0.5, y: 1 }}
           style={[styles.fill, { borderRadius: radius, paddingHorizontal: round ? 0 : sz.px }]}
         >
-          {/* a single, very subtle top-light sheen — no plastic gloss */}
+          {/* a single, very subtle top-light sheen, no plastic gloss */}
           <LinearGradient
             colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
             start={{ x: 0.5, y: 0 }}

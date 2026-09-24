@@ -7,7 +7,7 @@ import { BOARD_DEAL_STEP, boardDealDelay } from '../boardDeal';
  * The throw animation starts from fully transparent, and the card component
  * restarts it whenever its delay prop changes. So if a card's delay is not
  * stable for the whole hand, already-placed cards blink out and re-fly in when
- * a new street is dealt — which is exactly what players saw.
+ * a new street is dealt, which is exactly what players saw.
  */
 describe('board deal timing', () => {
   it('staggers the flop and lands turn and river immediately', () => {

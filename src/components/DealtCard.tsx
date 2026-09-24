@@ -113,7 +113,7 @@ export function DealtCard({
     <Animated.View style={throwStyle}>
       <Animated.View style={[{ width: size, height: h }, flipStyle]}>
         <Animated.View style={[{ position: 'absolute', top: 0, left: 0 }, backStyle]}>
-          <PlayingCard size={size} faceDown dimmed={dimmed} />
+          <PlayingCard size={size} faceDown dimmed={dimmed} back={card.back} />
         </Animated.View>
         <Animated.View style={[{ position: 'absolute', top: 0, left: 0 }, faceStyle]}>
           <PlayingCard size={size} dimmed={dimmed} {...card} />

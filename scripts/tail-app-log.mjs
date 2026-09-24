@@ -9,7 +9,7 @@
  *
  * Useful for faults that only a real finger can produce: XCUITest's synthetic
  * drags are not delivered to react-native-gesture-handler as moving touches, so
- * anything that goes wrong *during* a drag — the peel, in particular — cannot
+ * anything that goes wrong *during* a drag, the peel, in particular, cannot
  * be reproduced from a test and has to be caught while someone actually does
  * it.
  *
@@ -43,7 +43,7 @@ try {
   process.exit(1);
 }
 if (!targets.length) {
-  console.error('Metro is running but no app is attached — open the app and try again.');
+  console.error('Metro is running but no app is attached, open the app and try again.');
   process.exit(1);
 }
 
@@ -61,7 +61,7 @@ const counts = new Map();
 ws.on('open', () => {
   send('Runtime.enable');
   send('Log.enable');
-  console.log('attached — reproduce the problem now, then press Ctrl-C\n');
+  console.log('attached, reproduce the problem now, then press Ctrl-C\n');
 });
 
 ws.on('error', (e) => console.error('inspector error:', e.message));

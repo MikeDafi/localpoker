@@ -65,12 +65,12 @@ export function LiveStatsPanel({
       case 'handsSession': return { value: `${sessionHands}` };
       case 'netChips':
         return { value: `${stats.netChips >= 0 ? '+' : ''}${stats.netChips.toLocaleString()}` };
-      default: return { value: '—' };
+      default: return { value: '-' };
     }
   };
 
   const toggle = (id: string) => setOpenHelp((cur) => (cur === id ? null : id));
-  const fmt = (v: number | null, suffix = '%') => (v == null ? '—' : v === Infinity ? '∞' : `${v}${suffix}`);
+  const fmt = (v: number | null, suffix = '%') => (v == null ? '-' : v === Infinity ? '∞' : `${v}${suffix}`);
 
   return (
     <Animated.View entering={FadeIn.duration(motion.fast)} style={styles.scrim}>
@@ -148,7 +148,7 @@ export function LiveStatsPanel({
                     <Text style={styles.oppHands}>
                       {s.handsSeen === 0
                         ? 'No hands seen yet'
-                        : `${s.handsSeen} hand${s.handsSeen === 1 ? '' : 's'} seen${s.handsSeen < 20 ? ' — still a small sample' : ''}`}
+                        : `${s.handsSeen} hand${s.handsSeen === 1 ? '' : 's'} seen${s.handsSeen < 20 ? ', still a small sample' : ''}`}
                     </Text>
                     <View style={styles.oppGrid}>
                       {OPPONENT_STAT_KEYS.map((key) => {

@@ -63,7 +63,7 @@ def spade(cx, cy, scale, fill, opacity=1.0):
 
 
 # =========================================================================
-# 1. Swiss / International Typographic  — Josef Muller-Brockmann
+# 1. Swiss / International Typographic: Josef Muller-Brockmann
 # Reductive geometry on a strict grid. No ornament, no gradient, no depth.
 # The suit is *constructed*, not decorated, and one hairline rule does the
 # work an illustration would.
@@ -80,7 +80,7 @@ def swiss():
 
 
 # =========================================================================
-# 2. Art Deco  — A.M. Cassandre / Erte
+# 2. Art Deco: A.M. Cassandre / Erte
 # Bilateral symmetry, stepped geometry and metallic linework. Casino
 # heritage: the Chrysler-building fan, gold on deep green.
 # =========================================================================
@@ -114,7 +114,7 @@ def deco():
 
 
 # =========================================================================
-# 3. Contemporary iOS depth  — Michael Flarup
+# 3. Contemporary iOS depth: Michael Flarup
 # One hero object, believable lighting, soft gradients. The thing the icon
 # depicts is a physical object you could pick up: a clay chip.
 # =========================================================================
@@ -154,7 +154,7 @@ def chip():
 
 
 # =========================================================================
-# 4. Character-led  — the friendly, social read
+# 4. Character-led: the friendly, social read
 # The product is "Poker with Friends", so the hero is a face, not a suit.
 # Reads warm at a glance and differentiates hard from every dark-green
 # poker icon on the store.
@@ -199,7 +199,7 @@ def pal():
 
 
 # =========================================================================
-# 5. Bauhaus / Constructivist  — Herbert Bayer, El Lissitzky
+# 5. Bauhaus / Constructivist: Herbert Bayer, El Lissitzky
 # Flat primaries, hard diagonal, shapes doing the talking. Loud on a
 # crowded home screen precisely because it refuses realism.
 # =========================================================================

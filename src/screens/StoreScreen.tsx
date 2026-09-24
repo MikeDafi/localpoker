@@ -419,7 +419,7 @@ export function StoreScreen({ navigation }: Props) {
 
       if (profile.coins < item.price) {
         sound.play('error');
-        Alert.alert('Not enough coins', 'Not enough coins — play more hands to earn coins!');
+        Alert.alert('Not enough coins', 'Play more hands to earn coins!');
         return;
       }
 

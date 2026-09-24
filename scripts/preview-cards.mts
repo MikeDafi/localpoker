@@ -4,7 +4,7 @@
  * Judging a card design one screenshot at a time is how the ten ended up with a
  * single giant pip in the middle for so long: each card looked fine in
  * isolation. Drawing all thirteen ranks together, at the sizes the app actually
- * uses, makes a wrong pip row or a colliding index obvious at a glance — and it
+ * uses, makes a wrong pip row or a colliding index obvious at a glance, and it
  * comes from `cardFace`, the same module the component lays out from, so the
  * sheet cannot flatter a layout the app would not draw.
  *
@@ -46,7 +46,7 @@ SUITS.forEach((suit, r) => {
 const boardTop = PAD + heroBlock + 40;
 body.push(
   `<text x="${PAD}" y="${boardTop - 14}" font-size="18" font-family="Helvetica" fill="#555">` +
-    `the board at ${BOARD}pt — classic two-index printing, read at a glance rather than peeled</text>`,
+    `the board at ${BOARD}pt, classic two-index printing, read at a glance rather than peeled</text>`,
 );
 SUITS.forEach((suit, r) => {
   RANKS.forEach((rank, c) => {

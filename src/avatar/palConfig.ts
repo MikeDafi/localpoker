@@ -1,5 +1,5 @@
 /**
- * Pal avatar system — a data-driven, highly customizable character config.
+ * Pal avatar system, a data-driven, highly customizable character config.
  *
  * A "Pal" is our original friendly console-style avatar (not affiliated with any
  * trademarked character system). Every feature is an index into an option list

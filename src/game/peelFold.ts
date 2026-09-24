@@ -1,7 +1,7 @@
 /**
  * Geometry for peeling a card open by folding part of it back.
  *
- * A peel is not a card swinging away on a hinge — that reads as a pocket knife
+ * A peel is not a card swinging away on a hinge; that reads as a pocket knife
  * opening. A real peel bends the card along a crease: the far part stays flat
  * on the table while the near part folds *back over itself*, uncovering what
  * was underneath. The crease travels across the card as you lift, so the
@@ -76,7 +76,7 @@ function rect(w: number, h: number): Poly {
  *
  * `dist === 0` is deliberately not a special case. The crease then passes
  * through the anchor itself, and because the anchor sits on the card's boundary
- * with `n` pointing inward, every point of the card tests as flat — a card that
+ * with `n` pointing inward, every point of the card tests as flat, a card that
  * has not been lifted at all, with no branch needed to say so.
  *
  * `(dirX, dirY)` must be a unit vector; callers hold it as one so this stays
@@ -94,8 +94,8 @@ export function creaseFor(anchor: Pt, dirX: number, dirY: number, dist: number):
 /**
  * Whether a crease describes a real fold.
  *
- * The normal has to be a direction. If it collapses to zero — which a gesture
- * can produce the instant a finger lands, before it has moved anywhere — then
+ * The normal has to be a direction. If it collapses to zero, which a gesture
+ * can produce the instant a finger lands, before it has moved anywhere, then
  * every point of the card sits exactly *on* the crease, so the half-plane tests
  * that split the card both answer "yes" and the card ends up simultaneously
  * flat and folded: the flap comes out as a perfect copy of the whole card,
@@ -106,7 +106,7 @@ export function creaseFor(anchor: Pt, dirX: number, dirY: number, dist: number):
  * Defined above everything that calls it, and not below where it reads better:
  * Reanimated builds each worklet's closure as the module evaluates, in source
  * order, so a worklet declared after its caller is simply missing on the UI
- * thread. It throws `undefined is not a function` on device and nowhere else —
+ * thread. It throws `undefined is not a function` on device and nowhere else,
  * unit tests, where hoisting applies normally, pass either way.
  */
 function isFolded(c: Crease): boolean {
@@ -328,7 +328,7 @@ export function clearanceAt(poly: Poly, p: Pt): number {
   return min === Infinity ? -Infinity : min;
 }
 
-/** The average of a polygon's vertices — a cheap, always-inside seed point. */
+/** The average of a polygon's vertices, a cheap, always-inside seed point. */
 export function centroid(poly: Poly): Pt {
   'worklet';
   if (poly.length === 0) return { x: 0, y: 0 };
@@ -352,7 +352,7 @@ export interface Fitted {
  * Nudge a point until a disc of radius `r` around it fits inside `poly`.
  *
  * This is what decides where the card's value can be printed on the lifted
- * flap. Placing it at the flap's centroid alone is not enough — a centroid sits
+ * flap. Placing it at the flap's centroid alone is not enough; a centroid sits
  * inside the shape but says nothing about how much room is around it, so on a
  * shallow peel the glyph spilled over the crease and floated on the card back.
  * Pushing off every edge that crowds it converges on somewhere with real room,
@@ -381,7 +381,7 @@ export function fitInside(poly: Poly, target: Pt, r: number, passes = 16): Fitte
     if (worst <= 1e-6) break;
 
     // The move that would satisfy every crowding edge at once. When the edges
-    // are independent — a corner of the flap pinching from two sides — this
+    // are independent, a corner of the flap pinching from two sides, this
     // lands exactly right in a single step.
     let sx = 0;
     let sy = 0;
@@ -404,8 +404,8 @@ export function fitInside(poly: Poly, target: Pt, r: number, passes = 16): Fitte
     // is and the shape is simply too small. Stop rather than jitter.
     if (Math.abs(sx) < 1e-9 && Math.abs(sy) < 1e-9) break;
 
-    // When the edges *do* fight — a flap narrower than the glyph, where moving
-    // off one edge drives you into the one opposite — the full step overshoots
+    // When the edges *do* fight, a flap narrower than the glyph, where moving
+    // off one edge drives you into the one opposite, the full step overshoots
     // and the point ping-pongs forever. Backing off until the move actually
     // improves the worst case converges on the middle instead, which is where
     // the value should sit while it fades out.
@@ -430,8 +430,8 @@ export function fitInside(poly: Poly, target: Pt, r: number, passes = 16): Fitte
 /**
  * Where a touch grabs the card.
  *
- * You cannot peel from the middle of a sheet of paper — a fold has to start at
- * an edge — so the touch is pulled to the nearest point on the card's boundary,
+ * You cannot peel from the middle of a sheet of paper; a fold has to start at
+ * an edge, so the touch is pulled to the nearest point on the card's boundary,
  * and to an actual corner when it is near enough that a corner is obviously
  * what was meant. That corner snap is the only concession to presets in the
  * whole model, and it exists because fingers are blunt: without it, grabbing a
@@ -482,7 +482,7 @@ export const PEEL_OVERSHOOT = 1.12;
  *
  * Extracted from the gesture so it can be tested, because the interesting cases
  * are the ones a gesture reaches and a scripted animation never does. Dragging
- * *away* from the card leaves no room to fold into — `reach` is zero — and the
+ * *away* from the card leaves no room to fold into, `reach` is zero, and the
  * obvious arithmetic then divides zero by zero. The resulting `NaN` travels all
  * the way into the fold's transform and the card's lift, where it surfaces as a
  * stream of errors from deep inside the rendering libraries with nothing to say
@@ -502,7 +502,7 @@ export function foldAmount(dist: number, reach: number, dead: number): number {
 /**
  * Where a fold in direction `(dirX, dirY)` has to begin.
  *
- * Not where your finger is — where the card *starts*. The crease is square to
+ * Not where your finger is, where the card *starts*. The crease is square to
  * the drag, so for the fold to grow from nothing it has to enter the card at
  * the point furthest back against the drag, and sweep forwards from there.
  *
@@ -510,7 +510,7 @@ export function foldAmount(dist: number, reach: number, dead: number): number {
  * middle of an edge, pull at any angle other than straight in, and the crease
  * through your finger already cuts a corner off, so the card springs open with
  * a piece lifted before you have moved. Pull *outward* and the entire card ends
- * up on the lifted side at once — the back disappears and the card becomes a
+ * up on the lifted side at once, the back disappears and the card becomes a
  * single white triangle.
  *
  * For the grabs that matter this changes nothing: drag a corner diagonally and
@@ -560,7 +560,7 @@ export function foldExtent(w: number, h: number, anchor: Pt, dirX: number, dirY:
  * `foldExtent` measures how far the card reaches in the direction being pulled,
  * and a drag of exactly that would put the crease across the card's middle and
  * fold it clean in half. Just under three-quarters of it lifts a piece big
- * enough to print the value on — including on a side fold, whose flap is only
+ * enough to print the value on, including on a side fold, whose flap is only
  * half as wide as the drag is long, and which is therefore what sets this
  * number.
  */
@@ -569,7 +569,7 @@ export const PEEL_FRACTION = 0.72;
 /**
  * Which card of a row a touch is over.
  *
- * The cards are laid out on a fixed pitch, so this is a division — but it must
+ * The cards are laid out on a fixed pitch, so this is a division, but it must
  * be asked exactly *once*, when the finger lands. Asking it again on every
  * frame is what made dragging between two cards glitch: the pinned point stays
  * on the card that was grabbed while the finger's position starts being
@@ -592,7 +592,7 @@ export function cardUnder(x: number, pitch: number, count: number): number {
  * Limiting where a peel *begins* is not the same as limiting what it exposes,
  * and only the second is what anyone means by "peel the bottom half". A grab on
  * the side at the midline starts legally and still folds the card across its
- * full height, laying the whole face open — which is the bug this exists to
+ * full height, laying the whole face open, which is the bug this exists to
  * stop.
  *
  * The rule is simply that every corner of the protected region has to stay on
@@ -637,12 +637,12 @@ export type Affine = [number, number, number, number, number, number];
  *
  * This is what turns the lifted piece into a genuine fold rather than a
  * stand-in: the card's *own* face is drawn through it, so whatever is printed
- * on the part you lifted — pips, index, court figure — rides up on the paper
+ * on the part you lifted, pips, index, court figure, rides up on the paper
  * and lands mirrored about the bend, exactly as it does in your hands.
  *
  * Numbers rather than a transform string, and that took a while to arrive at.
  * react-native-svg animates a group by calling `setNativeProps`, and `G`'s
- * implementation runs the *JavaScript* transform parser on every frame — a
+ * implementation runs the *JavaScript* transform parser on every frame, a
  * parser that rejects the comma-separated `matrix()` the native side is the
  * only consumer of, logging an error per frame for as long as a finger is down.
  * Whitespace instead aborts the process outright, as does writing the same
@@ -674,7 +674,7 @@ export function reflectMatrix(c: Crease, lifted: boolean, w: number): Affine {
   // Composed with a flip about the card's own centre line, which turns the
   // reflection into a rotation and is the one place this departs from the
   // physics. A true fold shows you the back of the paper, so everything printed
-  // on it comes out mirrored — correct, and unreadable: a folded 5 reads as a
+  // on it comes out mirrored, correct, and unreadable: a folded 5 reads as a
   // backwards 5, and the whole point of the gesture is reading your hand. The
   // extra flip cancels the mirroring while leaving the turn, so the value still
   // swings round with the fold but stays the right way round.

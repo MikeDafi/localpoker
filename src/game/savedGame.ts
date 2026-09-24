@@ -24,7 +24,7 @@ export function isResumable(saved: SavedGame | null | undefined, now: number = D
  * Returning `now` (a full-length timer) is the fallback when there's nothing to
  * carry over.
  *
- * This only works if `savedAt` is stamped when the player actually leaves — the
+ * This only works if `savedAt` is stamped when the player actually leaves, the
  * debounced autosave stamps it ~600ms into the turn, which made every resume
  * look like the turn had barely started. TableScreen therefore flushes a save on
  * unmount.

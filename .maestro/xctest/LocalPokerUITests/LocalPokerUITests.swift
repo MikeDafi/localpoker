@@ -93,7 +93,7 @@ final class LocalPokerUITests: XCTestCase {
  }
 
  // ---- Quick Play design audit -------------------------------------------
- // NOTE: never call app.activate() here — bringing Expo Go forward makes it
+ // NOTE: never call app.activate() here, bringing Expo Go forward makes it
  // restore its *last* project (another worktree's tunnel) instead of ours.
  func dismissOpenDialog() {
    let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -130,7 +130,7 @@ final class LocalPokerUITests: XCTestCase {
    sleep(3); save("qp-03-table-preflop")
    sleep(7); save("qp-04-table-later")
    // Advance through live streets so the board + pot actually render in the
-   // community lane — that's where the layout has to hold up.
+   // community lane, that's where the layout has to hold up.
    for i in 0..<4 {
      if !tap("Check", 2) { _=tap("Call", 2) }
      sleep(4)
@@ -146,7 +146,7 @@ final class LocalPokerUITests: XCTestCase {
  // Plays a hand to a real showdown and samples the reveal choreography: the
  // winner's cards turning over, growing, travelling to the board, and the best
  // five being ringed. Also captures a "your turn" frame so the felt geometry can
- // be compared against the "hand over" frame — the table must not move.
+ // be compared against the "hand over" frame, the table must not move.
  func test91ShowdownAudit() throws {
    dismissOpenDialog()
    sleep(6)
@@ -186,7 +186,7 @@ final class LocalPokerUITests: XCTestCase {
    usleep(800_000);   save("sd-05-reveal-ring")
    sleep(2);          save("sd-06-reveal-settled")
 
-   // Next hand, then the reactions sheet — the GIFs must be one scrolling row.
+   // Next hand, then the reactions sheet, the GIFs must be one scrolling row.
    _=tap("Next Hand", 6)
    _=any("Pot").waitForExistence(timeout: 20)
    sleep(3)
@@ -233,7 +233,7 @@ final class LocalPokerUITests: XCTestCase {
 
  // ---- Unattended soak ------------------------------------------------------
  // Navigates into Quick Play, then samples the screen on a timer using ONLY
- // screen captures — no accessibility queries at all. XCUITest's element queries
+ // screen captures, no accessibility queries at all. XCUITest's element queries
  // walk the whole React Native tree and time out on this screen; a screenshot
  // doesn't, so this verifies the table keeps playing and rendering correctly
  // without the harness interfering.
@@ -805,5 +805,37 @@ final class LocalPokerUITests: XCTestCase {
      }
    }
    requireStored(["20-headsup-setup","21-headsup","22-reactions"])
+ }
+
+ /// The all-in run-out is covered by `src/game/__tests__/runout.test.ts`.
+ ///
+ /// It was a UI test here first, and that was the wrong place for it: each
+ /// street is on screen for about a second, so catching all three needed a poll
+ /// tight enough to blow XCUITest's accessibility snapshot timeout, which is the
+ /// same limit called out at the top of this file. The pacing decision is a pure
+ /// function now, so the sequence and its timings are asserted directly.
+
+ /// Capture the Settings sections that the layout fix and the new wiring touch.
+ ///
+ /// Expo Go floats its own dev-menu gear over the top-right corner, exactly
+ /// where the app puts its Settings button, so the first tap opens the dev menu
+ /// instead of the screen under test. Turning its "Tools button" off once gets
+ /// the real control back.
+ func testS8SettingsShots() throws {
+   app.activate(); sleep(2)
+   if app.buttons["Continue"].waitForExistence(timeout:4) { app.buttons["Continue"].tap(); sleep(2) }
+   if present("Toggle performance monitor",3) {
+     if btn("Tools button").exists { btn("Tools button").tap(); usleep(600_000) }
+     app.coordinate(withNormalizedOffset: CGVector(dx:0.5,dy:0.04)).tap(); sleep(2)
+   }
+   gate(); home()
+   XCTAssertTrue(tap("Settings",10), "could not open Settings")
+   XCTAssertTrue(present("Animation Speed",15) || present("Sound Effects",10), "Settings did not load")
+   save("set-1-top")
+   for section in ["Animations","Appearance","Accessibility"] {
+     if tap(section,6) { sleep(1); save("set-\(section.lowercased())") }
+     else { print("MISSSECTION \(section)") }
+   }
+   requireStored(["set-1-top"])
  }
 }
