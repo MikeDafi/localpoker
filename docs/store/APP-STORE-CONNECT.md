@@ -4,7 +4,7 @@ This is the paste-ready App Store Connect sheet for `com.mike0264.localpoker` ve
 
 ## Where this stands right now
 
-Verified 2026-09-24. **Nothing has been submitted, and nothing is on TestFlight.**
+Verified 2026-09-24. **A build is on TestFlight.** Nothing has been submitted for App Review.
 
 The Apple Developer Program membership is **active**: the team is
 `Michael Askndafi - D7VUBSSP2F` and already carries four other apps. Step 0 of
@@ -15,13 +15,13 @@ gate no longer applies.
 |---|---|---|
 | Linked to an EAS project? | **Yes** | `@mike0264/localpoker`, project `0cb2ee24-24de-4ecb-b7ca-8f7a3f896373`. Done, it is free and needs no Apple account. |
 | Builds natively outside Expo Go? | **Yes** | Release configuration, simulator, unsigned. Verified reaching the age gate from a fresh install. |
-| Has a release binary been built? | No | `npx eas-cli@latest build:list` is empty. A simulator build is not a release binary. |
+| Has a release binary been built? | **Yes** | EAS Build, production profile, signed. Build `1.0.0 (3)`, built and uploaded by CI. |
 | Developer Program membership? | **Active** | Team `Michael Askndafi - D7VUBSSP2F`, with four other apps already in App Store Connect. |
 | Bundle ID registered? | **Yes** | `com.mike0264.localpoker`, registered under that team. |
 | App record in App Store Connect? | **Yes** | `LocalPoker: Poker with Friends`, ASC app ID `6815726621`, iOS 1.0 in *Prepare for Submission*. |
-| On TestFlight? | **No** | Follows from the above. TestFlight distributes an *uploaded build*, so with no release binary there is nothing to be on it. |
-| Is any Apple ID a TestFlight tester? | Not applicable | Testers are per app. With no app record there is no tester list. |
-| Distribution certificate present? | No | The only code-signing identity is `Apple Development: Michael Askndafi`. Uploading needs an **Apple Distribution** certificate. |
+| On TestFlight? | **Yes** | `1.0.0 (3)`, status *Complete*, internal *ready for beta testing*. |
+| Is any Apple ID a TestFlight tester? | **Not yet** | Testers are per app and no internal group exists yet, so nobody can install it. One click, see `EAS-SUBMIT.md`. |
+| Distribution certificate present? | **Yes** | The account's existing distribution certificate is reused, with a provisioning profile created for this bundle ID. |
 
 Re-check any time with:
 

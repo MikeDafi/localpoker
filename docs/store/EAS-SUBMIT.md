@@ -18,6 +18,25 @@ It authenticates to Apple with an **App Store Connect API key only**. An Apple
 ID and password cannot work unattended, because Apple will ask for a
 two-factor code that no CI runner can answer.
 
+### After the first successful release
+
+The build lands in App Store Connect and, once Apple finishes processing it,
+appears under **TestFlight > iOS Builds** as *Complete*. Processing takes a few
+minutes after EAS reports the submission as finished, so a build that is not
+visible immediately is normal.
+
+Installing it on a device needs one more thing that uploading does not: an
+**internal testing group** with testers in it. TestFlight testers are per app,
+so being the account holder does not enrol you automatically. Either:
+
+- Create the group by hand once, under **TestFlight > Internal Testing**, and
+  add testers from **Users and Access**; or
+- add `--auto-testflight-setup` to the submit command in the workflow, which
+  asks EAS to create an internal group for the app. This is deliberately not
+  enabled here: the release path above is verified working end to end, and the
+  flag has not been exercised, so turning it on is a change worth making
+  deliberately rather than inheriting.
+
 ### One-time setup that CI cannot do for itself
 
 **iOS build credentials have to be bootstrapped once, interactively.** In
