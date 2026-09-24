@@ -90,7 +90,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'workflow_dispatch' && inputs.ios_release
-    timeout-minutes: 60
+    # 60 minutes was not enough and cancelled a submit that was still queued.
+    # Two EAS queues run back to back here, build then submit, and on the free
+    # tier either can sit for a long time before it starts. The timeout is a
+    # guard against a genuinely stuck job, so it should sit well clear of
+    # normal queueing rather than close to it.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
