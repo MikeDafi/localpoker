@@ -135,14 +135,35 @@ jobs:
           EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
         run: eas build --platform ios --profile production --non-interactive --wait
 
-      # --latest picks the build the previous step just finished. The same
-      # EXPO_ASC_* variables are repeated because each step gets a fresh
-      # environment.
-      - name: Submit to TestFlight
+      # `eas submit` does not read the EXPO_ASC_* variables that `eas build`
+      # accepts. It only looks at the submit profile in eas.json or at a key
+      # already stored in the EAS credentials service, and in non-interactive
+      # mode it refuses to set one up, failing with "App Store Connect API
+      # Keys cannot be set up in --non-interactive mode."
+      #
+      # bestplan solves this by committing the three key fields, which it can
+      # do because it is private. Here they are written into eas.json at run
+      # time from secrets instead. The file is modified only on the runner and
+      # never committed, so the public repository keeps no key identifiers.
+      - name: Add submit credentials to eas.json
         env:
-          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
-          EXPO_ASC_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
-          EXPO_ASC_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const easJson = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            Object.assign(easJson.submit.production.ios, {
+              ascApiKeyPath: process.env.RUNNER_TEMP + "/AuthKey.p8",
+              ascApiKeyId: process.env.KEY_ID,
+              ascApiKeyIssuerId: process.env.ISSUER_ID,
+            });
+            fs.writeFileSync("eas.json", JSON.stringify(easJson, null, 2) + "\n");
+          '
+
+      # --latest picks the build the previous step just finished.
+      - name: Submit to TestFlight
         run: eas submit --platform ios --latest --non-interactive
 
       - name: Remove the API key

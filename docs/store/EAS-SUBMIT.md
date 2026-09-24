@@ -18,6 +18,36 @@ It authenticates to Apple with an **App Store Connect API key only**. An Apple
 ID and password cannot work unattended, because Apple will ask for a
 two-factor code that no CI runner can answer.
 
+### One-time setup that CI cannot do for itself
+
+**iOS build credentials have to be bootstrapped once, interactively.** In
+non-interactive mode eas-cli will happily *reuse* a distribution certificate
+but will never *create* one: `SetUpDistributionCertificate.runNonInteractiveAsync`
+throws `MissingCredentialsNonInteractiveError` when none exists. A first CI
+release therefore fails with "Distribution Certificate is not validated for
+non-interactive builds / Credentials are not set up."
+
+This has already been done for this project, and only needs repeating if the
+credentials are deleted or the certificate expires (21 Dec 2026):
+
+```sh
+EXPO_ASC_API_KEY_PATH=~/Downloads/AuthKey_YMUGSZ476Q.p8 \
+EXPO_ASC_KEY_ID=YMUGSZ476Q \
+EXPO_ASC_ISSUER_ID=<issuer uuid> \
+EXPO_APPLE_TEAM_ID=D7VUBSSP2F \
+npx eas-cli@latest credentials:configure-build -p ios -e production
+```
+
+Answer **yes** to reusing the existing distribution certificate rather than
+creating another. Apple caps an account at two distribution certificates, and
+the existing one is already shared by the account's other apps. Say yes to
+generating a new provisioning profile: those are per bundle identifier, so this
+app needs its own.
+
+Note that the API key is enough for all of this. No Apple ID password or
+two-factor prompt is involved, which is the whole reason the release path can
+be automated at all.
+
 ### The four repository secrets it needs
 
 | Secret | What it is |
@@ -52,10 +82,20 @@ The `bestplan` repository puts `ascApiKeyPath`, `ascApiKeyId` and
 repository is **private**. This one is **public**, so the same values would be
 published.
 
-eas-cli supports supplying them through the environment instead, which is what
-the workflow does: `resolveAscApiKeyAsync` reads `EXPO_ASC_API_KEY_PATH`,
-`EXPO_ASC_KEY_ID` and `EXPO_ASC_ISSUER_ID`, and both `eas build` and
-`eas submit` resolve credentials through it. The key itself is written to the
+The two commands need different handling, which is worth knowing before
+editing the workflow:
+
+- **`eas build`** reads `EXPO_ASC_API_KEY_PATH`, `EXPO_ASC_KEY_ID` and
+  `EXPO_ASC_ISSUER_ID` from the environment, through
+  `resolveAscApiKeyAsync`. Environment variables are enough.
+- **`eas submit`** does not. It only consults the submit profile in `eas.json`
+  or a key already stored in the EAS credentials service, and in
+  non-interactive mode it refuses to set one up, failing with "App Store
+  Connect API Keys cannot be set up in --non-interactive mode."
+
+So the workflow writes those three fields into `eas.json` on the runner,
+immediately before submitting, from the same secrets. The file is modified only
+in the CI checkout and never committed. The key itself is written to the
 runner's temp directory, never the workspace, and deleted in an `always()`
 step.
 
