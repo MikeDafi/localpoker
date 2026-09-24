@@ -12,7 +12,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.localpoker.app",
+      "bundleIdentifier": "com.mike0264.localpoker",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -20,7 +20,7 @@
       }
     },
     "android": {
-      "package": "com.localpoker.app",
+      "package": "com.mike0264.localpoker",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E9F1F6",

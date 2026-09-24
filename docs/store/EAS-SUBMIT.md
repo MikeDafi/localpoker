@@ -38,7 +38,7 @@ Find it here:
 EAS does not document an environment variable for `ascAppId` in `eas.json`. In interactive mode, leave it out and EAS will prompt or ensure the app exists. For non-interactive submit, make this exact local one-line edit at submit time, then do not commit it:
 
 ```json
-"ios": { "bundleIdentifier": "com.localpoker.app", "sku": "localpoker-ios", "language": "en-US", "appName": "LocalPoker: Poker with Friends", "ascAppId": "1234567890" }
+"ios": { "bundleIdentifier": "com.mike0264.localpoker", "sku": "localpoker-ios", "language": "en-US", "appName": "LocalPoker: Poker with Friends", "ascAppId": "1234567890" }
 ```
 
 ### Apple Developer Team ID
@@ -52,7 +52,7 @@ Find it here:
 EAS does not document an environment variable for `appleTeamId` in `eas.json`. Most interactive submits can omit it unless your Apple ID belongs to multiple teams or EAS needs to create the app record. For non-interactive submit or multiple-team accounts, make this exact local one-line edit at submit time, then do not commit it:
 
 ```json
-"ios": { "bundleIdentifier": "com.localpoker.app", "sku": "localpoker-ios", "language": "en-US", "appName": "LocalPoker: Poker with Friends", "ascAppId": "1234567890", "appleTeamId": "ABCDE12345" }
+"ios": { "bundleIdentifier": "com.mike0264.localpoker", "sku": "localpoker-ios", "language": "en-US", "appName": "LocalPoker: Poker with Friends", "ascAppId": "1234567890", "appleTeamId": "ABCDE12345" }
 ```
 
 ## Android values
@@ -62,7 +62,7 @@ The tracked profile sets only the Play track. Do not commit a service account JS
 Preferred path:
 
 1. Open play.google.com/console.
-2. Create the `com.localpoker.app` app if needed.
+2. Create the `com.mike0264.localpoker` app if needed.
 3. Create a Google service account key using Expo's current guide.
 4. Run `eas credentials --platform android`.
 5. Choose the production profile.
@@ -76,7 +76,7 @@ If you must use a local JSON key path instead, keep the key outside git and make
 
 ## Build sanity notes
 
-- `app.json` uses bundle identifier and package `com.localpoker.app`, which is valid.
+- `app.json` uses bundle identifier and package `com.mike0264.localpoker`, which is valid.
 - Version `1.0.0`, iOS build number `1`, and Android version code `1` are valid for the first upload. Increment build number and version code before every later upload.
 - `ios.supportsTablet` is deliberately `false` for the phone-only launch.
 - `ITSAppUsesNonExemptEncryption` is `false`; keep that only if the app uses standard HTTPS/TLS and no custom non-exempt encryption.

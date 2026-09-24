@@ -17,7 +17,9 @@
   "submit": {
     "production": {
       "ios": {
-        "bundleIdentifier": "com.localpoker.app",
+        "bundleIdentifier": "com.mike0264.localpoker",
+        "ascAppId": "6815726621",
+        "appleTeamId": "D7VUBSSP2F",
         "sku": "localpoker-ios",
         "language": "en-US",
         "appName": "LocalPoker: Poker with Friends"

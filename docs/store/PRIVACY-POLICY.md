@@ -1,6 +1,6 @@
 # LocalPoker Privacy Policy Draft
 
-**App:** LocalPoker: Poker with Friends (`com.localpoker.app`)  
+**App:** LocalPoker: Poker with Friends (`com.mike0264.localpoker`)  
 **Effective date:** September 22, 2026  
 **Publisher:** LocalPoker  
 **Contact:** maskndafi@gmail.com  

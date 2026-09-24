@@ -1,7 +1,7 @@
 # LocalPoker — Production Readiness Audit
 
 _Last verified: 2026-09-19._  
-_App: LocalPoker: Poker with Friends (`com.localpoker.app`), Expo SDK 57 / React Native / TypeScript / Firebase Realtime Database + anonymous auth scaffold._
+_App: LocalPoker: Poker with Friends (`com.mike0264.localpoker`), Expo SDK 57 / React Native / TypeScript / Firebase Realtime Database + anonymous auth scaffold._
 
 > This audit reflects the code in this repository as of the verification date. It supersedes the earlier stale version, which listed several issues as both fixed and outstanding.
 
@@ -15,7 +15,7 @@ _App: LocalPoker: Poker with Friends (`com.localpoker.app`), Expo SDK 57 / React
 
 ### Store identity and build config
 
-- `app.json` is store-facing version **1.0.0**, iOS bundle id **`com.localpoker.app`**, Android package **`com.localpoker.app`**, iOS build number `1`, Android version code `1`, runtime version policy `appVersion`.
+- `app.json` is store-facing version **1.0.0**, iOS bundle id **`com.mike0264.localpoker`**, Android package **`com.mike0264.localpoker`**, iOS build number `1`, Android version code `1`, runtime version policy `appVersion`.
 - `eas.json` exists with development/preview/production profiles and submit placeholders.
 - `package.json` remains private package version `0.1.0`; this does not drive the store version but is worth aligning later for clarity.
 

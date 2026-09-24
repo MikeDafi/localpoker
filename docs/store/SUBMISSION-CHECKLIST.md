@@ -36,7 +36,7 @@ The Markdown files are:
 ## 3. Identity and build readiness
 
 - App name: **LocalPoker: Poker with Friends**. Count: 30 of 30 characters.
-- Bundle/package: `com.localpoker.app` in `app.json`.
+- Bundle/package: `com.mike0264.localpoker` in `app.json`.
 - Store-facing app version: `1.0.0` in `app.json`.
 - iOS build number: `1`; Android version code: `1` in `app.json`.
 - Expo SDK: `~57.0.23` in `package.json`.

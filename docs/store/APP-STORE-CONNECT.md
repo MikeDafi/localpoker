@@ -1,17 +1,24 @@
 # App Store Connect Submission Sheet, LocalPoker
 
-This is the paste-ready App Store Connect sheet for `com.localpoker.app` version `1.0.0`, build `1`. It assumes the submitted iOS app is phone-only, uses Firebase online rooms, does not ship real ads yet, and does not enable Sentry unless a real DSN is provided.
+This is the paste-ready App Store Connect sheet for `com.mike0264.localpoker` version `1.0.0`, build `1`. It assumes the submitted iOS app is phone-only, uses Firebase online rooms, does not ship real ads yet, and does not enable Sentry unless a real DSN is provided.
 
 ## Where this stands right now
 
-Verified 2026-09-23. **Nothing has been submitted, and nothing is on TestFlight.**
+Verified 2026-09-24. **Nothing has been submitted, and nothing is on TestFlight.**
+
+The Apple Developer Program membership is **active**: the team is
+`Michael Askndafi - D7VUBSSP2F` and already carries four other apps. Step 0 of
+the runbook is therefore done, and the earlier note about enrolment being the
+gate no longer applies.
 
 | Question | Answer | How it was checked |
 |---|---|---|
 | Linked to an EAS project? | **Yes** | `@mike0264/localpoker`, project `0cb2ee24-24de-4ecb-b7ca-8f7a3f896373`. Done, it is free and needs no Apple account. |
 | Builds natively outside Expo Go? | **Yes** | Release configuration, simulator, unsigned. Verified reaching the age gate from a fresh install. |
 | Has a release binary been built? | No | `npx eas-cli@latest build:list` is empty. A simulator build is not a release binary. |
-| App record in App Store Connect? | No | No `ascAppId` recorded anywhere in the repo. |
+| Developer Program membership? | **Active** | Team `Michael Askndafi - D7VUBSSP2F`, with four other apps already in App Store Connect. |
+| Bundle ID registered? | **Yes** | `com.mike0264.localpoker`, registered under that team. |
+| App record in App Store Connect? | **Yes** | `LocalPoker: Poker with Friends`, ASC app ID `6815726621`, iOS 1.0 in *Prepare for Submission*. |
 | On TestFlight? | **No** | Follows from the above. TestFlight distributes an *uploaded build*, so with no release binary there is nothing to be on it. |
 | Is any Apple ID a TestFlight tester? | Not applicable | Testers are per app. With no app record there is no tester list. |
 | Distribution certificate present? | No | The only code-signing identity is `Apple Development: Michael Askndafi`. Uploading needs an **Apple Distribution** certificate. |
@@ -37,14 +44,16 @@ that step; see step 0 of the runbook.
    - **Ad-supported 1.0 path:** integrate a real ad SDK first, then add consent, ATT if tracking, SKAdNetwork IDs, and updated privacy labels.
 2. **Legal URLs must be hosted before App Review, but not with placeholders.** GitHub Pages can host the `docs/store` Markdown files. The site build refuses to publish while unresolved legal or support placeholders remain. Fill the human-owned fields listed in `SUBMISSION-CHECKLIST.md`, follow the exact Pages steps below, then paste the resulting URLs.
 3. **Online rooms need production Firebase setup.** Set the production `EXPO_PUBLIC_FIREBASE_*` values for EAS, enable Anonymous Authentication, publish `database.rules.json`, and define room cleanup. If online rooms are not enabled, remove friend-room claims from metadata and screenshots.
-4. **EAS submit values must be supplied at submit time.** `eas.json` no longer contains placeholder Apple, ASC, team, or Google service-account values. Use `EAS-SUBMIT.md` so credentials come from environment variables, EAS credentials, prompts, or a local one-line edit that is not committed.
-5. **Sentry is optional.** Production EAS no longer sets a placeholder DSN, and the placeholder Sentry Expo plugin config was removed. If you add a real `EXPO_PUBLIC_SENTRY_DSN`, restore real Sentry org/project config and update App Privacy for diagnostics before submitting.
+4. **EAS submit values are now real, not placeholders.** `eas.json` carries `ascAppId` `6815726621` and `appleTeamId` `D7VUBSSP2F`. Neither is a secret, and having them committed is what makes a non-interactive `eas submit` possible. The Apple ID itself is still supplied at submit time through `EXPO_APPLE_ID`, because that is personal data and does not belong in the repo. See `EAS-SUBMIT.md`.
+5. **EU trader status must be set before any new app can be submitted.** App Store Connect now blocks new submissions for the European Union under the Digital Services Act until the account's trader status is provided, and warns that apps will be removed from the EU store without it. It is set by an Admin or Account Holder under Business, not per app.
+6. **Sentry is optional.** Production EAS no longer sets a placeholder DSN, and the placeholder Sentry Expo plugin config was removed. If you add a real `EXPO_PUBLIC_SENTRY_DSN`, restore real Sentry org/project config and update App Privacy for diagnostics before submitting.
 
 ## App identity and build fields
 
 | Field | Value | Status |
 |---|---|---|
-| Bundle ID | `com.localpoker.app` | Matches `app.json`. Create this exact identifier in Apple Developer if it does not already exist. |
+| Bundle ID | `com.mike0264.localpoker` | Registered in Apple Developer under team `D7VUBSSP2F`. **Not** `com.localpoker.app`: that string is already taken by another developer. Bundle IDs are unique across all of Apple, not just your account, and the portal only says so at the final Register step. |
+| Apple Team ID | `D7VUBSSP2F` | Michael Askndafi. Needed as `appleTeamId` for a non-interactive `eas submit`. |
 | App version | `1.0.0` | Matches `app.json`. |
 | iOS build number | `1` | Matches `app.json`. Increment for each uploaded binary after the first. |
 | Expo SDK | `~57.0.23` | Matches `package.json`. |
@@ -88,7 +97,7 @@ xcodebuild -workspace ios/LocalPokerPokerwithFriends.xcworkspace \
   -sdk iphonesimulator -derivedDataPath .maestro/NativeBuild \
   CODE_SIGNING_ALLOWED=NO build
 xcrun simctl install booted <path to the built .app>
-xcrun simctl launch booted com.localpoker.app
+xcrun simctl launch booted com.mike0264.localpoker
 ```
 
 Uninstall between runs. A fresh install is the case that broke, and an existing
@@ -426,20 +435,23 @@ home.
 
 Follow these steps in order.
 
-0. **Enrol in the Apple Developer Program, and link the project to EAS.**
-   This step is first because every later step depends on it, and it is the
-   only one that costs money and cannot be automated.
-   1. Enrol at <https://developer.apple.com/programs/enroll/>, currently
-      99 USD per year. An individual enrolment is usually approved within a
-      day or two; it can take longer if Apple asks for identity documents.
-   2. Install nothing globally. `eas-cli` is deliberately not a dependency of
-      this project, so invoke it with `npx eas-cli@latest ...` throughout.
-   3. `npx eas-cli@latest login` with the Apple-enrolled account.
-   4. `npx eas-cli@latest init` from the repo root. This writes
-      `expo.extra.eas.projectId` and `expo.owner` into `app.json`; commit that
-      change, because it is what links future builds to the project.
-   5. Confirm with `npx eas-cli@latest project:info`. Until this prints a
-      project, no build command will work.
+0. **Account and project setup. This is all done.**
+   Recorded because the next person will not be able to tell from the repo
+   alone, and because two of these steps have a trap in them.
+   1. Apple Developer Program: **active**, team `D7VUBSSP2F`.
+   2. `eas-cli` is deliberately not a dependency of this project, so invoke it
+      as `npx eas-cli@latest ...` throughout. A bare `eas` will not resolve.
+   3. EAS project: **linked**, `@mike0264/localpoker`. `expo.owner` and
+      `expo.extra.eas.projectId` in `app.json` are what tie builds to it.
+      Confirm with `npx eas-cli@latest project:info`.
+   4. Bundle ID: **registered**, `com.mike0264.localpoker`. It is deliberately
+      not `com.localpoker.app`: that string is already registered to another
+      developer. Bundle IDs are unique across all of Apple rather than per
+      account, and the portal only tells you at the final Register step, after
+      the whole form is filled.
+   5. App Store Connect record: **created**, app ID `6815726621`, iOS 1.0 in
+      *Prepare for Submission*. The app name is exactly 30 characters, which
+      is the field maximum.
 
 1. **Choose the ads path.**
    1. For no-ads 1.0, remove or hide the placeholder banner UI and any copy saying ads support the app.
@@ -456,15 +468,17 @@ Follow these steps in order.
    2. In Realtime Database, publish `database.rules.json`.
    3. Add production EAS environment variables for `EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`, `EXPO_PUBLIC_FIREBASE_DATABASE_URL`, `EXPO_PUBLIC_FIREBASE_PROJECT_ID`, `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`, `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, and `EXPO_PUBLIC_FIREBASE_APP_ID`.
    4. Define how old rooms will be deleted or retained.
-5. **Create the app record.**
-   1. In Apple Developer, create or confirm bundle ID `com.localpoker.app`.
+5. **Create the app record. Done, app ID `6815726621`.**
+   Kept for the record, and because it has to be redone if the app is ever
+   recreated.
+   1. In Apple Developer, create or confirm bundle ID `com.mike0264.localpoker`.
    2. In App Store Connect, go to **My Apps**.
    3. Click **+**.
    4. Choose **New App**.
    5. Platform: **iOS**.
    6. Name: `LocalPoker: Poker with Friends`.
    7. Primary language: choose the app's primary localization, likely English (U.S.).
-   8. Bundle ID: `com.localpoker.app`.
+   8. Bundle ID: `com.mike0264.localpoker`.
    9. SKU: `localpoker-ios`.
    10. User Access: Full Access unless you need a limited-access app.
 6. **Create version 1.0.0 metadata.**
