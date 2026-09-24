@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - uses: actions/setup-java@v4
         with:
@@ -94,9 +94,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22, not 20: eas-cli pulls in @oclif/plugin-autocomplete, which
+      # declares engines node >=22 and makes the install fail outright on 20.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: expo/expo-github-action@v8
