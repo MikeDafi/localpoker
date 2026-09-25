@@ -17,9 +17,28 @@ import { colors } from '../theme/theme';
  */
 export function cardBackGeometry(size: number) {
   const h = size * 1.42;
+  /**
+   * The white card stock showing around the printed back.
+   *
+   * A real card is white board with the design printed inside a margin, and the
+   * face here already draws that white with a hairline edge. The back used to
+   * run its colour to the very edge, so a face-down card had no white on it at
+   * all and read as a different object from the same card turned over.
+   */
+  const stock = Math.max(1, size * 0.038);
+  // Matches the face's outer radius, so both sides share one silhouette.
+  const radius = size * 0.085;
   return {
     h,
-    radius: size * 0.1,
+    stock,
+    radius,
+    print: {
+      x: stock,
+      y: stock,
+      w: size - stock * 2,
+      h: h - stock * 2,
+      radius: Math.max(1, radius - stock * 0.6),
+    },
     // Hairline rim: what separates a face-down card from the felt behind it.
     rim: Math.min(2, Math.max(0.6, size * 0.045)),
     panel: {
@@ -150,14 +169,24 @@ export function CardBack({ size, variant }: CardBackProps) {
         </LinearGradient>
       </Defs>
       <Rect
-        x={g.rim / 2}
-        y={g.rim / 2}
-        width={size - g.rim}
-        height={g.h - g.rim}
+        x={0.5}
+        y={0.5}
+        width={size - 1}
+        height={g.h - 1}
         rx={g.radius}
+        fill={colors.cardFace}
+        stroke="#E2E8EE"
+        strokeWidth={1}
+      />
+      <Rect
+        x={g.print.x}
+        y={g.print.y}
+        width={g.print.w}
+        height={g.print.h}
+        rx={g.print.radius}
         fill={`url(#${gradId})`}
         stroke={theme.rim}
-        strokeWidth={g.rim}
+        strokeWidth={Math.min(g.rim, g.stock)}
       />
       <Rect
         x={g.panel.x}

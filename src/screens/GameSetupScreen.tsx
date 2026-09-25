@@ -36,18 +36,24 @@ const DIFFICULTY_OPTIONS = [
 export function GameSetupScreen({ navigation, route }: Props) {
   const { settings, updateSettings } = useApp();
   const { width } = useWindowDimensions();
+  const isFriends = route.params.mode === 'friends';
   const [local, setLocal] = useState<GameSettings>(() => ({ ...settings }));
 
   // App-wide preferences (sound, animations, accessibility) live in Settings, not
   // in per-table Game Setup, only show game/table-relevant sections here.
+  // A friends table is played against real people, so every bot control is
+  // meaningless there: the Opponents section only configures opponents that are
+  // never dealt in.
   const setupSections = useMemo(
-    () => SETTINGS_SCHEMA.filter((s) => !['sound', 'animations', 'a11y'].includes(s.id)),
-    [],
+    () => SETTINGS_SCHEMA.filter((s) => {
+      if (['sound', 'animations', 'a11y'].includes(s.id)) return false;
+      if (isFriends && s.id === 'bots') return false;
+      return true;
+    }),
+    [isFriends],
   );
-  const [activeSectionId, setActiveSectionId] = useState(() => setupSections[0]?.id ?? '');
-
-  const isFriends = route.params.mode === 'friends';
   const compact = width < 430;
+  const [activeSectionId, setActiveSectionId] = useState(() => setupSections[0]?.id ?? '');
   const activeSection = useMemo(
     () => setupSections.find((section) => section.id === activeSectionId) ?? setupSections[0],
     [activeSectionId, setupSections],
@@ -135,6 +141,10 @@ export function GameSetupScreen({ navigation, route }: Props) {
             </View>
           </View>
 
+          {/* Bot difficulty has nothing to set when the opponents are real
+              people, so the quick-pick goes with the Opponents section. */}
+          {!isFriends && (
+          <>
           <View style={styles.quickPickHeader}>
             <Text style={styles.sectionEyebrow}>Difficulty quick-pick</Text>
             <Text style={styles.quickPickValue}>{capitalize(local.difficulty)}</Text>
@@ -158,6 +168,8 @@ export function GameSetupScreen({ navigation, route }: Props) {
               </Pressable>
             ))}
           </View>
+          </>
+          )}
 
           <View style={[styles.heroActions, compact && styles.heroActionsCompact]}>
             <WiiButton
@@ -243,6 +255,8 @@ export function GameSetupScreen({ navigation, route }: Props) {
 }
 
 function shouldShowField(field: SettingField, isFriends: boolean): boolean {
+  // Quick play has no room to make public, and a friends table has no bots.
+  if (field.key === 'roomVisibility') return isFriends;
   return !(isFriends && field.key === 'numOpponents');
 }
 

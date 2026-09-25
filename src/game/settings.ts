@@ -117,6 +117,7 @@ export interface GameSettings {
   quickChatOnly: boolean;
   allowSpectators: boolean;
   friendsOnly: boolean;
+  roomVisibility: 'public' | 'private';
 
   // Advanced
   autoMuck: boolean;
@@ -230,6 +231,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   quickChatOnly: false,
   allowSpectators: true,
   friendsOnly: false,
+  roomVisibility: 'private',
 
   autoMuck: true,
   autoRebuy: false,
@@ -271,6 +273,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       { key: 'ante', label: 'Ante', type: 'number', min: 0, max: 100000, step: 1 },
       { key: 'startingStack', label: 'Starting Stack', type: 'number', min: 100, max: 1000000, step: 100 },
       { key: 'turnTimerSec', label: 'Turn Timer (s)', type: 'slider', min: 5, max: 60, step: 1 },
+      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public tables are listed for anyone to join. Private tables are only shown to your friends.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
     ],
   },
   {

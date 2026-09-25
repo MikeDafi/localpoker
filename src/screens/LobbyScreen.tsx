@@ -23,7 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
 export function LobbyScreen({ navigation, route }: Props) {
   const { roomCode, host, settings: hostSettings } = route.params;
-  const { profile } = useApp();
+  const { profile, friends } = useApp();
   const online = isFirebaseConfigured();
 
   const me: RoomPlayer = useMemo(() => ({
@@ -83,7 +83,12 @@ export function LobbyScreen({ navigation, route }: Props) {
     let cancelled = false;
     (async () => {
       const res = host
-        ? await createRoom(roomCode, me, JSON.stringify(hostSettings ?? DEFAULT_GAME_SETTINGS))
+        ? await createRoom(roomCode, me, JSON.stringify(hostSettings ?? DEFAULT_GAME_SETTINGS), {
+            visibility: (hostSettings ?? DEFAULT_GAME_SETTINGS).roomVisibility,
+            // Friends are told about the table whether it is public or private;
+            // private means hidden from strangers, not from them.
+            friendUids: friends.map((f) => f.uid).filter((uid): uid is string => !!uid),
+          })
         : await joinRoom(roomCode, me);
       if (cancelled) return;
       if (!res.ok) {

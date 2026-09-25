@@ -90,6 +90,27 @@ Provisioned and already done:
 
 **Data isolation:** all LocalPoker data is namespaced under `/localpoker/...`.
 
+### Redeploy the rules after changing room discovery
+
+Browsing for a table needs two nodes that did not exist before, so
+`database.rules.json` must be redeployed or the lists come back empty:
+
+- `/localpoker/publicRooms/$code` - the open lobby. Readable by anyone signed
+  in, writable only by the host of that room, and validated so a room marked
+  `private` cannot be advertised here.
+- `/localpoker/roomInvites/$uid/$code` - a per-friend inbox. Readable only by
+  its owner, writable only by an accepted friend of that owner who also hosts
+  the room in question.
+
+They exist because `/localpoker/rooms/$code` is readable only by the host and
+the players already seated, which is what keeps a private game private. A browse
+list cannot be built from it without opening every table to everyone, so hosts
+publish a small summary instead, carrying only what a list needs to show.
+
+`npm run test:rules` covers both, including the two cases that matter: a private
+room cannot be listed publicly, and a non-friend cannot push a table into your
+invites.
+
 ### One remaining manual step: enable Anonymous sign-in
 
 This cannot be scripted on the free plan. The Identity Toolkit admin API that toggles sign-in

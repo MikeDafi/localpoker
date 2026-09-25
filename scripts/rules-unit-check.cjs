@@ -318,6 +318,44 @@ function logOk(message) {
     await assertSucceeds(set(ref(playerDb, `localpoker/handles/${users.player.handle}`), 'player'));
     logOk('released handle can be reclaimed by the same user');
 
+    // Room discovery. The room itself stays readable only by its players, so
+    // these summary nodes are what a browse list is built from, and they are
+    // exactly where a private table could leak.
+    const summary = (over = {}) => ({
+      code: 'ROOM12', hostUid: 'host', hostName: 'Host Ace', visibility: 'public',
+      status: 'lobby', playerCount: 1, smallBlind: 5, bigBlind: 10,
+      startingStack: 1000, updatedAt: 1, ...over,
+    });
+
+    await assertSucceeds(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary()));
+    logOk('host can advertise their own public room');
+
+    await assertSucceeds(get(ref(strangerDb, 'localpoker/publicRooms')));
+    logOk('anyone signed in can browse the public lobby');
+
+    await assertFails(set(ref(playerDb, 'localpoker/publicRooms/ROOM12'), summary({ hostUid: 'player' })));
+    logOk('a non-host cannot advertise someone else\'s room');
+
+    await assertFails(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary({ visibility: 'private' })));
+    logOk('a private room cannot be put in the public lobby');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/publicRooms/ROOM12'), null));
+    logOk('a stranger cannot delist another host room');
+
+    // The per-friend inbox: this is what makes a private table findable by the
+    // people it is for, and by nobody else.
+    await assertSucceeds(set(ref(hostDb, 'localpoker/roomInvites/player/ROOM12'), summary({ visibility: 'private' })));
+    logOk('host can invite an accepted friend to a private table');
+
+    await assertSucceeds(get(ref(playerDb, 'localpoker/roomInvites/player')));
+    logOk('user can read their own room invites');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/roomInvites/player')));
+    logOk('nobody else can read a user room invites');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/roomInvites/player/ROOM12'), summary({ hostUid: 'stranger' })));
+    logOk('a non-friend cannot push a table into your invites');
+
     await assertFails(set(ref(hostDb, 'localpoker/users/player'), null));
     logOk('user cannot delete another user directory profile');
 

@@ -365,6 +365,17 @@ function PeekCardInner({
                   square while the opponents', drawn straight from `CardBack`,
                   were rounded. */}
               <ClipPath id={`${gradId}-card`}>
+                <Rect
+                  x={back.print.x}
+                  y={back.print.y}
+                  width={back.print.w}
+                  height={back.print.h}
+                  rx={back.print.radius}
+                />
+              </ClipPath>
+              {/* The flap is card stock seen from the front, so it is clipped to
+                  the whole card rather than to the printed area. */}
+              <ClipPath id={`${gradId}-stock`}>
                 <Rect x={0} y={0} width={size} height={h} rx={back.radius} />
               </ClipPath>
               <ClipPath id={`${gradId}-flap`}>
@@ -372,6 +383,19 @@ function PeekCardInner({
               </ClipPath>
             </Defs>
 
+            {/* The white board the design is printed on. Without it a
+                face-down card ran its colour to the edge and did not read as
+                the same object as the same card turned face up. */}
+            <Rect
+              x={0.5}
+              y={0.5}
+              width={size - 1}
+              height={h - 1}
+              rx={back.radius}
+              fill={colors.cardFace}
+              stroke="#E2E8EE"
+              strokeWidth={1}
+            />
             <G clipPath={`url(#${gradId}-card)`}>
             {/* The part still lying flat, with the back's printing cut by the
                 same crease that cuts the card. */}

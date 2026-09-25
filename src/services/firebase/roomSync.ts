@@ -12,7 +12,7 @@ import {
 
 import { getDb, isFirebaseConfigured } from './config';
 import { ensureSignedIn } from './auth';
-import type { RoomAction, RoomPlayer, RoomPrivateView, RoomState } from './types';
+import type { RoomAction, RoomPlayer, RoomPrivateView, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
 import {
@@ -57,6 +57,18 @@ const actionsPath = (code: string): string => `${roomPath(code)}/actions`;
 const actionSeqPath = (code: string): string => `${roomPath(code)}/actionSeq`;
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
 const userRoomPath = (playerId: string, code: string): string => `localpoker/userRooms/${playerId}/${code}`;
+/**
+ * Where a room advertises itself.
+ *
+ * `localpoker/rooms/$code` is readable only by the host and the players already
+ * in it, so a browse list cannot be built from it without opening every private
+ * game to the world. These two nodes carry a summary instead: `publicRooms` is
+ * the open lobby anyone may read, and `roomInvites/$friendUid` is a per-friend
+ * inbox, so a private table is discoverable by your friends and by nobody else.
+ */
+const publicRoomPath = (code: string): string => `localpoker/publicRooms/${code}`;
+const roomInvitePath = (friendUid: string, code: string): string =>
+  `localpoker/roomInvites/${friendUid}/${code}`;
 
 const unavailableResult = (): Result => ({ ok: false, reason: NOT_CONFIGURED_REASON });
 
@@ -174,10 +186,104 @@ const registerDisconnect = async (
 };
 
 /** Creates a private room with the host seated and connected. */
+/** Build the public summary of a room from what the room already knows. */
+const roomSummaryOf = (
+  room: Pick<RoomState, 'code' | 'status'>,
+  settingsJson: string,
+  hostUid: string,
+  hostName: string,
+  visibility: RoomVisibility,
+): RoomSummary => {
+  const settings = settingsFromJson(settingsJson);
+  return {
+    code: room.code,
+    hostUid,
+    hostName,
+    visibility,
+    status: room.status,
+    playerCount: 1,
+    smallBlind: settings.smallBlind,
+    bigBlind: settings.bigBlind,
+    startingStack: settings.startingStack,
+    updatedAt: Date.now(),
+  };
+};
+
+const settingsFromJson = (settingsJson: string): GameSettings => {
+  try {
+    return normalizeSettings(JSON.parse(settingsJson) as Partial<GameSettings>);
+  } catch {
+    return DEFAULT_GAME_SETTINGS;
+  }
+};
+
+/**
+ * Rooms this player can see without being handed a code.
+ *
+ * Friends' tables come back first and flagged, because a game with someone you
+ * know is the one you actually want; the open lobby is the fallback. Ended and
+ * in-progress rooms are dropped: a list you cannot join is worse than a short
+ * one.
+ */
+export const subscribeOpenRooms = (
+  onRooms: (rooms: { friends: RoomSummary[]; public: RoomSummary[] }) => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  if (!db) {
+    onRooms({ friends: [], public: [] });
+    return () => {};
+  }
+
+  let friendRooms: RoomSummary[] = [];
+  let publicRooms: RoomSummary[] = [];
+  // A host ending a room clears its public advert, but a per-friend invite can
+  // outlive the table (the host no longer knows who it was sent to). Age is the
+  // backstop: a lobby nobody entered in hours is not worth offering.
+  const FRESH_MS = 6 * 60 * 60 * 1000;
+  const joinable = (room: RoomSummary | null): boolean =>
+    !!room
+    && room.status === 'lobby'
+    && typeof room.code === 'string'
+    && Date.now() - (room.updatedAt ?? 0) < FRESH_MS;
+  const byNewest = (a: RoomSummary, b: RoomSummary) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+
+  const emit = () => {
+    const friendCodes = new Set(friendRooms.map((room) => room.code));
+    onRooms({
+      friends: [...friendRooms].sort(byNewest),
+      // A friend's public table belongs in the friends list, not in both.
+      public: publicRooms.filter((room) => !friendCodes.has(room.code)).sort(byNewest),
+    });
+  };
+
+  const read = (snapshot: { val: () => unknown }): RoomSummary[] =>
+    Object.values((snapshot.val() as Record<string, RoomSummary>) ?? {}).filter(joinable);
+
+  const unsubPublic = onValue(ref(db, 'localpoker/publicRooms'), (snapshot) => {
+    publicRooms = read(snapshot);
+    emit();
+  }, () => { publicRooms = []; emit(); });
+
+  let unsubInvites: (() => void) | null = null;
+  void authedPlayerId().then((uid) => {
+    if (!uid) return;
+    unsubInvites = onValue(ref(db, `localpoker/roomInvites/${uid}`), (snapshot) => {
+      friendRooms = read(snapshot);
+      emit();
+    }, () => { friendRooms = []; emit(); });
+  });
+
+  return () => {
+    unsubPublic();
+    if (unsubInvites) unsubInvites();
+  };
+};
+
 export const createRoom = async (
   code: string,
   host: RoomPlayer,
   settingsJson: string,
+  options: { visibility?: RoomVisibility; friendUids?: readonly string[] } = {},
 ): Promise<Result> => {
   const db = getConfiguredDb();
   if (!db) {
@@ -203,6 +309,7 @@ export const createRoom = async (
       }
     }
 
+    const visibility: RoomVisibility = options.visibility === 'public' ? 'public' : 'private';
     const hostPlayer = toDbPlayer(host, { id: hostId, connected: true, isHost: true });
     const room: RoomState = {
       code: roomCode,
@@ -210,16 +317,29 @@ export const createRoom = async (
       status: 'lobby',
       createdAt: serverTimestamp() as unknown as number,
       settingsJson,
+      visibility,
+      hostName: host.name,
       players: {
         [hostId]: hostPlayer,
       },
       actionSeq: 0,
     };
 
-    await update(ref(db), {
+    const writes: Record<string, unknown> = {
       [roomPath(roomCode)]: room,
       [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
-    });
+    };
+    const summary = roomSummaryOf(room, settingsJson, hostId, host.name, visibility);
+    if (visibility === 'public') {
+      writes[publicRoomPath(roomCode)] = summary;
+    }
+    // Friends get told about the table either way: a private room is private
+    // from strangers, not from the people it is for.
+    for (const friendUid of options.friendUids ?? []) {
+      if (friendUid && friendUid !== hostId) writes[roomInvitePath(friendUid, roomCode)] = summary;
+    }
+
+    await update(ref(db), writes);
     await registerDisconnect(db, roomCode, hostId, true);
     return { ok: true };
   } catch (error) {
@@ -557,6 +677,8 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
     });
     const updates: Record<string, unknown> = {
       [`${roomPath(roomCode)}/status`]: 'playing',
+      // The browse list offers tables you can sit at, and this one has started.
+      [publicRoomPath(roomCode)]: null,
       [`${roomPath(roomCode)}/publicState`]: publicState,
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/actionSeq`]: 0,
@@ -652,6 +774,8 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
       [`${roomPath(roomCode)}/endedAt`]: Date.now(),
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/publicState`]: null,
+      // Stop advertising a table nobody can join any more.
+      [publicRoomPath(roomCode)]: null,
     };
 
     for (const playerId of Object.keys(room.players ?? {})) {

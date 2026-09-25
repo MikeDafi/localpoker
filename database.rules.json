@@ -255,6 +255,28 @@
             ".validate": "!newData.exists() || (newData.hasChildren(['code','role','updatedAt']) && newData.child('code').val() === $code && (newData.child('role').val() === 'host' || newData.child('role').val() === 'player') && newData.child('updatedAt').isNumber())"
           }
         }
+      },
+      "publicRooms": {
+        ".read": "auth != null",
+        ".indexOn": [
+          "updatedAt"
+        ],
+        "$code": {
+          ".write": "auth != null && ((newData.exists() && newData.child('visibility').val() === 'public' && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid) || (!newData.exists() && (!data.exists() || data.child('hostUid').val() === auth.uid)))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['code','hostUid','hostName','visibility','status','updatedAt']) && newData.child('hostUid').val() === auth.uid && newData.child('code').val() === $code && newData.child('hostName').isString() && newData.child('hostName').val().length <= 24 && newData.child('status').isString() && newData.child('updatedAt').isNumber() && newData.child('visibility').val() === 'public')"
+        }
+      },
+      "roomInvites": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".indexOn": [
+            "updatedAt"
+          ],
+          "$code": {
+            ".write": "auth != null && ((newData.exists() && root.child('localpoker').child('friends').child($uid).child(auth.uid).exists() && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid) || (!newData.exists() && (auth.uid === $uid || (data.exists() && data.child('hostUid').val() === auth.uid))))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['code','hostUid','hostName','visibility','status','updatedAt']) && newData.child('hostUid').val() === auth.uid && newData.child('code').val() === $code && newData.child('hostName').isString() && newData.child('hostName').val().length <= 24 && newData.child('status').isString() && newData.child('updatedAt').isNumber())"
+          }
+        }
       }
     }
   }
