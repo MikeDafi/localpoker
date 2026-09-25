@@ -33,9 +33,9 @@ Recommended **Tracking** answer: **No**. The current 1.0 path has no IDFA access
 
 | Apple data type | Collected today? | Linked to user? | Used for tracking? | Purpose | Code evidence and notes |
 |---|---:|---:|---:|---|---|
-| Contact Info, Email Address | **No** | No | No | N/A | `LoginScreen.tsx` accepts an email-or-username string, but `AppContext.login()` persists it only to AsyncStorage as `@pokerpals/auth`. No Firebase write path sends it. |
+| Contact Info, Email Address | **Yes, when a player signs in with Google** | **Yes** | No | App Functionality, account management | `LoginScreen.tsx` runs the Google OAuth flow and `googleAuth.ts` exchanges the id token via `signInWithCredential`. Firebase Authentication stores the Google account's email address against the `uid`. The app itself only derives a handle suggestion from the local part; it never writes the address to the database. Guests are unaffected: anonymous auth has no email. |
 | Contact Info, Name | **No, if display names are treated as screen names** | N/A | No | N/A | The app uses nicknames/display names, not legal first or last names. Disclose screen names under User ID and Gameplay Content. If counsel treats nicknames as Name, change this to Yes, linked, App Functionality. |
-| Identifiers, User ID | **Yes, when Firebase is enabled** | **Yes** | No | App Functionality, security | Firebase anonymous `auth.uid`; room `hostId`; `players/$uid`; action `playerId`; private view `playerId`; display name as a screen name. |
+| Identifiers, User ID | **Yes, when Firebase is enabled** | **Yes** | No | App Functionality, security | Firebase `auth.uid`, anonymous for guests and tied to the Google account after sign-in; room `hostId`; `players/$uid`; action `playerId`; private view `playerId`; display name as a screen name. |
 | Identifiers, Device ID | **No for current no-ads, no-Sentry binary** | No | No | N/A | No advertising ID access, no AdMob SDK, no ATT prompt. Re-evaluate if Sentry vendor guidance or another SDK requires Device ID disclosure. |
 | User Content, Gameplay Content | **Yes, when Firebase rooms are used** | **Yes** | No | App Functionality | Room code, settings JSON, room status, players, connected state, chip counts, public game state, redacted player metadata, action records, and private hole-card views. |
 | User Content, Other User Content | **Yes, when the friends features are used** | **Yes** | No | App Functionality | Friend requests (sender UID, handle, display name), friends list edges, block list entries, and abuse reports (reporter UID, reported UID and display name, context, category, room code). Emotes and GIF choices remain local table UI and are not sent. |
@@ -49,7 +49,7 @@ Recommended **Tracking** answer: **No**. The current 1.0 path has no IDFA access
 
 ### Apple notes for the current submission
 
-- Do not say the app collects email addresses unless the submitted binary sends the email-or-username off-device.
+- Declare email address collection whenever the submitted binary ships Google sign-in, even though the app never writes the address to the database: Firebase Authentication stores it, and Apple asks about the account, not just your own tables.
 - Do not answer Yes to tracking, IDFA, or advertising data for the current placeholder-ad build.
 - Do disclose Firebase user IDs and gameplay content if online rooms are enabled.
 - If Sentry is enabled with a real DSN, add diagnostics before submission.
@@ -105,8 +105,8 @@ Recommended high-level answers:
 | Google data category | Collected today? | Shared? | Required or optional? | Purpose | Code evidence and notes |
 |---|---:|---:|---|---|---|
 | Personal info, Name | **Yes for display name in online rooms** | Service-provider processing through Firebase | Optional for local play, required for named online presence | App functionality | `profile.name` is stored locally and written as `RoomPlayer.name` when joining a room. It is a nickname, not a verified legal name. |
-| Personal info, Email address | **No** | No | N/A | N/A | Email-or-username stays local in AsyncStorage. |
-| User IDs | **Yes** | Service-provider processing through Firebase | Required for online rooms | App functionality, security | Firebase anonymous `auth.uid`, room `hostId`, player paths, action IDs, and private views. |
+| Personal info, Email address | **Yes, when a player signs in with Google** | Service-provider processing through Firebase | Optional; guests never provide one | Account management, app functionality | Firebase Authentication stores the Google account email against the `uid`. The app writes only a derived handle suggestion to the database. |
+| User IDs | **Yes** | Service-provider processing through Firebase | Required for online rooms | App functionality, security | Firebase `auth.uid`, anonymous for guests and tied to the Google account after sign-in, room `hostId`, player paths, action IDs, and private views. |
 | App activity, App interactions or other actions | **Yes, for online gameplay** | Service-provider processing through Firebase | Required for online rooms | App functionality | Room creation/join, presence, action records, public game state, and private views. |
 | Device or other IDs | **No for current no-ads, no-Sentry binary** | No | N/A | N/A | No ad SDK. Re-evaluate Sentry or any future SDK. |
 | Approximate location | **No from app code** | No | N/A | N/A | No location APIs. Network services may process IP for delivery/security. |

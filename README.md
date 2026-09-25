@@ -7,16 +7,19 @@ have a Firebase real-time scaffold (see `docs/FIREBASE_SETUP.md`).
 
 > Play-money only, no real-money gambling (keeps it App-Store friendly).
 
-## Run it locally (Expo Go)
+## Run it locally
 
 ```bash
 npm install
 npm start          # then scan the QR code with Expo Go (iOS)
 # or
-npm run ios        # open in an iOS simulator
+npm run ios        # build and run a native iOS app in the simulator
 ```
 
-Requires Node 18+ and the **Expo Go** app on your device (iOS 16+).
+Requires Node 18+ and Xcode for `npm run ios`. Expo Go still works for most of
+the app, but **Google sign-in only works in a native build**: the OAuth redirect
+is bound to this app's bundle identifier, not Expo Go's. Use `npm run ios` (or a
+TestFlight build) to exercise sign-in.
 
 ## What's built
 
@@ -36,8 +39,8 @@ Requires Node 18+ and the **Expo Go** app on your device (iOS 16+).
 
 ```bash
 npm start          # Expo dev server
-npm run ios        # iOS simulator
-npm run android    # Android
+npm run ios        # native iOS build in the simulator
+npm run android    # native Android build
 npm test           # run the poker-engine test suite (vitest)
 npx tsc --noEmit   # typecheck
 ```

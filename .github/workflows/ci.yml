@@ -118,6 +118,64 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `EXPO_PUBLIC_*` values are inlined into the JS bundle at build time, and
+      # that bundling happens on EAS's worker, not here, so exporting them as
+      # step env would do nothing. EAS reads the build profile's `env` block, so
+      # write them there from secrets. `.env` is gitignored and never reaches
+      # the runner, which is why a cloud build previously shipped with no
+      # Firebase config at all: the app installed and ran, but every online
+      # feature silently reported itself as not configured.
+      #
+      # These are public client identifiers rather than secrets. They live in
+      # GitHub secrets only so the public repository stays free of project
+      # identifiers, matching how the App Store Connect fields are handled below.
+      - name: Add runtime config to eas.json
+        env:
+          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          EXPO_PUBLIC_FIREBASE_DATABASE_URL: ${{ secrets.EXPO_PUBLIC_FIREBASE_DATABASE_URL }}
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            // Online play is dead without these three, and the failure is
+            // silent in the app, so refuse to build rather than ship it.
+            const required = [
+              "EXPO_PUBLIC_FIREBASE_API_KEY",
+              "EXPO_PUBLIC_FIREBASE_DATABASE_URL",
+              "EXPO_PUBLIC_FIREBASE_PROJECT_ID",
+            ];
+            const optional = [
+              "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN",
+              "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET",
+              "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+              "EXPO_PUBLIC_FIREBASE_APP_ID",
+              "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
+              "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID",
+              "EXPO_PUBLIC_SENTRY_DSN",
+            ];
+            const missing = required.filter((k) => !process.env[k]);
+            if (missing.length) {
+              console.error("::error::Missing repository secrets: " + missing.join(", ") + ". See docs/online/ENABLING-ONLINE.md.");
+              process.exit(1);
+            }
+            const easJson = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            const env = easJson.build.production.env ?? {};
+            for (const key of required.concat(optional)) {
+              if (process.env[key]) env[key] = process.env[key];
+            }
+            easJson.build.production.env = env;
+            fs.writeFileSync("eas.json", JSON.stringify(easJson, null, 2) + "\n");
+            console.log("Configured " + Object.keys(env).length + " public runtime variables.");
+          '
+
       # The key is a .p8 private key, so it has to reach eas-cli as a file
       # rather than a value. `umask 077` means it is created unreadable to
       # anyone else, and `printf %s` avoids the trailing newline and the

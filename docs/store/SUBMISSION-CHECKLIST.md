@@ -8,10 +8,17 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 1. **Ads decision required.** The app is positioned as free with ads, but `AdBanner` is only a static placeholder and no ad SDK is installed. The visible fake ad slot is an App Review rejection risk as placeholder content, separate from the privacy-label issue. For 1.0, either hide ad placeholders and submit as no-ads, or integrate real ads and complete ATT, consent, SKAdNetwork, and privacy disclosures.
 2. **Legal pages still need human-owned legal values.** The support and privacy contact email is resolved as `maskndafi@gmail.com`. The GitHub Actions Pages workflow still refuses to publish while the remaining legal placeholder markers remain. Fill the exact fields in section 2 below, then enable Pages with **Source: GitHub Actions** and run the Legal Pages workflow.
-3. **Online rooms need production Firebase setup.** Enable Anonymous Authentication, publish `database.rules.json`, add production EAS Firebase env vars, and define room cleanup.
+3. **Online rooms need production Firebase setup.** Enable Anonymous and Google Authentication, publish `database.rules.json`, add the `EXPO_PUBLIC_*` repository secrets listed in `docs/online/ENABLING-ONLINE.md` so EAS builds are configured at all, and define room cleanup. Build 8 on TestFlight predates that fix and has no working online play.
 4. **EAS submit values are not committed.** `eas.json` has no placeholder submit values. Follow `EAS-SUBMIT.md` to supply Apple, ASC, team, and Google Play credentials without committing secrets or fake IDs.
 5. **Sentry is off by default.** If you want Sentry in the release, add a real DSN, restore real Expo plugin org/project config, and update diagnostics disclosures.
 6. **Screenshots are captured but blocked by ad placeholders.** `docs/store/screenshots/` has a real `1320 x 2868` iPhone 6.9-inch set. Do not upload the four screenshots that show `Reserved banner slot` until that placeholder is hidden or replaced by real disclosed ads.
+7. **Sign in with Apple is very likely required.** The login screen now offers Google sign-in. App Review guideline 4.8 (Login Services) requires an equivalent privacy-respecting option whenever an app offers a third-party login, and Sign in with Apple is the reliable way to satisfy it. Guest play is unlikely to count, because it creates no account the player can carry to another device, which is the whole point of the rule. Plan on shipping Sign in with Apple before submission:
+   - add `expo-apple-authentication` and request the `FULL_NAME` and `EMAIL` scopes with a SHA-256 nonce;
+   - in the Apple Developer portal, enable the Sign in with Apple capability, then create a Services ID and a key for it;
+   - enable the Apple provider in Firebase Authentication and paste in the Services ID, Team ID, Key ID and key;
+   - sign in through `OAuthProvider('apple.com')` and reuse the same link-then-fall-back path as `googleAuth.ts`, so an anonymous guest keeps their uid.
+
+   The Apple portal and Firebase console steps need a human with those accounts, so they are not done here. Submitting with Google only risks a 4.8 rejection.
 
 ## 2. Human-owned legal fields required before publishing
 
@@ -62,8 +69,9 @@ Do not submit friend-room claims until the Firebase console steps and EAS produc
 
 Current no-ads, no-Sentry build behavior:
 
-- Local-only storage: age verification flag, local profile ID, display name, Pal/avatar, virtual coins, XP, stats, settings, friends list, cosmetics, login provider label, local email-or-username handle, and saved game snapshots.
-- Firebase, when configured: anonymous `auth.uid`, room code, host ID, room status, settings JSON, display name, Pal seed, seat, chips, connected state, action records, redacted public game state, and private player views.
+- Local-only storage: age verification flag, local profile ID, display name, Pal/avatar, virtual coins, XP, stats, settings, friends list, cosmetics, login provider label, claimed handle, and saved game snapshots.
+- Firebase, when configured: `auth.uid` (anonymous for guests, tied to the Google account after sign-in), room code, host ID, room status, settings JSON, display name, Pal seed, seat, chips, connected state, action records, redacted public game state, and private player views.
+- Firebase Authentication, when a player signs in with Google: the Google account's email address and display name, held against the `uid`. The app never writes the address to the database; it only derives a handle suggestion from it.
 - Giphy CDN: curated GIF thumbnail/full image URLs from `media.giphy.com`; no API key and no search terms.
 - Sentry: installed but inactive unless `EXPO_PUBLIC_SENTRY_DSN` is set.
 - Ads: no real ad SDK, no IDFA, no ATT, no SKAdNetwork list, and no ad data collection.
@@ -135,10 +143,11 @@ Before shipping a real ad-supported binary:
 - Verify:
   - age gate blocks under-18 birth years and invalid years;
   - hosted Terms and Privacy links are live;
-  - guest/email local login is not represented as real OAuth;
+  - Google sign-in completes on a real device and survives deleting and reinstalling the app;
+  - signing in with Google while playing as a guest keeps the same handle, friends and stats;
   - Firebase anonymous auth works and rules are published;
   - online-room writes use `auth.uid`;
-  - no placeholder Apple/Google sign-in buttons exist;
+  - every sign-in button on the login screen actually works, no placeholders;
   - no real ads appear unless the ad disclosure path is complete;
   - no placeholder ad UI appears in a no-ads submission;
   - Giphy GIFs load and failure states do not break gameplay;

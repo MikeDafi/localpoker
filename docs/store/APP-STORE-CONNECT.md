@@ -242,7 +242,7 @@ Use `docs/store/APP-PRIVACY-LABELS.md` as the detailed answer key. For the inten
 - Tracking: **No**.
 - Data linked to the user: **User ID** and **Gameplay Content**, for Firebase anonymous UID, display name or screen name, private room metadata, public game state, private player views, and action records.
 - Data not linked to the user: **Other Data Types**, if legal chooses to disclose Giphy CDN request metadata conservatively.
-- Email address: **No**, because the email-or-username field stays in local AsyncStorage and is not sent to Firebase.
+- Email address: **Yes** when the build ships Google sign-in, linked to the user, for App Functionality and account management. Firebase Authentication stores the Google account address against the uid, even though the app never writes it to the database. Answer **No** only for a build with the Google client IDs left blank.
 - Diagnostics: **No**, unless a real Sentry DSN is set for the submitted build.
 - Device ID, Advertising Data, Product Interaction for ads, Coarse Location for ads: **No**, unless a real ad SDK ships.
 

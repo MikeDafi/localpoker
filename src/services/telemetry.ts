@@ -1,10 +1,6 @@
 declare const __DEV__: boolean | undefined;
 declare const require: ((moduleName: string) => unknown) | undefined;
-declare const process:
-  | {
-      env?: Record<string, string | undefined>;
-    }
-  | undefined;
+declare const process: { env: Record<string, string | undefined> };
 
 export type TelemetryLevel = 'debug' | 'info' | 'warning' | 'error' | 'fatal';
 
@@ -35,17 +31,20 @@ interface SentryModule {
 
 type SentryLoader = () => SentryModule;
 
-const SENTRY_DSN_ENV = 'EXPO_PUBLIC_SENTRY_DSN';
-
-const readEnv = (key: string): string | undefined => {
-  const value = typeof process !== 'undefined' ? process.env?.[key] : undefined;
+/**
+ * Trim and treat blank as unset. The *reads* have to stay literal
+ * `process.env.EXPO_PUBLIC_...` member expressions, because that is the exact
+ * syntax `babel-preset-expo` replaces with the value at build time; a computed
+ * lookup resolves to nothing in a release bundle.
+ */
+const clean = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 };
 
 const isDev = (): boolean => {
   if (typeof __DEV__ !== 'undefined') return Boolean(__DEV__);
-  return readEnv('NODE_ENV') !== 'production';
+  return clean(process.env.NODE_ENV) !== 'production';
 };
 
 const loadSentryModule: SentryLoader = () => {
@@ -76,7 +75,7 @@ const getSentry = (): SentryModule | null => {
   if (sentry) return sentry;
   if (unavailable) return null;
 
-  const dsn = readEnv(SENTRY_DSN_ENV);
+  const dsn = clean(process.env.EXPO_PUBLIC_SENTRY_DSN);
   if (!dsn) {
     unavailable = true;
     return null;

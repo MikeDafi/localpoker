@@ -18,6 +18,39 @@ EXPO_PUBLIC_FIREBASE_APP_ID=...
 
 Restart Expo after changing `.env`. In code, `isFirebaseConfigured()` returns `true` only when `EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_DATABASE_URL`, and `EXPO_PUBLIC_FIREBASE_PROJECT_ID` are present.
 
+### How these reach a release build, and how that used to go wrong
+
+`EXPO_PUBLIC_*` variables are not read at runtime. `babel-preset-expo` finds the literal text `process.env.EXPO_PUBLIC_SOMETHING` in the source and replaces it with the value while bundling, and a release bundle has no `process.env` object left at all. Two consequences:
+
+1. **The read has to be a literal member expression.** A `readEnv('EXPO_PUBLIC_...')` helper, a computed `process.env[key]` lookup, or optional chaining through `process.env?.` all leave a lookup that finds nothing once bundled. That is exactly what happened here: development worked, and every production build silently reported online play as "not configured". `src/services/__tests__/envInlining.test.ts` now fails the build if that pattern comes back.
+2. **The values must exist wherever bundling happens.** A local build reads `.env` from this directory. An EAS cloud build never sees `.env`, because it is gitignored, so the values have to come from the build profile's `env` block in `eas.json` instead.
+
+The `ios-release` job in `.github/workflows/ci.yml` writes that block from repository secrets and refuses to build if the three required ones are missing. Add these under **Settings > Secrets and variables > Actions**:
+
+```
+EXPO_PUBLIC_FIREBASE_API_KEY             (required)
+EXPO_PUBLIC_FIREBASE_DATABASE_URL        (required)
+EXPO_PUBLIC_FIREBASE_PROJECT_ID          (required)
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+EXPO_PUBLIC_FIREBASE_APP_ID
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+EXPO_PUBLIC_SENTRY_DSN
+```
+
+They are public client identifiers rather than real secrets. They are stored as secrets only so this public repository carries no project identifiers.
+
+To confirm a built binary actually has them, export a production bundle and search it:
+
+```sh
+npx expo export --platform ios --output-dir dist-check
+grep -c -a -F "$EXPO_PUBLIC_FIREBASE_API_KEY" dist-check/_expo/static/js/ios/*.hbc
+```
+
+A count of `0` means the app will launch and behave as if Firebase were never configured.
+
 ## 2. Enable Anonymous auth
 
 1. Open the Firebase console for the app project.
@@ -27,6 +60,28 @@ Restart Expo after changing `.env`. In code, `isFirebaseConfigured()` returns `t
 5. Click **Save**.
 
 Verification: create or join a friends room in the app. If Anonymous auth is off, the lobby reports that it could not sign in to play online.
+
+## 2b. Enable Google sign-in
+
+Anonymous auth alone is per install. Google sign-in is what makes an account survive a reinstall or a new device, so enable it before shipping.
+
+1. In **Authentication** > **Sign-in method**, add the **Google** provider and enable it.
+2. Set a project support email, then **Save**.
+3. Register the iOS app under **Project settings** > **Your apps** > **Add app** > **iOS**, using the bundle identifier from `app.json` (`ios.bundleIdentifier`). Firebase creates the iOS OAuth client for you.
+4. Copy both client IDs into `.env`:
+
+```sh
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=...apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=...apps.googleusercontent.com
+```
+
+The web client ID is under **Sign-in method** > **Google** > **Web SDK configuration**. The iOS one is on the iOS app you just registered. Both are public identifiers that ship inside the app binary; they live in `.env` only to match the rest of the Firebase config.
+
+Leaving both blank hides the Google button and leaves Guest as the only option, so a fork without these keys still builds and runs.
+
+**Google sign-in never works in Expo Go.** The OAuth redirect is bound to this app's bundle identifier, and Expo Go's is `host.exp.Exponent`, so Google would have nowhere to send the user back to. Test it with `npx expo run:ios` or a TestFlight build. The redirect scheme itself needs no manual setup: `npx expo prebuild` writes the bundle identifier into `CFBundleURLTypes` automatically, which is the URI `expo-auth-session` hands to Google.
+
+Signing in while already playing as a guest *links* the Google credential to the existing anonymous user, so the handle, friends and stats that uid already owns carry over. If that Google account already has its own Firebase user, the app signs into that one instead, since it is the identity with the real history.
 
 ## 3. Publish Realtime Database rules
 
@@ -95,7 +150,7 @@ Friend requests require consent:
 - Accepting writes both users' friend edges.
 - Either side can later remove the friendship.
 
-Important identity limitation: current online identity is Firebase Anonymous Auth. That identity is per install. If a player deletes the app, clears app data, or changes device without linking a real account, their `uid`, handle claim, friend requests, and friend list are lost. This is acceptable for development and testing, but real shipping-quality accounts should link anonymous users to durable sign-in before marketing online friends as permanent.
+Identity durability: a guest is Firebase Anonymous Auth, which is per install. A guest who deletes the app, clears app data, or changes device loses their `uid`, handle claim, friend requests, and friend list, and handles are create-only in the rules, so the old claim cannot be reclaimed. Google sign-in (section 2b) is the fix: it links that anonymous uid to a Google account, so the same person gets the same identity on the next device. Guest play stays available, but do not market a guest's friends list as permanent.
 
 ## 5. What cleanup exists
 

@@ -37,7 +37,7 @@ We may change, reset, rebalance, revoke, or discontinue virtual coins/items if n
 
 ## 5. Account and identity
 
-The current build supports guest play, local email-or-username labeling, and anonymous Firebase authentication for online room infrastructure when Firebase is configured. The current email option is not a verified email login, and real Apple/Google/OAuth login is not yet implemented.
+The current build supports guest play and Sign in with Google. Guests get an anonymous Firebase authentication account, which exists on one device only; signing in with Google links that account to your Google identity so it survives a reinstall or a new device.
 
 You are responsible for activity from your app profile or anonymous account. Do not impersonate others or choose display names that are unlawful, misleading, hateful, harassing, or infringing.
 

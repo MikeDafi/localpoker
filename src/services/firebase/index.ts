@@ -1,5 +1,14 @@
 export { getDb, isFirebaseConfigured } from './config';
-export { deleteCurrentAuthUser, ensureSignedIn, getAuthUid, authReady } from './auth';
+export { deleteCurrentAuthUser, ensureSignedIn, getAuthUid, authReady, signOutFirebase } from './auth';
+export {
+  GOOGLE_ANDROID_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_WEB_CLIENT_ID,
+  googleSignUpFields,
+  isGoogleSignInConfigured,
+  signInWithGoogleIdToken,
+} from './googleAuth';
+export type { GoogleIdentity, GoogleSignInResult } from './googleAuth';
 export {
   acceptFriendRequest,
   blockUser,

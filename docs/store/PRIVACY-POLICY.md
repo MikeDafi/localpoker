@@ -27,14 +27,16 @@ The current app stores the following data in local device storage so the game ca
 
 - Age verification flag (`@pokerpals/ageVerified`).
 - Local profile: random app profile ID, display name, Pal/avatar configuration, play-money coins, and XP.
-- Local login state: guest/email provider label and a locally entered email-or-username handle. This is not real OAuth or a server account today.
+- Local login state: the sign-in provider label (guest or Google) and the handle you were given or claimed.
 - Local game stats, settings, friends list, saved game snapshot, and cosmetics owned/equipped with play-money coins.
 
 This local data stays on the device unless a feature below sends a subset of it to a service. Deleting the app or clearing app storage generally removes it.
 
-### B. Firebase anonymous authentication and private room data
+### B. Firebase authentication and private room data
 
 When Firebase is configured and anonymous sign-in is enabled, LocalPoker attempts to create or use an anonymous Firebase Authentication UID. This UID is used to secure online room rules.
+
+If you choose **Sign in with Google**, LocalPoker asks Google to confirm who you are and passes the resulting token to Firebase Authentication. Firebase then stores your Google account's email address and display name against your UID, so the same account, handle and friends follow you to a new device. We use the email address only to identify the account and to suggest a starting handle; we never publish it to other players and never write it to the game database. You can play entirely as a guest instead, in which case no email address is involved. You can sign out at any time from Settings, and deleting your account removes the Firebase user along with the data listed below.
 
 When a user creates, joins, or plays in an online room, the app can send room and gameplay data to Firebase Realtime Database, including:
 
@@ -122,7 +124,7 @@ We may share or make data available to:
 
 Depending on where you live, you may have rights to request access, correction, deletion, portability, restriction, objection, or appeal regarding personal data. California residents may also have rights to know, delete, correct, and opt out of sale/sharing. We do not currently sell personal information.
 
-To make a request, contact maskndafi@gmail.com. Because the current account model is anonymous/local, we may need information such as your anonymous Firebase UID, room code, device profile ID, or other details to locate data.
+To make a request, contact maskndafi@gmail.com. If you signed in with Google, give us that email address so we can find the account. If you played as a guest, the account is anonymous, so we may need details such as your Firebase UID, room code, or device profile ID to locate the data.
 
 For advertising choices, conditional on ads shipping, you may be able to:
 

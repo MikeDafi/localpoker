@@ -2,26 +2,35 @@ import { getApps, initializeApp, type FirebaseOptions } from 'firebase/app';
 import { getDatabase, type Database } from 'firebase/database';
 import { captureError } from '../telemetry';
 
-declare const process:
-  | {
-      env?: Record<string, string | undefined>;
-    }
-  | undefined;
+declare const process: { env: Record<string, string | undefined> };
 
-const readEnv = (key: string): string | undefined => {
-  const value = typeof process !== 'undefined' ? process.env?.[key] : undefined;
+/**
+ * Every one of these must be a *literal* `process.env.EXPO_PUBLIC_...` member
+ * expression.
+ *
+ * `babel-preset-expo` inlines `EXPO_PUBLIC_` variables by rewriting exactly
+ * that syntax at build time. There is no `process.env` object left at runtime
+ * in a release bundle, so the obvious-looking `readEnv('EXPO_PUBLIC_...')`
+ * helper silently returned `undefined` in every production build: online play
+ * was dead in TestFlight while working fine in development, where Metro still
+ * provides the object.
+ *
+ * The `?? undefined` and trimming below keep the previous behaviour of treating
+ * a blank value as "not configured".
+ */
+const clean = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 };
 
 const firebaseConfig: FirebaseOptions = {
-  apiKey: readEnv('EXPO_PUBLIC_FIREBASE_API_KEY'),
-  authDomain: readEnv('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-  databaseURL: readEnv('EXPO_PUBLIC_FIREBASE_DATABASE_URL'),
-  projectId: readEnv('EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
-  storageBucket: readEnv('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: readEnv('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-  appId: readEnv('EXPO_PUBLIC_FIREBASE_APP_ID'),
+  apiKey: clean(process.env.EXPO_PUBLIC_FIREBASE_API_KEY),
+  authDomain: clean(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  databaseURL: clean(process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL),
+  projectId: clean(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID),
+  storageBucket: clean(process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: clean(process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+  appId: clean(process.env.EXPO_PUBLIC_FIREBASE_APP_ID),
 };
 
 let cachedDb: Database | null = null;

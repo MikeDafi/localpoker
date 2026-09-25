@@ -20,6 +20,7 @@ import {
   removeFriendship,
   reportUser as reportFirebaseUser,
   sendFriendRequest,
+  signOutFirebase,
   subscribeSocialGraph,
   type BlockRecord,
   type FriendEdgeRecord,
@@ -373,7 +374,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, []);
 
-  const logout = useCallback(() => persistAuth({ loggedIn: false, provider: null, handle: null }), [persistAuth]);
+  const logout = useCallback(() => {
+    // Drop the Firebase session too. Leaving it signed in would keep the next
+    // "Play as Guest" writing to the account that just signed out.
+    signOutFirebase().catch((error) => {
+      captureError(error, { tags: { area: 'firebase-auth', operation: 'logout-sign-out' } });
+    });
+    persistAuth({ loggedIn: false, provider: null, handle: null });
+  }, [persistAuth]);
 
   const updateProfile = useCallback((patch: Partial<Profile>): ActionResult => {
     if (typeof patch.name === 'string') {

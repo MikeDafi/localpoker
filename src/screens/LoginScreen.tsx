@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { WiiPanel } from '../components/WiiPanel';
@@ -8,7 +10,19 @@ import { WiiButton } from '../components/WiiButton';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { colors, fonts, spacing, radii, shadows } from '../theme/theme';
 import { useApp } from '../state/AppContext';
+import { captureError } from '../services/telemetry';
 import { RootStackParamList } from '../navigation/types';
+import {
+  GOOGLE_ANDROID_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_WEB_CLIENT_ID,
+  googleSignUpFields,
+  isGoogleSignInConfigured,
+  signInWithGoogleIdToken,
+} from '../services/firebase';
+
+// Lets a completed OAuth redirect dismiss the web view it came back from.
+WebBrowser.maybeCompleteAuthSession();
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -16,30 +30,7 @@ export function LoginScreen({ navigation }: Props) {
   void navigation;
 
   const { login, profile } = useApp();
-  const [showEmail, setShowEmail] = useState(false);
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [emailError, setEmailError] = useState<string | null>(null);
-
-  const revealEmail = () => {
-    setShowEmail(true);
-    setEmailError(null);
-  };
-
-  const submitEmail = () => {
-    const handle = email.trim();
-    const displayName = name.trim();
-
-    if (!handle) {
-      setEmailError('Enter an email or username to keep your chips.');
-      return;
-    }
-
-    const result = login('email', handle, displayName || undefined);
-    if (!result.ok) {
-      setEmailError(result.reason || 'Choose a different name.');
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <ScreenBackground variant="menu">
@@ -55,168 +46,228 @@ export function LoginScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.flex}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.shell}>
-              <Animated.View entering={FadeIn.duration(500)} style={styles.statusPill}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Free table lobby • play-money only</Text>
-              </Animated.View>
+          <View style={styles.shell}>
+            <Animated.View entering={FadeIn.duration(500)} style={styles.statusPill}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>Free table lobby • play-money only</Text>
+            </Animated.View>
 
-              <Animated.View entering={FadeInDown.delay(80).duration(460)}>
-                <WiiPanel padding={0} style={styles.heroPanel}>
-                  <View style={styles.heroInner}>
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>PLAY-MONEY POKER</Text>
-                    </View>
-
-                    <View style={styles.palStage}>
-                      <View style={styles.palGlow} />
-                      <AnimatedPal config={profile.pal} size={130} alive ring />
-                    </View>
-
-                    <Text style={styles.wordmark}>
-                      Local<Text style={styles.wordmarkBlue}>Poker</Text>
-                    </Text>
-                    <Text style={styles.tagline}>Poker with Friends</Text>
-
-                    <View style={styles.menuLights}>
-                      <View style={[styles.menuLight, styles.menuLightBlue]} />
-                      <View style={[styles.menuLight, styles.menuLightGold]} />
-                      <View style={[styles.menuLight, styles.menuLightPink]} />
-                    </View>
+            <Animated.View entering={FadeInDown.delay(80).duration(460)}>
+              <WiiPanel padding={0} style={styles.heroPanel}>
+                <View style={styles.heroInner}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>PLAY-MONEY POKER</Text>
                   </View>
-                </WiiPanel>
-              </Animated.View>
 
-              <Animated.View entering={FadeInDown.delay(180).duration(460)}>
-                <WiiPanel padding={spacing.lg} style={styles.authPanel}>
-                  <Text style={styles.authTitle}>Choose your seat</Text>
-                  <Text style={styles.authCopy}>
-                    Save your Pal, chips, and friendly table history with email, or jump in as a guest.
+                  <View style={styles.palStage}>
+                    <View style={styles.palGlow} />
+                    <AnimatedPal config={profile.pal} size={130} alive ring />
+                  </View>
+
+                  <Text style={styles.wordmark}>
+                    Local<Text style={styles.wordmarkBlue}>Poker</Text>
                   </Text>
+                  <Text style={styles.tagline}>Poker with Friends</Text>
 
-                  <View style={styles.buttonStack}>
-                    {showEmail ? (
-                      <Animated.View entering={FadeInDown.duration(380)} style={styles.emailForm}>
-                        <Text style={styles.inputLabel}>Email or username</Text>
-                        <TextInput
-                          value={email}
-                          onChangeText={(value) => {
-                            setEmail(value);
-                            if (emailError) setEmailError(null);
-                          }}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          keyboardType="email-address"
-                          placeholder="you@example.com"
-                          placeholderTextColor={colors.inkMuted}
-                          selectionColor={colors.blue}
-                          style={[styles.input, emailError ? styles.inputError : null]}
-                        />
-
-                        <Text style={styles.inputLabel}>Display name (optional)</Text>
-                        <TextInput
-                          value={name}
-                          onChangeText={setName}
-                          autoCapitalize="words"
-                          maxLength={24}
-                          onSubmitEditing={submitEmail}
-                          placeholder="Lucky Ace"
-                          placeholderTextColor={colors.inkMuted}
-                          returnKeyType="go"
-                          selectionColor={colors.blue}
-                          style={styles.input}
-                        />
-
-                        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
-
-                        <WiiButton
-                          label="Continue"
-                          variant="green"
-                          size="md"
-                          fullWidth
-                          icon={<AuthGlyph label="@" tone="blue" />}
-                          onPress={submitEmail}
-                        />
-                      </Animated.View>
-                    ) : (
-                      <WiiButton
-                        label="Sign in with Email"
-                        variant="gold"
-                        size="md"
-                        fullWidth
-                        icon={<AuthGlyph label="@" tone="gold" />}
-                        onPress={revealEmail}
-                      />
-                    )}
-
-                    <View style={styles.dividerRow}>
-                      <View style={styles.dividerLine} />
-                      <Text style={styles.dividerText}>or jump right in</Text>
-                      <View style={styles.dividerLine} />
-                    </View>
-
-                    <WiiButton
-                      label="Play as Guest"
-                      variant="blue"
-                      size="lg"
-                      fullWidth
-                      icon={<AuthGlyph label="♠" tone="light" />}
-                      onPress={() => {
-                        const result = login('guest');
-                        if (!result.ok) setEmailError(result.reason || 'Could not continue.');
-                      }}
-                    />
+                  <View style={styles.menuLights}>
+                    <View style={[styles.menuLight, styles.menuLightBlue]} />
+                    <View style={[styles.menuLight, styles.menuLightGold]} />
+                    <View style={[styles.menuLight, styles.menuLightPink]} />
                   </View>
-                </WiiPanel>
-              </Animated.View>
+                </View>
+              </WiiPanel>
+            </Animated.View>
 
-              <Animated.Text entering={FadeInDown.delay(280).duration(420)} style={styles.legal}>
-                Play-money only. 18+. No real gambling.
-              </Animated.Text>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+            <Animated.View entering={FadeInDown.delay(180).duration(460)}>
+              <WiiPanel padding={spacing.lg} style={styles.authPanel}>
+                <Text style={styles.authTitle}>Choose your seat</Text>
+                <Text style={styles.authCopy}>
+                  Sign in with Google to keep your Pal, chips, and friends on every device, or jump
+                  in as a guest on this one.
+                </Text>
+
+                <View style={styles.buttonStack}>
+                  {isGoogleSignInConfigured() ? (
+                    <SignInBoundary>
+                      <GoogleSignInButton onError={setError} />
+                    </SignInBoundary>
+                  ) : null}
+
+                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or jump right in</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  <WiiButton
+                    label="Play as Guest"
+                    variant="blue"
+                    size="lg"
+                    fullWidth
+                    icon={<AuthGlyph label="♠" />}
+                    onPress={() => {
+                      const result = login('guest');
+                      if (!result.ok) setError(result.reason || 'Could not continue.');
+                    }}
+                  />
+                </View>
+              </WiiPanel>
+            </Animated.View>
+
+            <Animated.Text entering={FadeInDown.delay(280).duration(420)} style={styles.legal}>
+              Play-money only. 18+. No real gambling.
+            </Animated.Text>
+          </View>
+        </ScrollView>
       </View>
     </ScreenBackground>
   );
 }
 
-function AuthGlyph({ label, tone }: { label: string; tone: 'blue' | 'gold' | 'light' }) {
+/**
+ * Building the OAuth request reaches into native config (the bundle identifier
+ * behind the redirect URI, among others), so a bad build could throw while
+ * rendering. This is the login screen, the only way into the app, so swallow
+ * that rather than let it take the whole screen and the Guest button with it.
+ */
+class SignInBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    captureError(error, { tags: { area: 'auth-ui', operation: 'google-button-render' } });
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <Text style={styles.errorText}>Google sign-in is unavailable in this build.</Text>;
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Kept in its own component because `useIdTokenAuthRequest` throws while
+ * loading when no client ID exists for the platform, so the parent renders it
+ * only once `isGoogleSignInConfigured()` says the IDs are there.
+ *
+ * The redirect is bound to this app's bundle identifier, so the flow only
+ * completes in a dev build or a TestFlight/App Store build: in Expo Go the
+ * redirect would land in Expo Go itself.
+ */
+function GoogleSignInButton({ onError }: { onError: (message: string | null) => void }) {
+  const { login } = useApp();
+  const [busy, setBusy] = useState(false);
+  const handled = useRef<string | null>(null);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    // Always show the chooser: a shared device should not silently reuse the
+    // last account, and there is no other way back out of a wrong one here.
+    selectAccount: true,
+  });
+
+  useEffect(() => {
+    if (!response) return;
+
+    if (response.type === 'dismiss' || response.type === 'cancel') {
+      setBusy(false);
+      return;
+    }
+
+    if (response.type !== 'success') {
+      setBusy(false);
+      onError('Google sign-in did not complete. Try again, or play as a guest.');
+      return;
+    }
+
+    const idToken = response.params?.id_token;
+    if (!idToken) {
+      // The code exchange runs a tick after the redirect, so a success without
+      // a token yet is normal: the effect reruns when it lands.
+      return;
+    }
+    if (handled.current === idToken) return;
+    handled.current = idToken;
+
+    let active = true;
+    setBusy(true);
+    (async () => {
+      const result = await signInWithGoogleIdToken(idToken);
+      if (!active) return;
+      setBusy(false);
+      if (!result.ok) {
+        onError(result.reason);
+        return;
+      }
+      const { handle, name } = googleSignUpFields(result.identity);
+      const loggedIn = login('google', handle, name);
+      if (!loggedIn.ok) {
+        // A rejected handle or name is not worth blocking the sign-in over:
+        // retry bare and let the directory fall back to a friend code.
+        const bare = login('google');
+        if (!bare.ok) onError(bare.reason || 'Could not finish signing in.');
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [login, onError, response]);
+
   return (
-    <View
-      style={[
-        styles.authGlyph,
-        tone === 'blue' && styles.authGlyphBlue,
-        tone === 'gold' && styles.authGlyphGold,
-        tone === 'light' && styles.authGlyphLight,
-      ]}
-    >
-      <Text
-        style={[
-          styles.authGlyphText,
-          tone === 'blue' && styles.authGlyphTextLight,
-          tone === 'light' && styles.authGlyphTextBlue,
-        ]}
-      >
-        {label}
-      </Text>
+    <WiiButton
+      label={busy ? 'Signing in...' : 'Sign in with Google'}
+      variant="gold"
+      size="md"
+      fullWidth
+      disabled={!request || busy}
+      icon={busy ? <ActivityIndicator color={colors.blueDeep} size="small" /> : <GoogleGlyph />}
+      onPress={() => {
+        onError(null);
+        setBusy(true);
+        promptAsync().catch(() => {
+          setBusy(false);
+          onError('Could not open Google sign-in. Check your connection and try again.');
+        });
+      }}
+    />
+  );
+}
+
+function GoogleGlyph() {
+  return (
+    <View style={[styles.authGlyph, styles.authGlyphGold]}>
+      <Text style={styles.googleGlyphText}>G</Text>
+    </View>
+  );
+}
+
+function AuthGlyph({ label }: { label: string }) {
+  return (
+    <View style={[styles.authGlyph, styles.authGlyphLight]}>
+      <Text style={[styles.authGlyphText, styles.authGlyphTextBlue]}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
   root: {
     flex: 1,
   },
@@ -410,40 +461,13 @@ const styles = StyleSheet.create({
   buttonStack: {
     gap: spacing.md,
   },
-  emailForm: {
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.panelAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  inputLabel: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.inkSoft,
-    marginLeft: spacing.xs,
-  },
-  input: {
-    height: 50,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel,
-    paddingHorizontal: spacing.md,
-    fontFamily: fonts.semibold,
-    fontSize: 16,
-    color: colors.ink,
-  },
-  inputError: {
-    borderColor: colors.red,
-  },
   errorText: {
     fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 16,
     color: colors.redDeep,
     marginLeft: spacing.xs,
+    textAlign: 'center',
   },
   dividerRow: {
     flexDirection: 'row',
@@ -476,9 +500,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.7)',
   },
-  authGlyphBlue: {
-    backgroundColor: colors.blue,
-  },
   authGlyphGold: {
     backgroundColor: colors.panel,
     borderColor: 'rgba(90,71,0,0.18)',
@@ -491,10 +512,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.ink,
   },
-  authGlyphTextLight: {
-    color: colors.panel,
-  },
   authGlyphTextBlue: {
     color: colors.onBlue,
+  },
+  googleGlyphText: {
+    fontFamily: fonts.bold,
+    fontSize: 17,
+    color: '#4285F4',
   },
 });
