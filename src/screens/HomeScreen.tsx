@@ -32,10 +32,10 @@ export function HomeScreen({ navigation }: Props) {
 
   const tiles = [
     { key: 'friends', title: 'Play with Friends', subtitle: 'Private room', accent: colors.blue, icon: <FriendsIcon />, onPress: () => navigation.navigate('CreateJoin') },
-    { key: 'quick', title: 'Quick Play', subtitle: 'vs. computer', accent: colors.felt, icon: <BotIcon />, onPress: () => navigation.navigate('GameSetup', { mode: 'quick' }) },
+    { key: 'quick', title: 'Quick Play', subtitle: 'vs. computer', accent: colors.teal, icon: <BotIcon />, onPress: () => navigation.navigate('GameSetup', { mode: 'quick' }) },
     { key: 'pal', title: 'My Pal', subtitle: 'Customize', accent: colors.accent, icon: <PaletteIcon />, onPress: () => navigation.navigate('PalDesigner') },
     { key: 'friendsList', title: 'Friends', subtitle: 'Your crew', accent: colors.accentPink, icon: <ProfileIcon />, onPress: () => navigation.navigate('Friends') },
-    { key: 'stats', title: 'My Stats', subtitle: 'Track your game', accent: colors.blueDeep, icon: <StatsIcon />, onPress: () => navigation.navigate('Stats') },
+    { key: 'stats', title: 'My Stats', subtitle: 'Track your game', accent: colors.indigo, icon: <StatsIcon />, onPress: () => navigation.navigate('Stats') },
     { key: 'store', title: 'Store', subtitle: 'Coins & style', accent: colors.gold, icon: <CartIcon />, onPress: () => navigation.navigate('Store') },
   ];
 

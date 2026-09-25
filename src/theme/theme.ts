@@ -22,12 +22,13 @@ export const colors = {
   glossTop: 'rgba(255,255,255,0.9)',
   glossBottom: 'rgba(255,255,255,0.0)',
 
-  // Brand blue (the single accent), desaturated from the old channel blue
-  blueLight: '#8AC9E4',
-  blue: '#2F9FD4',
-  blueMid: '#2189BC',
-  blueDeep: '#17709E',
-  blueInk: '#0F5478',
+  // Brand blue (the single accent). Saturated enough to read as a colour on a
+  // near-white menu: the earlier desaturated set went grey against `bg`.
+  blueLight: '#7BD1F7',
+  blue: '#159FE3',
+  blueMid: '#0B86C6',
+  blueDeep: '#0A6B9E',
+  blueInk: '#0A4C70',
 
   // Borders / hairlines
   border: '#CBD9E2',
@@ -69,13 +70,18 @@ export const colors = {
   /** 0.56 is the lowest alpha that still clears WCAG AA (4.5:1) on `surface`. */
   onDarkMuted: 'rgba(237,242,240,0.58)',
 
-  // Accents / semantics, restrained, only red/green carry meaning
-  gold: '#D6B45C',
-  goldDeep: '#A98A38',
-  red: '#D65A4B',
-  redDeep: '#B44231',
-  green: '#43A873',
-  amber: '#D9A046',
+  // Accents / semantics. Saturated so an icon badge reads as its own colour at
+  // a glance; red and green still carry the only meaning.
+  gold: '#F0B42A',
+  goldDeep: '#A8790C',
+  red: '#EE5140',
+  redDeep: '#C3392A',
+  green: '#2EB877',
+  amber: '#F2A519',
+  /** Quick Play used the near-black felt, which read as a dead tile. */
+  teal: '#13B3A6',
+  /** Stats used `blueDeep`, which is a text colour and read as navy sludge. */
+  indigo: '#4C6FEF',
 
   // Chips
   chipWhite: '#F7FAFC',
@@ -96,15 +102,16 @@ export const colors = {
 
   shadow: '#05090B',
 
-  // Secondary accents, desaturated so they stop competing with the brand blue
-  accent: '#6B63C9',
-  accentAlt: '#3FA9D6',
-  accentPink: '#C9718F',
+  // Secondary accents. Saturated to match the brand blue rather than sitting
+  // grey beside it.
+  accent: '#7C5CF2',
+  accentAlt: '#22B6EE',
+  accentPink: '#ED5B92',
   glass: 'rgba(255,255,255,0.6)',
   glassBorder: 'rgba(255,255,255,0.75)',
   scrim: 'rgba(5,9,11,0.62)',
-  success: '#43A873',
-  online: '#3FB592',
+  success: '#2EB877',
+  online: '#25C48F',
   offline: '#8A9AA3',
 } as const;
 

@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { colors, radii, shadows, fonts, springs } from '../theme/theme';
+import { accentRamp } from '../theme/color';
 import { sound } from '../services/sound';
 
 const AView = Animated.createAnimatedComponent(View);
@@ -71,9 +72,18 @@ export function WiiChannelTile({
           {/* accent glow halo behind the icon */}
           <View style={[styles.halo, { backgroundColor: accent }]} pointerEvents="none" />
           {/* glossy icon badge */}
-          <View style={[styles.iconWrap, { backgroundColor: accent }, shadows.soft]}>
+          <View style={[styles.iconWrap, { shadowColor: accent }, shadows.soft]}>
+            {/* A light-to-deep ramp of the accent. A flat fill reads as a
+                sticker; the ramp is what makes the badge look lit. */}
             <LinearGradient
-              colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+              colors={accentRamp(accent)}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.30)', 'rgba(255,255,255,0)']}
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 0.65 }}
               style={styles.iconGloss}
@@ -117,7 +127,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '52%',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.26)',
     borderTopLeftRadius: radii.tile,
     borderTopRightRadius: radii.tile,
   },
@@ -126,7 +136,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    opacity: 0.12,
+    opacity: 0.30,
   },
   iconWrap: {
     width: 66,
@@ -143,7 +153,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '60%',
+    height: '50%',
   },
   labelBar: {
     height: 46,

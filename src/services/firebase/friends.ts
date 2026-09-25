@@ -5,6 +5,7 @@ import {
   ref,
   runTransaction,
   serverTimestamp,
+  set,
   update,
   type Database,
 } from 'firebase/database';
@@ -16,7 +17,12 @@ import { maskedPublicName, publicNameIssue } from '../../moderation/contentFilte
 
 export type FirebaseFriendResult<T extends object = object> =
   | ({ ok: true; reason?: string } & T)
-  | { ok: false; reason: string };
+  /**
+   * `nameTaken` marks the one failure the caller must not paper over: the
+   * player asked for a name somebody else holds, so they keep the one they
+   * have rather than being handed a generated replacement.
+   */
+  | { ok: false; reason: string; nameTaken?: boolean };
 
 export type DirectoryUser = {
   handle: string;
@@ -133,47 +139,61 @@ export const publishUserDirectory = async (
 
   const existing = await get(ref(db, usersPath(uid)));
   const existingUser = existing.exists() ? (existing.val() as Partial<DirectoryUser>) : null;
-  const handle = normalizeHandle(existingUser?.handle ?? handleInput);
-  if (!handle) {
-    return { ok: false, reason: 'Choose a handle using 3 to 20 letters, numbers, or underscores.' };
+  const held = normalizeHandle(existingUser?.handle ?? '');
+  // Renaming used to be impossible: this read `existingUser?.handle ?? input`,
+  // so once a directory entry existed the name was frozen for good. The app
+  // then wrote the returned (old) name back over the new one, so a rename
+  // silently reverted and friends searching the new name found nobody.
+  const wanted = normalizeHandle(handleInput) ?? held;
+  if (!wanted) {
+    return { ok: false, reason: 'Choose a name using 3 to 20 letters, numbers, or underscores.' };
+  }
+
+  const displayName = cleanDisplayName(displayNameInput) || `Player ${wanted}`;
+  const displayNameIssue = publicNameIssue(displayName, 'name');
+  if (displayNameIssue) {
+    return { ok: false, reason: displayNameIssue };
   }
 
   try {
-    // Re-writing the handle you already own looks harmless but is not allowed:
-    // the rules treat handles as create-or-release, so an owner-to-owner write
-    // is rejected. Returning `undefined` aborts the transaction and leaves the
-    // existing claim in place, which is the intended outcome anyway. Without
-    // this, every profile change and every launch fired a permission_denied.
+    // Claiming a name you already hold is rejected: the rules treat the claim
+    // as create-or-release, so an owner-to-owner write is not allowed.
+    // Returning `undefined` aborts, which leaves the existing claim in place.
     const claimed = await runTransaction(
-      ref(db, handlesPath(handle)),
-      (current) => {
-        if (current === null) {
-          return uid;
-        }
-        return undefined;
-      },
+      ref(db, handlesPath(wanted)),
+      (current) => (current === null ? uid : undefined),
       { applyLocally: false },
     );
 
-    // Aborting when you already hold the handle is success, not failure.
+    // Aborting because you already hold it is success. Aborting because
+    // somebody else holds it is not.
     if (!claimed.snapshot.exists() || claimed.snapshot.val() !== uid) {
-      return { ok: false, reason: `@${handle} is already taken.` };
+      return {
+        ok: false,
+        reason: `@${wanted} is already taken.`,
+        // Lets the caller keep the name the player already has rather than
+        // falling back to a generated one, which would be a surprise rename.
+        nameTaken: Boolean(held),
+      };
     }
 
-    const displayName = cleanDisplayName(displayNameInput) || `Player ${handle}`;
-    const displayNameIssue = publicNameIssue(displayName, 'name');
-    if (displayNameIssue) {
-      return { ok: false, reason: displayNameIssue };
-    }
+    // The claim has to exist before this write: `users/$uid` is validated
+    // against `handles/<name>` already pointing at this uid.
     await update(ref(db), {
       [usersPath(uid)]: {
-        handle,
+        handle: wanted,
         displayName,
         updatedAt: Date.now(),
       } satisfies DirectoryUser,
     });
 
-    return { ok: true, uid, handle };
+    // Release the old name last, so a failure part way through leaves the
+    // account reachable under one of the two rather than neither.
+    if (held && held !== wanted) {
+      await set(ref(db, handlesPath(held)), null);
+    }
+
+    return { ok: true, uid, handle: wanted };
   } catch (error) {
     reportFirebaseError('publish-user-directory', error);
     console.warn('Unable to publish Firebase user directory entry.', error);
@@ -202,7 +222,7 @@ export const resolveHandle = async (
   try {
     const handleSnapshot = await get(ref(db, handlesPath(handle)));
     if (!handleSnapshot.exists()) {
-      return { ok: false, reason: 'No player with that handle.' };
+      return { ok: false, reason: 'No player with that name.' };
     }
 
     const foundUid = handleSnapshot.val() as string;
@@ -243,7 +263,7 @@ export const sendFriendRequest = async (
 
   const target = await resolveHandle(handleInput);
   if (!target.ok || !target.uid || !target.handle || !target.displayName) {
-    return { ok: false, reason: target.reason || 'No player with that handle.' };
+    return { ok: false, reason: target.reason || 'No player with that name.' };
   }
   if (target.uid === fromUid) {
     return { ok: false, reason: "That's you!" };

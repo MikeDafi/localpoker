@@ -47,8 +47,13 @@ export interface Profile {
 
 const profileHandleFallback = (profile: Profile): string => friendCodeFor(profile.id).toLowerCase();
 
+/**
+ * The name to publish. The profile name is what the player edits, so it wins;
+ * `auth.handle` is only the last value the server confirmed, and preferring it
+ * would make every rename publish the old name and quietly undo itself.
+ */
 const handleForDirectory = (auth: AuthState, profile: Profile): string =>
-  normalizeHandle(auth.handle ?? '') ?? normalizeHandle(profile.name) ?? profileHandleFallback(profile);
+  normalizeHandle(profile.name) ?? normalizeHandle(auth.handle ?? '') ?? profileHandleFallback(profile);
 
 const friendFromEdge = (edge: FriendEdgeRecord): Friend => ({
   id: edge.uid,
@@ -324,7 +329,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const desiredHandle = handleForDirectory(nextAuth, nextProfile);
     let result = await publishUserDirectory(desiredHandle, desiredHandle);
-    if (!result.ok && desiredHandle !== profileHandleFallback(nextProfile)) {
+    // Only fall back to a generated name when there is no name to keep. Doing
+    // it after a rejected rename would rename the player to a friend code just
+    // because the name they asked for was taken.
+    if (!result.ok && !result.nameTaken && desiredHandle !== profileHandleFallback(nextProfile)) {
       const fallback = profileHandleFallback(nextProfile);
       result = await publishUserDirectory(fallback, fallback);
     }
@@ -338,8 +346,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (nextProfile.name !== result.handle) {
         persistProfile({ ...nextProfile, name: result.handle });
       }
+      return result.handle;
     }
-    return result.ok ? result.handle : null;
+
+    // A rejected rename leaves the player showing a name nobody can find them
+    // by, so put back the one they actually still hold.
+    if (!result.ok && result.nameTaken && nextAuth.handle && nextProfile.name !== nextAuth.handle) {
+      persistProfile({ ...nextProfile, name: nextAuth.handle });
+    }
+    return null;
   }, [persistAuth, persistProfile]);
 
   /**

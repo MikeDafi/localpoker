@@ -143,6 +143,28 @@ function logOk(message) {
     await assertFails(set(ref(playerDb, 'localpoker/handles/forged_owner'), 'host'));
     logOk('user cannot claim a handle for another uid');
 
+    // Renaming was impossible for a while: the app froze the first name it
+    // published, so a rename silently reverted and friends searching the new
+    // name found nobody. This walks the whole sequence the app now performs.
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/handles/renamed_to'), 'stranger'));
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/users/stranger'), {
+      handle: 'renamed_to',
+      displayName: 'Renamed To',
+      updatedAt: Date.now(),
+    }));
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/handles/new_shark'), null));
+    logOk('user can rename: claim the new handle, repoint the profile, release the old');
+
+    await assertFails(set(ref(playerDb, 'localpoker/handles/renamed_to'), null));
+    logOk('user cannot release a handle somebody else holds');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/users/stranger'), {
+      handle: 'never_claimed',
+      displayName: 'Renamed To',
+      updatedAt: Date.now(),
+    }));
+    logOk('profile cannot point at a handle that was never claimed');
+
     await assertSucceeds(update(ref(hostDb), {
       'localpoker/rooms/CREAT1': {
         code: 'CREAT1',
