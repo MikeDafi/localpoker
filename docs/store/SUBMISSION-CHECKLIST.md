@@ -6,31 +6,42 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 ## 1. Current submission blockers
 
-1. **Ads decision required.** The app is positioned as free with ads, but `AdBanner` is only a static placeholder and no ad SDK is installed. The visible fake ad slot is an App Review rejection risk as placeholder content, separate from the privacy-label issue. For 1.0, either hide ad placeholders and submit as no-ads, or integrate real ads and complete ATT, consent, SKAdNetwork, and privacy disclosures. **Currently resolved by omission:** `EXPO_PUBLIC_ADS_ENABLED` is unset, so `ADS_ENABLED` is false and every ad slot renders nothing. Build 9 ships with no ad UI at all.
-2. **Done: legal pages are published and wired into App Store Connect.** No placeholder markers remain, so the Legal Pages workflow builds and deploys. All four URLs return 200:
-   - <https://mikedafi.github.io/localpoker/>
-   - <https://mikedafi.github.io/localpoker/privacy/>
-   - <https://mikedafi.github.io/localpoker/terms/>
-   - <https://mikedafi.github.io/localpoker/support/>
+Audited against the live App Store Connect record, not just the code. Several fields were silently unset and have been filled in over the API; what remains is listed after them.
 
-   The privacy, support, and marketing URLs are set on the App Store Connect record over the API. The jurisdiction, entity and venue questions in section 2 are deliberately answered by *not* naming a jurisdiction: the Terms defer to the consumer law of wherever the player lives, which is a defensible position for a solo developer with no legal entity, and avoids asserting facts nobody has decided yet. Revisit if an entity is formed.
-3. **App Privacy questionnaire still has to be answered by hand.** Apple exposes no public API for the privacy nutrition label, so this one genuinely needs the App Store Connect web UI. Use the answer sheet in `docs/store/APP-PRIVACY-LABELS.md`; note that **Contact Info > Email Address is now Yes, linked to the user**, because Google sign-in makes Firebase Authentication store the account email.
-4. **Done: online rooms are configured.** Anonymous and Google authentication are enabled, `database.rules.json` is published and verified against the live instance, and the `EXPO_PUBLIC_*` repository secrets are set so EAS builds are configured. Build 8 predates all of this and is silently offline; build 9 is the first working one. Room cleanup is still undefined.
-5. **EAS submit values are not committed.** `eas.json` has no placeholder submit values. Follow `EAS-SUBMIT.md` to supply Apple, ASC, team, and Google Play credentials without committing secrets or fake IDs.
-6. **Done: the App Store listing copy is in.** Subtitle, promotional text, keywords and description are set on the 1.0.0 record over the API, taken from `APP-STORE-CONNECT.md`. The version record said `1.0` while the binary is `CFBundleShortVersionString 1.0.0`; it now says `1.0.0`. What's New cannot be set on a first release, only on an update, so Apple rejects the field until 1.0.0 ships.
-7. **Screenshots still have to be captured by hand.** The set in `docs/store/screenshots/` predates the login rework: it shows the removed email form and, in four shots, the `Reserved banner slot` placeholder that no longer renders. Recapturing needs someone tapping through the app, so it cannot be automated from here.
-8. **Sentry is off, so production has no error reporting.** `EXPO_PUBLIC_SENTRY_DSN` is blank, which means every `captureError` call, including the auth, storage and account-switch failure paths, reports nowhere. Either set a real DSN and disclose diagnostics in App Privacy, or accept flying blind on 1.0.
-9. **Google is the only third-party login, deliberately.** App Review guideline 4.8 (Login Services) requires an equivalent privacy-respecting option alongside a third-party login. The decision here is to ship Google plus Guest and not add Sign in with Apple.
+**Closed during the audit:**
 
-   The argument for that reading: 4.8's requirement is that the alternative limit data collection to name and email, let the user keep the email private, and not collect interactions for advertising. **Play as Guest** does better than all three, because it collects no name, no email and no advertising data at all, and it is offered with equal prominence on the same screen.
+1. **Age rating was never declared, and a poker app cannot ship without one.** Every field was null, which blocks submission outright and, if guessed wrong later, gets the app pulled. Declared as simulated gambling (frequent, because poker *is* the app), real gambling false, user generated content true, messaging false (reactions are a fixed curated set, there is no free text chat), advertising false. Apple computed **17+**. The in-app gate stays 18+, stricter than the store rating on purpose.
+2. **Categories were unset.** Now Games, with Card and Casino subcategories.
+3. **App Review had no notes, and the app opens on a sign-in screen.** A reviewer who cannot get in rejects under 2.1. The notes now state that no sign-in is needed, that "Play as Guest" gives full access, that the age gate wants a birth year such as 1990, and that there is no real-money anything. `demoAccountRequired` is false because Guest needs no credentials.
+4. **Copyright was unset.** Now set.
+5. **Legal pages are published and wired in.** All four URLs return 200, and the privacy, support and marketing URLs are on the record.
+6. **Listing copy is in.** Subtitle, promotional text, keywords and description are set on the 1.0.0 record. What's New cannot be set on a first release, only on an update.
+7. **Online rooms are configured.** Anonymous and Google auth enabled, `database.rules.json` published and verified against the live instance, `EXPO_PUBLIC_*` repository secrets set so EAS builds are not silently offline.
+8. **Ad placeholders no longer render.** `EXPO_PUBLIC_ADS_ENABLED` is unset, so `ADS_ENABLED` is false and every slot renders nothing, which removes the 2.1 placeholder-content risk without shipping an ad SDK.
 
-   The risk is real, though, because Apple has historically read 4.8 as being about *account* options rather than about playing without one. If a reviewer rejects on 4.8, the fix is Sign in with Apple:
-   - add `expo-apple-authentication` and request the `FULL_NAME` and `EMAIL` scopes with a SHA-256 nonce;
-   - in the Apple Developer portal, enable the Sign in with Apple capability, then create a Services ID and a key for it;
-   - enable the Apple provider in Firebase Authentication and paste in the Services ID, Team ID, Key ID and key;
-   - sign in through `OAuthProvider('apple.com')` and reuse the link-then-fall-back path in `googleAuth.ts`, so an anonymous guest keeps their uid.
+**Still open:**
 
-   None of that blocks TestFlight, which does not go through App Review for internal testers.
+9. **There are zero screenshots uploaded.** The record has no screenshot sets at all, so submission is impossible. The local set in `docs/store/screenshots/` is stale too: it predates the login rework, shows the removed email form, and four shots show the `Reserved banner slot` placeholder. Needs a human tapping through the app.
+10. **App Privacy questionnaire is unanswered.** Apple exposes no public API for the nutrition label, so it needs the web UI. Use `docs/store/APP-PRIVACY-LABELS.md`; the answer that changed is **Contact Info > Email Address: Yes, linked to the user**, because Google sign-in makes Firebase Authentication store the account email.
+11. **Giphy reaction GIFs are third-party content with no attribution.** `src/services/gifs.ts` hotlinks `media.giphy.com` with no API key, and nothing in the UI carries a "Powered by GIPHY" mark. Giphy's terms require attribution wherever their content is displayed, which makes this an intellectual property exposure under guideline 5.2 as well as a Giphy terms problem. `contentRightsDeclaration` is also unset and has to say the app contains third-party content. Either add the attribution mark to the emote sheet, or replace the pack with owned artwork.
+12. **Google is the only third-party login, deliberately.** Guideline 4.8 wants an equivalent privacy-respecting option alongside a third-party login.
+
+    The argument for shipping as is: 4.8 asks that the alternative limit data collection to name and email, let the user keep the email private, and not collect interactions for advertising. **Play as Guest** does better than all three, collecting no name, no email and no advertising data, and sits with equal prominence on the same screen.
+
+    The risk is real, because Apple has historically read 4.8 as being about *account* options rather than about playing without one. If a reviewer rejects on 4.8, the fix is Sign in with Apple:
+    - add `expo-apple-authentication` and request the `FULL_NAME` and `EMAIL` scopes with a SHA-256 nonce;
+    - in the Apple Developer portal, enable the Sign in with Apple capability, then create a Services ID and a key for it;
+    - enable the Apple provider in Firebase Authentication and paste in the Services ID, Team ID, Key ID and key;
+    - sign in through `OAuthProvider('apple.com')` and reuse the link-then-fall-back path in `googleAuth.ts`, so an anonymous guest keeps their uid.
+13. **EAS submit values are not committed.** `eas.json` carries no submit credentials. Follow `EAS-SUBMIT.md`.
+14. **Sentry is off, so production has no error reporting.** `EXPO_PUBLIC_SENTRY_DSN` is blank, so every `captureError` call reports nowhere. Either set a real DSN and disclose diagnostics in App Privacy, or accept flying blind on 1.0.
+
+**Checked and already compliant:**
+
+- **5.1.1(v) account deletion.** In-app at Settings > Delete account; removes the Firebase user, the directory entry, the handle claim and room presence.
+- **1.2 user generated content.** Report and block are available from both the Friends screen and a live table, a blocked player's name is masked at the table, names pass a moderation filter (15 call sites), and the reaction set is curated rather than an open Giphy search.
+- **3.1.1 in-app purchase.** The Store spends only coins earned by playing. No StoreKit, no purchasable currency, so no IAP obligation and nothing to route through Apple.
+- **Export compliance.** `ITSAppUsesNonExemptEncryption = false`, and the app uses only standard TLS.
 
 ## 2. Human-owned legal fields, and how they were resolved
 
