@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Share, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
+import * as Crypto from 'expo-crypto';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiPanel } from '../components/WiiPanel';
@@ -17,10 +18,23 @@ import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateJoin'>;
 
+/**
+ * A room code is a bearer token: anyone holding it can sit down. It therefore
+ * needs a real random source, not `Math.random`, which is predictable from
+ * prior outputs, and enough length that guessing is not worth attempting.
+ *
+ * The alphabet omits characters that are misread aloud or in print (I, O, 0, 1)
+ * because these get shared by voice and screenshot.
+ */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_LENGTH = 10;
+
 function makeCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = Crypto.getRandomBytes(CODE_LENGTH);
   let out = '';
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < CODE_LENGTH; i += 1) {
+    out += CODE_ALPHABET[bytes[i]! % CODE_ALPHABET.length];
+  }
   return out;
 }
 
@@ -58,7 +72,7 @@ export function CreateJoinScreen({ navigation }: Props) {
   const startCreate = () => navigation.navigate('GameSetup', { mode: 'friends', roomCode });
   const startJoin = () => {
     if (joinCode.trim().length < 4) {
-      Alert.alert('Invalid code', 'Enter the 6-character room code your friend shared.');
+      Alert.alert('Invalid code', `Enter the ${CODE_LENGTH}-character room code your friend shared.`);
       return;
     }
     navigation.navigate('Lobby', { roomCode: joinCode.trim().toUpperCase(), host: false });
@@ -121,10 +135,10 @@ export function CreateJoinScreen({ navigation }: Props) {
           <>
           <WiiPanel padding={20}>
             <Text style={styles.label}>Enter room code</Text>
-            <TextInput value={joinCode} onChangeText={(t) => setJoinCode(t.toUpperCase())} autoCapitalize="characters" maxLength={6} placeholder="ABC123" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
+            <TextInput value={joinCode} onChangeText={(t) => setJoinCode(t.toUpperCase())} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="ABCD234XYZ" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
             <View style={{ height: spacing.md }} />
             <WiiButton label="Join Table" variant="blue" size="lg" fullWidth onPress={startJoin} />
-            <Text style={styles.note}>Ask a friend for their 6-character code.</Text>
+            <Text style={styles.note}>Ask a friend for their room code.</Text>
           </WiiPanel>
 
             {/* Browsing sits under the code box: a code is the certain way in,

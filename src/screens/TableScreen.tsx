@@ -728,7 +728,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   // Record stats + award coins once per hand at showdown.
   useEffect(() => {
-    if (!isShowdown || recorded.current) return;
+    if (!isShowdown || recorded.current) return undefined;
     recorded.current = true;
     const endingStack = state.players.find((p) => p.id === human.id)?.chips ?? 0;
     const winAmt = state.winners.find((w) => w.playerId === human.id)?.amount ?? 0;
@@ -748,7 +748,10 @@ export function TableScreen({ navigation, route }: Props) {
     setEarned(coins);
     setSessionHands((n) => n + 1);
     if (settings.winFanfare) sound.play(humanWon ? 'win' : 'lose');
-    setTimeout(() => sound.play('coins'), 350);
+    // Cleaned up, so leaving the table during the beat between the result and
+    // the coins does not play a sound for a screen that is gone.
+    const coinTimer = setTimeout(() => sound.play('coins'), 350);
+    return () => clearTimeout(coinTimer);
   }, [isShowdown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nextHand = () => {

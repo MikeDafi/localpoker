@@ -318,6 +318,53 @@ function logOk(message) {
     await assertSucceeds(set(ref(playerDb, `localpoker/handles/${users.player.handle}`), 'player'));
     logOk('released handle can be reclaimed by the same user');
 
+    // Room membership. The room fixture is `playing`, so these also cover the
+    // case that matters most: a table already in progress.
+    const seat = (over = {}) => ({
+      id: 'stranger', name: 'Table Ghost', seatIndex: 2, chips: 100,
+      connected: true, isHost: false, ...over,
+    });
+
+    await assertFails(set(ref(strangerDb, `${roomPath}/players/stranger`), seat()));
+    logOk('a stranger cannot join a room that is already playing');
+
+    await assertFails(set(ref(playerDb, `${roomPath}/players/player`), {
+      id: 'player', name: 'Player', seatIndex: 1, chips: 100, connected: true, isHost: true,
+    }));
+    logOk('a player cannot promote themselves to host');
+
+    await assertFails(set(ref(playerDb, `${roomPath}/players/player`), {
+      id: 'player', name: 'Player', seatIndex: 1, chips: 100, connected: true,
+      isHost: false, isAdmin: true,
+    }));
+    logOk('a player cannot add fields of their own to their roster entry');
+
+    // Players advance this when they act, so it cannot be locked to the host.
+    // What must not be possible is jumping to the top of the number space,
+    // which would leave every later action stale and wedge the table forever.
+    await assertFails(set(ref(playerDb, `${roomPath}/actionSeq`), 9007199254740990));
+    logOk('a seated player cannot jump the action sequence to the ceiling');
+
+    // A lobby anyone may sit down in, except someone the host has blocked.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.database();
+      await set(ref(db, 'localpoker/rooms/LOBBY1'), {
+        code: 'LOBBY1', hostId: 'host', status: 'lobby', createdAt: 1,
+        settingsJson: '{}', actionSeq: 0,
+        players: { host: { id: 'host', name: 'Host', seatIndex: 0, chips: 100, connected: true, isHost: true } },
+      });
+      await set(ref(db, 'localpoker/blocks/host/stranger'), {
+        uid: 'stranger', handle: users.stranger.handle,
+        displayName: users.stranger.displayName, createdAt: 1,
+      });
+    });
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/LOBBY1/players/player'), seat({ id: 'player', name: 'Player' })));
+    logOk('a player can join a room that is still in the lobby');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/LOBBY1/players/stranger'), seat()));
+    logOk('a user the host blocked cannot join their lobby');
+
     // Room discovery. The room itself stays readable only by its players, so
     // these summary nodes are what a browse list is built from, and they are
     // exactly where a private table could leak.

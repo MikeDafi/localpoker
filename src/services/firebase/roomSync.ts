@@ -198,7 +198,9 @@ const roomSummaryOf = (
   return {
     code: room.code,
     hostUid,
-    hostName,
+    // Published to strangers in the open lobby, so it gets the same treatment
+    // as any other public name rather than being trusted because it is ours.
+    hostName: maskedPublicName(hostName).slice(0, 24) || 'Host',
     visibility,
     status: room.status,
     playerCount: 1,

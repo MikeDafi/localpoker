@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SETTINGS_SCHEMA } from '../settings';
+import { DEFAULT_GAME_SETTINGS, SETTINGS_SCHEMA } from '../settings';
 
 /**
  * Guards the fix for a label that broke mid-word.
@@ -62,5 +62,42 @@ describe('settings labels fit their column', () => {
     // Large Text multiplies font size, so the longest word has to survive it.
     const longest = everyLabelWord().reduce((a, b) => (b.word.length > a.word.length ? b : a));
     expect(wordWidth(longest.word) * 1.15).toBeLessThanOrEqual(LABEL_COLUMN_MIN_WIDTH);
+  });
+});
+
+/**
+ * Guards against settings drifting back into fiction.
+ *
+ * `GameSettings` once carried 96 keys while only 23 had a control and were
+ * wired to anything. The other 71 were persisted, looked like configuration,
+ * and did nothing, which is worse than not having them: a contributor reads
+ * `bountyMode` and reasonably assumes bounties exist.
+ */
+describe('every setting is real', () => {
+  /**
+   * Keys with no control on purpose, because code sets them rather than the
+   * player. Anything else without a control is dead weight.
+   */
+  const INTERNAL_ONLY = new Set(['cardFace', 'maxPlayers']);
+
+  const schemaKeys = new Set(
+    SETTINGS_SCHEMA.flatMap((section) => section.fields.map((field) => String(field.key))),
+  );
+
+  it('exposes a control for every setting that is not internal', () => {
+    const orphaned = Object.keys(DEFAULT_GAME_SETTINGS)
+      .filter((key) => !schemaKeys.has(key) && !INTERNAL_ONLY.has(key));
+    expect(orphaned, 'these are persisted as settings but nothing can change them').toEqual([]);
+  });
+
+  it('has a default for every setting it offers a control for', () => {
+    const missing = [...schemaKeys].filter((key) => !(key in DEFAULT_GAME_SETTINGS));
+    expect(missing, 'these have a control but no default').toEqual([]);
+  });
+
+  it('keeps the internal list honest', () => {
+    // If one of these gains a control, it is no longer internal.
+    const contradictory = [...INTERNAL_ONLY].filter((key) => schemaKeys.has(key));
+    expect(contradictory).toEqual([]);
   });
 });

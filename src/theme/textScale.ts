@@ -48,10 +48,12 @@ type Renderable = { props?: { style?: unknown } };
  */
 export function installTextScaling(): void {
   if (patched) return;
-  patched = true;
   const target = Text as unknown as { render?: (...args: unknown[]) => Renderable };
   const original = target.render;
+  // Bail out *without* latching, so a runtime where `Text.render` is missing
+  // gets another chance rather than silently disabling Large Text forever.
   if (typeof original !== 'function') return;
+  patched = true;
   target.render = function patchedRender(this: unknown, ...args: unknown[]) {
     const element = original.apply(this, args) as React.ReactElement<{ style?: unknown }>;
     if (currentScale === 1) return element;

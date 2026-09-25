@@ -215,10 +215,15 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
 
   return {
     config: { ...publicState.config },
-    players: publicState.playerOrder.map((playerId) => {
+    // `playerOrder` and `players` are written by another player's device, so
+    // they can disagree: a seat listed in the order but missing from the map
+    // used to throw while rendering, taking the whole table down on the
+    // joining client rather than on the one that produced the bad state.
+    players: publicState.playerOrder.flatMap((playerId) => {
       const player = publicState.players[playerId];
+      if (!player) return [];
       const ownCards = privateView?.playerId === playerId ? privateCards : undefined;
-      return {
+      return [{
         id: player.id,
         name: player.name,
         seatIndex: player.seatIndex,
@@ -230,7 +235,7 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
         hasActed: player.hasActed,
         isBot: false,
         sittingOut: player.sittingOut,
-      };
+      }];
     }),
     board: cloneCards(publicState.board ?? []),
     deck: [],

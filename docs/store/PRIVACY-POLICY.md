@@ -46,6 +46,31 @@ When a user creates, joins, or plays in an online room, the app can send room an
 
 Room writes use Firebase `auth.uid`. The app no longer relies on the local profile ID for Firebase rule identity.
 
+### B2. Social directory, friends, blocks and reports
+
+The friends features need a shared directory, so using them stores more than
+room data:
+
+- a public handle claim mapping your chosen handle to your anonymous UID, and a
+  directory profile holding that handle, your display name and a timestamp.
+  Handles are readable by any signed-in player, which is how someone can find
+  you by handle. They cannot be listed in bulk;
+- friend requests you send or receive, each carrying the sender's UID, handle
+  and display name;
+- your friends list, as a pair of edges naming both users' UID, handle and
+  display name;
+- your block list, holding the blocked user's UID, handle and display name;
+- any abuse report you submit, holding your UID, the reported user's UID and
+  display name, the context (table or profile), the category, a timestamp and,
+  where relevant, the room code. Reports are write-only for the reporter and
+  are not readable back.
+
+If you open a table for your friends, a summary of it (room code, your display
+name, stakes, seat count and visibility) is written so it can be found: into a
+public lobby anyone signed in can read if you mark the table public, and into
+your friends' invite inboxes either way. Those summaries are removed when the
+table starts or ends.
+
 ### C. GIF reactions from Giphy's public CDN
 
 The app contains a curated list of GIF IDs and loads thumbnail/full GIF images from `https://media.giphy.com`. When your device loads those images, Giphy or its CDN providers may receive standard network request information such as IP address, user agent, and the specific GIF URL requested. The app does not use a Giphy API key and does not send search terms to Giphy.

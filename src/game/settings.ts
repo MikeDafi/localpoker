@@ -34,234 +34,86 @@ export interface GameSettings {
   smallBlind: number;
   bigBlind: number;
   ante: number;
-  bigBlindAnte: boolean;
   startingStack: number;
-  minBuyInBB: number;
-  maxBuyInBB: number;
-  currency: 'chips' | 'coins';
-  straddle: boolean;
-  straddleType: 'utg' | 'button' | 'mississippi';
 
   // Table
-  gameType: 'holdem' | 'omaha' | 'shortdeck';
   maxPlayers: number;
   numOpponents: number;
-  tableSpeed: 'slow' | 'normal' | 'turbo' | 'hyper';
-  seating: 'random' | 'choose';
-  dealerButtonRule: 'standard' | 'deadbutton';
 
   // Timing
   turnTimerSec: number;
-  timeBankSec: number;
-  timeBankPerHand: number;
-  autoTimeExtension: boolean;
-  showClock: boolean;
-  blindIncreaseEveryHands: number;
-  blindIncreasePct: number;
-
-  // Gameplay variants
-  runItTwice: boolean;
-  rabbitHunt: boolean;
-  bombPots: boolean;
-  bombPotEveryHands: number;
-  sevenTwoBonus: boolean;
-  allInInsurance: boolean;
-  chopBlinds: boolean;
-  postingRule: 'standard' | 'nopost';
-  muckLosingHands: boolean;
-  showOneCardOnFold: boolean;
 
   // Bots & difficulty
   difficulty: Difficulty;
-  botAggression: number;
   botSpeed: 'slow' | 'normal' | 'fast';
-  botChatter: boolean;
-  adaptiveDifficulty: boolean;
   mixedDifficulty: boolean;
 
   // Table appearance
-  feltPattern: 'plain' | 'speckle' | 'logo' | 'grid';
   cardBack: 'blue' | 'red' | 'black' | 'holo' | 'retro';
   cardFace: 'classic' | 'large' | 'fourcolor' | 'minimal';
-  chipStyle: 'classic' | 'neon' | 'wood' | 'ceramic';
-  showAvatars: boolean;
   showAvatarNames: boolean;
-  showStackInBB: boolean;
 
   // Sound & haptics
   soundEnabled: boolean;
   soundVolume: number;
-  musicEnabled: boolean;
-  musicVolume: number;
   hapticsEnabled: boolean;
-  dealerVoice: boolean;
   winFanfare: boolean;
 
   // Animations
   animationSpeed: 'slow' | 'normal' | 'fast' | 'off';
-  cardDealAnimation: boolean;
-  chipAnimation: boolean;
   avatarIdleMotion: boolean;
-  avatarReactions: boolean;
   reduceMotion: boolean;
 
   // Accessibility
   largeText: boolean;
-  leftHandedLayout: boolean;
-  fourColorDeck: boolean;
-  alwaysShowOdds: boolean;
 
   // Social & chat
-  chatEnabled: boolean;
-  emotesEnabled: boolean;
-  quickChatOnly: boolean;
-  allowSpectators: boolean;
-  friendsOnly: boolean;
   roomVisibility: 'public' | 'private';
 
   // Advanced
   autoMuck: boolean;
-  autoRebuy: boolean;
-  autoRebuyThresholdBB: number;
-  sitOutNextHand: boolean;
-  waitForBigBlind: boolean;
   confirmFoldWhenCheckAvailable: boolean;
-  handHistory: boolean;
-  showdownAllHands: boolean;
   showLiveStats: boolean;
 
-  // Tournament
-  tournamentMode: boolean;
-  startingLevel: number;
-  levelDurationMin: number;
-  reEntryAllowed: boolean;
-  maxReEntries: number;
-  rebuyPeriodLevels: number;
-  addOnAllowed: boolean;
-  payoutStructure: 'winner' | 'top3' | 'top10pct' | 'flat';
-  bountyMode: boolean;
-  bountyPct: number;
-
   // House rules
-  capNoLimit: boolean;
-  betCapBB: number;
-  minRaiseRule: 'standard' | 'double';
-  stringBetProtection: boolean;
-  allowCheckRaise: boolean;
-  showMuckedAtShowdown: boolean;
-  penaltyOnDisconnect: boolean;
-  disconnectProtection: boolean;
 }
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
   smallBlind: 10,
   bigBlind: 20,
   ante: 0,
-  bigBlindAnte: false,
   startingStack: 2000,
-  minBuyInBB: 40,
-  maxBuyInBB: 250,
-  currency: 'chips',
-  straddle: false,
-  straddleType: 'utg',
 
-  gameType: 'holdem',
   maxPlayers: 6,
   numOpponents: 5,
-  tableSpeed: 'normal',
-  seating: 'random',
-  dealerButtonRule: 'standard',
 
   turnTimerSec: 20,
-  timeBankSec: 30,
-  timeBankPerHand: 0,
-  autoTimeExtension: false,
-  showClock: true,
-  blindIncreaseEveryHands: 0,
-  blindIncreasePct: 50,
-
-  runItTwice: false,
-  rabbitHunt: false,
-  bombPots: false,
-  bombPotEveryHands: 10,
-  sevenTwoBonus: false,
-  allInInsurance: false,
-  chopBlinds: false,
-  postingRule: 'standard',
-  muckLosingHands: true,
-  showOneCardOnFold: false,
 
   difficulty: 'medium',
-  botAggression: 50,
   botSpeed: 'normal',
-  botChatter: true,
-  adaptiveDifficulty: false,
   mixedDifficulty: false,
 
-  feltPattern: 'plain',
   cardBack: 'blue',
   cardFace: 'classic',
-  chipStyle: 'classic',
-  showAvatars: true,
   showAvatarNames: true,
-  showStackInBB: false,
 
   soundEnabled: true,
   soundVolume: 80,
-  musicEnabled: false,
-  musicVolume: 40,
   hapticsEnabled: true,
-  dealerVoice: false,
   winFanfare: true,
 
   animationSpeed: 'normal',
-  cardDealAnimation: true,
-  chipAnimation: true,
   avatarIdleMotion: true,
-  avatarReactions: true,
   reduceMotion: false,
 
   largeText: false,
-  leftHandedLayout: false,
-  fourColorDeck: false,
-  alwaysShowOdds: false,
 
-  chatEnabled: true,
-  emotesEnabled: true,
-  quickChatOnly: false,
-  allowSpectators: true,
-  friendsOnly: false,
   roomVisibility: 'private',
 
   autoMuck: true,
-  autoRebuy: false,
-  autoRebuyThresholdBB: 20,
-  sitOutNextHand: false,
-  waitForBigBlind: true,
   confirmFoldWhenCheckAvailable: true,
-  handHistory: true,
-  showdownAllHands: false,
   showLiveStats: true,
 
-  tournamentMode: false,
-  startingLevel: 1,
-  levelDurationMin: 10,
-  reEntryAllowed: false,
-  maxReEntries: 1,
-  rebuyPeriodLevels: 4,
-  addOnAllowed: false,
-  payoutStructure: 'top3',
-  bountyMode: false,
-  bountyPct: 25,
-
-  capNoLimit: false,
-  betCapBB: 100,
-  minRaiseRule: 'standard',
-  stringBetProtection: true,
-  allowCheckRaise: true,
-  showMuckedAtShowdown: false,
-  penaltyOnDisconnect: false,
-  disconnectProtection: true,
 };
 
 export const SETTINGS_SCHEMA: SettingsSection[] = [
@@ -273,7 +125,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       { key: 'ante', label: 'Ante', type: 'number', min: 0, max: 100000, step: 1 },
       { key: 'startingStack', label: 'Starting Stack', type: 'number', min: 100, max: 1000000, step: 100 },
       { key: 'turnTimerSec', label: 'Turn Timer (s)', type: 'slider', min: 5, max: 60, step: 1 },
-      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public tables are listed for anyone to join. Private tables are only shown to your friends.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
+      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public tables are listed for anyone to join. Private tables are only shown to your friends. Whoever opens a table deals its cards, so open public tables only if you are happy for strangers to sit down.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
     ],
   },
   {

@@ -139,10 +139,15 @@ export const publishUserDirectory = async (
   }
 
   try {
+    // Re-writing the handle you already own looks harmless but is not allowed:
+    // the rules treat handles as create-or-release, so an owner-to-owner write
+    // is rejected. Returning `undefined` aborts the transaction and leaves the
+    // existing claim in place, which is the intended outcome anyway. Without
+    // this, every profile change and every launch fired a permission_denied.
     const claimed = await runTransaction(
       ref(db, handlesPath(handle)),
       (current) => {
-        if (current === null || current === uid) {
+        if (current === null) {
           return uid;
         }
         return undefined;
@@ -150,6 +155,7 @@ export const publishUserDirectory = async (
       { applyLocally: false },
     );
 
+    // Aborting when you already hold the handle is success, not failure.
     if (!claimed.snapshot.exists() || claimed.snapshot.val() !== uid) {
       return { ok: false, reason: `@${handle} is already taken.` };
     }
