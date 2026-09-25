@@ -20,7 +20,7 @@ const LEET_CHARS: Record<string, string> = {
   '!': 'i',
 };
 
-export type PublicNameKind = 'display name' | 'handle';
+export type PublicNameKind = 'name' | 'handle';
 
 export const normalizeModerationText = (input: string): string =>
   input

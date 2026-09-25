@@ -121,11 +121,8 @@ export function SettingsScreen({ navigation }: Props) {
 
         <AccountSection
           compact={compact}
-          provider={formatProvider(auth.provider)}
-          handle={auth.handle ?? 'Not connected'}
-          displayName={profile.name}
+          name={auth.handle ?? profile.name}
           coins={profile.coins}
-          onCustomizePal={() => navigation.navigate('PalDesigner')}
           onLogout={logout}
           onResetStats={confirmResetStats}
           onDeleteAccount={confirmDeleteAccount}
@@ -293,22 +290,16 @@ function FieldControl({
 
 function AccountSection({
   compact,
-  provider,
-  handle,
-  displayName,
+  name,
   coins,
-  onCustomizePal,
   onLogout,
   onResetStats,
   onDeleteAccount,
   deletingAccount,
 }: {
   compact: boolean;
-  provider: string;
-  handle: string;
-  displayName: string;
+  name: string;
   coins: number;
-  onCustomizePal: () => void;
   onLogout: () => void;
   onResetStats: () => void;
   onDeleteAccount: () => void;
@@ -321,21 +312,17 @@ function AccountSection({
           <SectionIconChip fallbackIcon="👤" />
           <View style={styles.sectionHeadingCopy}>
             <Text style={styles.sectionTitle}>Account</Text>
-            <Text style={styles.sectionSubtitle}>Profile, pal, and local progress controls</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.accountBody}>
         <View style={[styles.accountSummary, compact && styles.accountSummaryCompact]}>
-          <AccountFact label="Provider" value={provider} />
-          <AccountFact label="Handle" value={handle || 'Not connected'} />
-          <AccountFact label="Display name" value={displayName} />
+          <AccountFact label="Name" value={name ? `@${name}` : 'Not connected'} />
           <AccountFact label="Wallet" value={`${coins.toLocaleString()} coins`} />
         </View>
 
         <View style={styles.accountActions}>
-          <WiiButton label="Customize Pal" variant="blue" size="md" fullWidth onPress={onCustomizePal} />
           <WiiButton label="Log out" variant="white" size="md" fullWidth onPress={onLogout} />
           <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onResetStats} />
           <WiiButton
@@ -419,12 +406,6 @@ function formatSettingValue(field: SettingField, value: number): string {
   if (key.includes('sec')) return `${value}s`;
   if (key.includes('min')) return `${value}m`;
   return value.toLocaleString();
-}
-
-function formatProvider(provider: string | null): string {
-  if (!provider) return 'Not signed in';
-  if (provider === 'guest') return 'Guest';
-  return provider.slice(0, 1).toUpperCase() + provider.slice(1);
 }
 
 const styles = StyleSheet.create({

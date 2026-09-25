@@ -161,7 +161,7 @@ export const publishUserDirectory = async (
     }
 
     const displayName = cleanDisplayName(displayNameInput) || `Player ${handle}`;
-    const displayNameIssue = publicNameIssue(displayName, 'display name');
+    const displayNameIssue = publicNameIssue(displayName, 'name');
     if (displayNameIssue) {
       return { ok: false, reason: displayNameIssue };
     }
@@ -261,7 +261,7 @@ export const sendFriendRequest = async (
     }
 
     const fromName = cleanDisplayName(fromDisplayName) || `@${ownHandle}`;
-    const fromNameIssue = publicNameIssue(fromName, 'display name');
+    const fromNameIssue = publicNameIssue(fromName, 'name');
     if (fromNameIssue) {
       return { ok: false, reason: fromNameIssue };
     }

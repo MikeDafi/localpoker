@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
@@ -29,6 +29,13 @@ import {
   type SocialSnapshot,
 } from '../services/firebase';
 import { publicNameIssue } from '../moderation/contentFilter';
+import {
+  GUEST_ACCOUNT,
+  accountBundleKey,
+  isAccountBundleKey,
+  restoreAccountBundle,
+  type AccountBundle,
+} from './accountBundle';
 
 export interface Profile {
   id: string;
@@ -123,6 +130,17 @@ const SAVED_GAME_KEY = '@pokerpals/savedgame';
 const AGE_KEY = '@pokerpals/ageVerified';
 const BLOCKS_KEY = '@pokerpals/blocks';
 
+/**
+ * Which account the keys above currently hold. See `accountBundle.ts` for why
+ * account data is keyed rather than stored once per device.
+ *
+ * Settings and age verification are deliberately excluded: those are device
+ * preferences, not account data, and should survive a switch.
+ */
+const ACTIVE_ACCOUNT_KEY = '@pokerpals/activeAccount';
+
+type Bundle = AccountBundle<Profile, Friend, BlockedUser, SavedGame>;
+
 type ActionResult = { ok: boolean; reason?: string };
 
 const blockedFromRecord = (record: BlockRecord): BlockedUser => ({
@@ -136,10 +154,18 @@ const reportStorageError = (operation: string, key: string, error: unknown): voi
   captureError(error, { tags: { area: 'async-storage', operation, key } });
 };
 
-const ADJ = ['Mighty', 'Lucky', 'Sneaky', 'Royal', 'Turbo', 'Cosmic', 'Wild', 'Golden'];
-const NOUN = ['Ace', 'Shark', 'Bluff', 'Chip', 'River', 'Joker', 'King', 'Bandit'];
+const ADJ = ['mighty', 'lucky', 'sneaky', 'royal', 'turbo', 'cosmic', 'wild', 'golden'];
+const NOUN = ['ace', 'shark', 'bluff', 'chip', 'river', 'joker', 'king', 'bandit'];
+/**
+ * The one name is also the handle other players add you by, so the generated
+ * starter has to be handle-shaped: lowercase, no spaces, and unique enough that
+ * two fresh installs rarely collide on the claim.
+ */
 function randomName(): string {
-  return `${ADJ[Math.floor(Math.random() * ADJ.length)]} ${NOUN[Math.floor(Math.random() * NOUN.length)]}`;
+  const adj = ADJ[Math.floor(Math.random() * ADJ.length)];
+  const noun = NOUN[Math.floor(Math.random() * NOUN.length)];
+  const suffix = Math.floor(Math.random() * 9000) + 1000;
+  return `${adj}_${noun}${suffix}`;
 }
 function makeDefaultProfile(): Profile {
   const id = 'me-' + Math.random().toString(36).slice(2, 10);
@@ -184,7 +210,10 @@ interface AppContextValue {
    * new size.
    */
   textScaleTick: number;
-  login: (provider: AuthState['provider'], handle?: string, name?: string) => ActionResult;
+  login: (
+    provider: AuthState['provider'],
+    options?: { accountKey?: string; name?: string },
+  ) => Promise<ActionResult>;
   logout: () => void;
   updateProfile: (patch: Partial<Profile>) => ActionResult;
   setPal: (pal: PalConfig) => void;
@@ -216,16 +245,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS);
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const activeAccount = useRef<string>(GUEST_ACCOUNT);
 
   useEffect(() => {
     (async () => {
       try {
-        const [p, s, a, f, st, g, av, b] = await Promise.all([
+        const [p, s, a, f, st, g, av, b, acct] = await Promise.all([
           AsyncStorage.getItem(PROFILE_KEY), AsyncStorage.getItem(STATS_KEY),
           AsyncStorage.getItem(AUTH_KEY), AsyncStorage.getItem(FRIENDS_KEY),
           AsyncStorage.getItem(SETTINGS_KEY), AsyncStorage.getItem(SAVED_GAME_KEY),
           AsyncStorage.getItem(AGE_KEY), AsyncStorage.getItem(BLOCKS_KEY),
+          AsyncStorage.getItem(ACTIVE_ACCOUNT_KEY),
         ]);
+        activeAccount.current = acct || GUEST_ACCOUNT;
         if (p) { const parsed = JSON.parse(p); setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
         else {
           // First launch on this device: commit the generated identity so
@@ -291,45 +323,97 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     const desiredHandle = handleForDirectory(nextAuth, nextProfile);
-    let result = await publishUserDirectory(desiredHandle, nextProfile.name);
+    let result = await publishUserDirectory(desiredHandle, desiredHandle);
     if (!result.ok && desiredHandle !== profileHandleFallback(nextProfile)) {
-      result = await publishUserDirectory(profileHandleFallback(nextProfile), nextProfile.name);
+      const fallback = profileHandleFallback(nextProfile);
+      result = await publishUserDirectory(fallback, fallback);
     }
-    if (result.ok && result.handle && nextAuth.handle !== result.handle) {
-      persistAuth({ ...nextAuth, handle: result.handle });
-    }
-    return result.ok ? result.handle : null;
-  }, [persistAuth]);
-
-  const login = useCallback((provider: AuthState['provider'], handle?: string, name?: string): ActionResult => {
-    const requestedHandle = handle?.trim();
-    if (requestedHandle && !normalizeHandle(requestedHandle)) {
-      return { ok: false, reason: 'Choose a handle using 3 to 20 letters, numbers, or underscores.' };
-    }
-
-    const displayName = name?.trim();
-    if (displayName) {
-      const issue = publicNameIssue(displayName, 'display name');
-      if (issue) {
-        return { ok: false, reason: issue };
+    // The server is the authority on which name you actually hold, so the
+    // confirmed one is written back to both places the app reads it from.
+    // There is only one name now; `auth.handle` is its claim record.
+    if (result.ok && result.handle) {
+      if (nextAuth.handle !== result.handle) {
+        persistAuth({ ...nextAuth, handle: result.handle });
+      }
+      if (nextProfile.name !== result.handle) {
+        persistProfile({ ...nextProfile, name: result.handle });
       }
     }
+    return result.ok ? result.handle : null;
+  }, [persistAuth, persistProfile]);
 
-    const nextProfile = displayName ? { ...profile, name: displayName } : profile;
-    const nextAuth = {
-      loggedIn: true,
-      provider,
-      handle: normalizeHandle(handle ?? '') ?? normalizeHandle(nextProfile.name) ?? profileHandleFallback(nextProfile),
-    };
+  /**
+   * Park the outgoing account's local data and restore the incoming account's.
+   *
+   * Without this, signing out of one Google account and into another left the
+   * first account's name, Pal, coins, stats and friends in place, so the second
+   * account inherited them and then overwrote the name.
+   */
+  const switchAccount = useCallback(async (nextAccount: string): Promise<Bundle | null> => {
+    const current = activeAccount.current;
+    if (current === nextAccount) return null;
+
+    try {
+      const outgoing: Bundle = { profile, stats, friends, blockedUsers, savedGame };
+      await AsyncStorage.setItem(accountBundleKey(current), JSON.stringify(outgoing));
+
+      const stored = await AsyncStorage.getItem(accountBundleKey(nextAccount));
+      const incoming = restoreAccountBundle<Profile, Friend, BlockedUser, SavedGame>(stored, {
+        makeProfile: makeDefaultProfile,
+        mergeStats,
+        normalizePal,
+        defaultStats: DEFAULT_STATS,
+      });
+
+      activeAccount.current = nextAccount;
+      setProfile(incoming.profile);
+      setStats(incoming.stats);
+      setFriends(incoming.friends);
+      setBlockedUsers(incoming.blockedUsers);
+      setSavedGame(incoming.savedGame);
+
+      await AsyncStorage.multiSet([
+        [ACTIVE_ACCOUNT_KEY, nextAccount],
+        [PROFILE_KEY, JSON.stringify(incoming.profile)],
+        [STATS_KEY, JSON.stringify(incoming.stats)],
+        [FRIENDS_KEY, JSON.stringify(incoming.friends)],
+        [BLOCKS_KEY, JSON.stringify(incoming.blockedUsers)],
+        [SAVED_GAME_KEY, JSON.stringify(incoming.savedGame)],
+      ]);
+      return incoming;
+    } catch (error) {
+      captureError(error, { tags: { area: 'async-storage', operation: 'switch-account' } });
+      return null;
+    }
+  }, [blockedUsers, friends, profile, savedGame, stats]);
+
+  const login = useCallback(async (
+    provider: AuthState['provider'],
+    options: { accountKey?: string; name?: string } = {},
+  ): Promise<ActionResult> => {
+    const requested = options.name?.trim();
+    if (requested && !normalizeHandle(requested)) {
+      return { ok: false, reason: 'Choose a name using 3 to 20 letters, numbers, or underscores.' };
+    }
+
+    // Swap in this account's own data first, so the name resolved below is
+    // written against the right account rather than the previous one's.
+    const switched = await switchAccount(options.accountKey || GUEST_ACCOUNT);
+    const baseProfile = switched?.profile ?? profile;
+
+    const name = normalizeHandle(requested ?? '')
+      ?? normalizeHandle(baseProfile.name)
+      ?? profileHandleFallback(baseProfile);
+
+    const nextProfile = { ...baseProfile, name };
+    const nextAuth = { loggedIn: true, provider, handle: name };
     persistAuth(nextAuth);
-    // Commit the current device identity (id, pal, coins) so signing in, including
-    // "Play as Guest" with no name, always resolves to the same persisted user.
     persistProfile(nextProfile);
     publishDirectory(nextAuth, nextProfile).catch((error) => {
       captureError(error, { tags: { area: 'firebase-friends', operation: 'login-publish-directory' } });
     });
     return { ok: true };
-  }, [persistAuth, persistProfile, profile, publishDirectory]);
+  }, [persistAuth, persistProfile, profile, publishDirectory, switchAccount]);
 
   useEffect(() => {
     if (!ready || !auth.loggedIn) {
@@ -380,17 +464,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     signOutFirebase().catch((error) => {
       captureError(error, { tags: { area: 'firebase-auth', operation: 'logout-sign-out' } });
     });
+    // Park this account's data under its own key and bring the guest's back,
+    // so the next account to sign in does not inherit this one's name, Pal,
+    // coins, stats or friends.
+    switchAccount(GUEST_ACCOUNT).catch((error) => {
+      captureError(error, { tags: { area: 'async-storage', operation: 'logout-switch-account' } });
+    });
     persistAuth({ loggedIn: false, provider: null, handle: null });
-  }, [persistAuth]);
+  }, [persistAuth, switchAccount]);
 
   const updateProfile = useCallback((patch: Partial<Profile>): ActionResult => {
     if (typeof patch.name === 'string') {
-      const name = patch.name.trim();
-      const issue = publicNameIssue(name, 'display name');
+      const raw = patch.name.trim();
+      const issue = publicNameIssue(raw, 'name');
       if (issue) {
         return { ok: false, reason: issue };
       }
-      persistProfile({ ...profile, ...patch, name: name || profile.name });
+      // One name, and it doubles as the handle other players add you by, so it
+      // has to satisfy the same rules the handle claim does.
+      const name = normalizeHandle(raw);
+      if (!name) {
+        return { ok: false, reason: 'Choose a name using 3 to 20 letters, numbers, or underscores.' };
+      }
+      persistProfile({ ...profile, ...patch, name });
       return { ok: true };
     }
     persistProfile({ ...profile, ...patch });
@@ -544,6 +640,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setFriends([]);
     setBlockedUsers([]);
     setSavedGame(null);
+    // Deleting an account has to take the parked per-account copies with it,
+    // or the data would come back the moment that account signed in again.
+    const parked = (await AsyncStorage.getAllKeys()).filter(isAccountBundleKey);
+    activeAccount.current = GUEST_ACCOUNT;
     await AsyncStorage.multiRemove([
       PROFILE_KEY,
       STATS_KEY,
@@ -551,6 +651,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       FRIENDS_KEY,
       SAVED_GAME_KEY,
       BLOCKS_KEY,
+      ACTIVE_ACCOUNT_KEY,
+      ...parked,
     ]);
   }, []);
 

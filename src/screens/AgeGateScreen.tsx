@@ -22,8 +22,8 @@ const LEGAL_COPY: Record<LegalKind, { title: string; body: string }> = {
     title: 'Privacy Policy',
     body:
       'Your profile, coins, stats, settings and saved game stay on your device. We do not ask for your real name, and creating an account is not required to play.\n\n' +
-      'If you play online with friends, we sign you in anonymously and send what online play needs to our Firebase server: an anonymous ID, your chosen handle and display name, and the state of the table you are at.\n\n' +
-      'Using the friends features also stores the social data they depend on: friend requests you send or receive, your friends list, anyone you block, and any report you submit (which includes who you reported and why, so we can act on it). Handles are public to other signed-in players, which is how someone can find you by handle. Reaction GIFs load from Giphy\u2019s public CDN, which receives the usual network request details such as your IP address.\n\n' +
+      'If you play online with friends, we sign you in anonymously and send what online play needs to our Firebase server: an anonymous ID, your chosen name, and the state of the table you are at.\n\n' +
+      'Using the friends features also stores the social data they depend on: friend requests you send or receive, your friends list, anyone you block, and any report you submit (which includes who you reported and why, so we can act on it). Names are public to other signed-in players, which is how someone can find you. Reaction GIFs load from Giphy\u2019s public CDN, which receives the usual network request details such as your IP address.\n\n' +
       'If crash reporting is enabled in this build, error and device diagnostics are sent to our crash-reporting provider so we can fix bugs. LocalPoker does not currently include an ads or analytics SDK; if that changes we will update this notice and ask for any consent the law requires first.\n\n' +
       'LocalPoker never handles real-money gambling. For privacy questions or deletion requests, contact maskndafi@gmail.com.',
   },

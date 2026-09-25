@@ -50,7 +50,7 @@ export function FriendsScreen({ navigation }: Props) {
   const handleAddFriend = async () => {
     const trimmed = friendText.trim();
     if (!trimmed) {
-      setInputError("Enter your friend's handle.");
+      setInputError("Enter your friend's name.");
       return;
     }
     setAddingFriend(true);
@@ -142,7 +142,7 @@ export function FriendsScreen({ navigation }: Props) {
               <View style={styles.titleCopy}>
                 <Text style={styles.panelTitle}>Add friend</Text>
                 <Text style={styles.panelSubtitle}>
-                  {auth.handle ? `Your handle is @${auth.handle}. Add friends by exact handle.` : 'Add friends by exact handle.'}
+                  {auth.handle ? `You are @${auth.handle}. Add friends by their exact name.` : 'Add friends by their exact name.'}
                 </Text>
               </View>
             </View>
@@ -152,7 +152,7 @@ export function FriendsScreen({ navigation }: Props) {
                 value={friendText}
                 onChangeText={handleChangeFriendText}
                 onSubmitEditing={handleAddFriend}
-                placeholder="friend_handle"
+                placeholder="friend_name"
                 placeholderTextColor={colors.inkMuted}
                 autoCapitalize="none"
                 autoCorrect={false}

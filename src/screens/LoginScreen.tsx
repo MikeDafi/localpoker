@@ -16,7 +16,7 @@ import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
   GOOGLE_WEB_CLIENT_ID,
-  googleSignUpFields,
+  googleSignUpField,
   isGoogleSignInConfigured,
   signInWithGoogleIdToken,
 } from '../services/firebase';
@@ -113,8 +113,11 @@ export function LoginScreen({ navigation }: Props) {
                     fullWidth
                     icon={<AuthGlyph label="♠" />}
                     onPress={() => {
-                      const result = login('guest');
-                      if (!result.ok) setError(result.reason || 'Could not continue.');
+                      login('guest')
+                        .then((result) => {
+                          if (!result.ok) setError(result.reason || 'Could not continue.');
+                        })
+                        .catch(() => setError('Could not continue.'));
                     }}
                   />
                 </View>
@@ -216,12 +219,14 @@ function GoogleSignInButton({ onError }: { onError: (message: string | null) => 
         onError(result.reason);
         return;
       }
-      const { handle, name } = googleSignUpFields(result.identity);
-      const loggedIn = login('google', handle, name);
+      const { name } = googleSignUpField(result.identity);
+      // The Firebase uid is the account key, so this account's own name, Pal,
+      // coins and stats get swapped in rather than inheriting the last one's.
+      const loggedIn = await login('google', { accountKey: result.identity.uid, name });
       if (!loggedIn.ok) {
-        // A rejected handle or name is not worth blocking the sign-in over:
-        // retry bare and let the directory fall back to a friend code.
-        const bare = login('google');
+        // A rejected name is not worth blocking the sign-in over: retry bare
+        // and let the directory fall back to a friend code.
+        const bare = await login('google', { accountKey: result.identity.uid });
         if (!bare.ok) onError(bare.reason || 'Could not finish signing in.');
       }
     })();

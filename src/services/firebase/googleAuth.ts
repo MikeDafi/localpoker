@@ -105,15 +105,12 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<GoogleSi
 }
 
 /**
- * The handle and display name to seed an account with, derived from the Google
- * profile. Both are suggestions: `login` re-validates them and the directory
- * falls back to a friend code when the handle is taken or unusable.
+ * The name to seed a brand new account with, taken from the Google address.
+ * It is only a suggestion: `login` normalises it and the directory falls back
+ * to a friend code when it is taken or unusable. An account that already has a
+ * name keeps it, so signing in never renames you.
  */
-export function googleSignUpFields(identity: GoogleIdentity): { handle?: string; name?: string } {
-  const handle = identity.email?.split('@')[0]?.trim();
-  const name = identity.displayName?.trim();
-  return {
-    handle: handle || undefined,
-    name: name || undefined,
-  };
+export function googleSignUpField(identity: GoogleIdentity): { name?: string } {
+  const name = identity.email?.split('@')[0]?.trim();
+  return { name: name || undefined };
 }

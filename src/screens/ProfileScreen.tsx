@@ -21,7 +21,7 @@ export function ProfileScreen({ navigation }: Props) {
   const saveName = () => {
     const result = updateProfile({ name: name.trim() || profile.name });
     if (!result.ok) {
-      Alert.alert('Choose another name', result.reason || 'That display name cannot be used.');
+      Alert.alert('Choose another name', result.reason || 'That name cannot be used.');
       setName(profile.name);
     }
   };
@@ -38,11 +38,12 @@ export function ProfileScreen({ navigation }: Props) {
           </View>
 
           <View style={{ height: spacing.lg }} />
-          <Text style={styles.label}>Display name</Text>
+          <Text style={styles.label}>Name</Text>
           <View style={styles.nameRow}>
-            <TextInput value={name} onChangeText={setName} onBlur={saveName} placeholder="Your name" placeholderTextColor={colors.inkMuted} maxLength={18} style={styles.input} />
+            <TextInput value={name} onChangeText={setName} onBlur={saveName} autoCapitalize="none" autoCorrect={false} placeholder="your_name" placeholderTextColor={colors.inkMuted} maxLength={20} style={styles.input} />
             <WiiButton label="Save" variant="green" size="sm" onPress={saveName} />
           </View>
+          <Text style={styles.hint}>This is how friends find you. Letters, numbers, and underscores, 3 to 20 characters.</Text>
 
           <View style={styles.coinRow}>
             <CoinIcon size={22} />
@@ -82,6 +83,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 const styles = StyleSheet.create({
   label: { fontFamily: fonts.semibold, fontSize: 13, color: colors.inkSoft, marginBottom: 6 },
+  hint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.inkMuted, marginTop: 8 },
   section: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink, marginBottom: spacing.md },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   input: { flex: 1, height: 48, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panelAlt, paddingHorizontal: 14, fontFamily: fonts.semibold, fontSize: 16, color: colors.ink },

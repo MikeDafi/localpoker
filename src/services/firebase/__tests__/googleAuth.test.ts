@@ -48,22 +48,20 @@ const googleUser = (uid: string) => ({
   user: { uid, email: 'ada@example.com', displayName: 'Ada Lovelace' },
 });
 
-describe('googleSignUpFields', () => {
-  it('seeds the handle from the email and the name from the Google profile', async () => {
-    const { googleSignUpFields } = await import('../googleAuth');
+describe('googleSignUpField', () => {
+  it('seeds the name from the email local part', async () => {
+    const { googleSignUpField } = await import('../googleAuth');
     expect(
-      googleSignUpFields({ uid: 'u1', email: 'ada.lovelace@example.com', displayName: 'Ada' }),
-    ).toEqual({ handle: 'ada.lovelace', name: 'Ada' });
+      googleSignUpField({ uid: 'u1', email: 'ada.lovelace@example.com', displayName: 'Ada' }),
+    ).toEqual({ name: 'ada.lovelace' });
   });
 
-  it('leaves both undefined when Google gives us nothing, so login falls back', async () => {
-    const { googleSignUpFields } = await import('../googleAuth');
-    expect(googleSignUpFields({ uid: 'u1', email: null, displayName: null })).toEqual({
-      handle: undefined,
+  it('leaves the name undefined when Google gives us nothing, so login falls back', async () => {
+    const { googleSignUpField } = await import('../googleAuth');
+    expect(googleSignUpField({ uid: 'u1', email: null, displayName: null })).toEqual({
       name: undefined,
     });
-    expect(googleSignUpFields({ uid: 'u1', email: '', displayName: '   ' })).toEqual({
-      handle: undefined,
+    expect(googleSignUpField({ uid: 'u1', email: '', displayName: '   ' })).toEqual({
       name: undefined,
     });
   });
