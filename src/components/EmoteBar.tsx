@@ -80,7 +80,13 @@ export function EmoteBar({ onEmote }: { onEmote: (emote: Emote) => void }) {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.sectionLabel}>GIFs</Text>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>GIFs</Text>
+                {/* Giphy's terms require their mark wherever their content is
+                    shown. It is also what keeps the third-party content
+                    declaration on the store listing honest. */}
+                <Text style={styles.attribution}>POWERED BY GIPHY</Text>
+              </View>
               {/* One horizontally-scrolling row. A wrapped grid of 79 thumbs
                   pushed the stickers and emojis off the bottom of the sheet and
                   mounted every image at once; a horizontal list keeps the sheet
@@ -172,6 +178,8 @@ const styles = StyleSheet.create({
   scroll: { flexShrink: 1 },
   scrollContent: { paddingBottom: spacing.sm },
   sectionLabel: { ...type.label, color: colors.onDarkMuted, marginTop: spacing.md, marginBottom: spacing.xs },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  attribution: { ...type.label, fontSize: 9, letterSpacing: 0.8, color: colors.onDarkMuted, marginTop: spacing.md, marginBottom: spacing.xs },
   gifRow: { gap: 8, paddingVertical: 4, paddingRight: 8 },
   gifChip: { width: 96, height: 76, borderRadius: radii.md, overflow: 'hidden', backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
   gifThumb: { width: '100%', height: '100%' },

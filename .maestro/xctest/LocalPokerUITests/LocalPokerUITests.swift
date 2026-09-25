@@ -839,3 +839,120 @@ final class LocalPokerUITests: XCTestCase {
    requireStored(["set-1-top"])
  }
 }
+
+/// Captures the App Store screenshot set from the shipping build.
+///
+/// The store record had no screenshots at all, and the old set predates the
+/// login rework: it still shows the removed email form and, on four shots, the
+/// ad placeholder that no longer renders. Apple wants screenshots that show the
+/// app as it actually is (2.3.3), so they have to be recaptured.
+///
+/// Taps are coordinates rather than label lookups. The tiles and the big
+/// buttons are `Pressable`s wrapping gradients, and XCUITest frequently reports
+/// them as present but not hittable, which silently taps nothing and leaves the
+/// run capturing the wrong screen. Every step is gated on a label that only
+/// appears once the destination has rendered, so a miss fails loudly instead of
+/// saving a screenshot of somewhere else.
+///
+/// Must run on a 6.9 inch iPhone, which is what yields Apple's 1320 x 2868.
+final class StoreShots: XCTestCase {
+  let app = XCUIApplication(bundleIdentifier: "com.mike0264.localpoker")
+  let outDir = "/Users/maskndaf/.superset/worktrees/51b79363-a05b-41fc-a889-975ad92ef0ea/oil-infinity/docs/store/screenshots/phone69"
+
+  func text(_ t: String) -> XCUIElement {
+    app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", t)).firstMatch
+  }
+
+  /// A label may surface as static text or, when a `Pressable` groups its
+  /// children into one accessibility element, only as a button. Checking text
+  /// alone reported the home grid as absent while it was plainly on screen.
+  func here(_ t: String, _ timeout: TimeInterval = 12) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+      if text(t).exists { return true }
+      if app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", t)).firstMatch.exists { return true }
+      usleep(400_000)
+    } while Date() < deadline
+    return false
+  }
+
+  func tapAt(_ x: CGFloat, _ y: CGFloat, settle: UInt32 = 900_000) {
+    app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)).tap()
+    usleep(settle)
+  }
+
+  func save(_ n: String) {
+    let png = XCUIScreen.main.screenshot().pngRepresentation
+    try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+    try? png.write(to: URL(fileURLWithPath: "\(outDir)/\(n).png"))
+    print("SAVED \(n)")
+  }
+
+  /// Home tile centres, measured off a captured home screenshot.
+  let tileQuickPlay = (x: CGFloat(0.74), y: CGFloat(0.30))
+  let tileStats = (x: CGFloat(0.26), y: CGFloat(0.81))
+  let tileFriends = (x: CGFloat(0.74), y: CGFloat(0.55))
+  let tileStore = (x: CGFloat(0.74), y: CGFloat(0.81))
+
+  /// Cold launch through the age gate and the login screen to the home grid.
+  func reachHome() {
+    app.terminate(); usleep(400_000)
+    app.activate(); sleep(3)
+
+    if here("Confirm your age", 8) {
+      let f = app.textFields.firstMatch
+      if f.waitForExistence(timeout: 5) {
+        f.tap(); usleep(500_000)
+        for d in ["1", "9", "9", "0"] { f.typeText(d); usleep(250_000) }
+      }
+      // Enter sits above the number pad, so there is nothing to dismiss first.
+      // Measured off a captured age-gate screenshot; 0.63 landed in the blank
+      // strip under the button and did nothing.
+      tapAt(0.5, 0.561)                   // Enter
+    }
+    if here("Choose your seat", 8) {
+      tapAt(0.5, 0.80)                    // Play as Guest
+    }
+    XCTAssertTrue(here("Quick Play", 15), "never reached the home grid")
+    sleep(1)
+  }
+
+  func testCaptureStoreSet() throws {
+    reachHome()
+    save("01-home")
+
+    tapAt(tileQuickPlay.x, tileQuickPlay.y)
+    XCTAssertTrue(here("Start Game", 12), "Quick Play did not open game setup")
+    save("02-setup")
+
+    tapAt(0.72, 0.42)                     // Start Game
+    XCTAssertTrue(here("POT", 30), "the table never dealt")
+    sleep(4)
+    save("03-table")
+
+    // The reaction sheet, which is also where the Giphy mark lives.
+    if here("Hand over", 2) { tapAt(0.5, 0.78); sleep(1) }
+    if here("POT", 10) {
+      tapAt(0.92, 0.57, settle: 1_300_000)
+      save("04-reactions")
+    }
+
+    reachHome()
+    tapAt(tileStats.x, tileStats.y)
+    XCTAssertTrue(here("Hands", 12) || here("Win rate", 4), "Stats did not open")
+    sleep(1)
+    save("05-stats")
+
+    reachHome()
+    tapAt(tileFriends.x, tileFriends.y)
+    XCTAssertTrue(here("Add friend", 12), "Friends did not open")
+    sleep(1)
+    save("06-friends")
+
+    reachHome()
+    tapAt(tileStore.x, tileStore.y)
+    XCTAssertTrue(here("coins", 12), "Store did not open")
+    sleep(1)
+    save("07-store")
+  }
+}
