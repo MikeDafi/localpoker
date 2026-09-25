@@ -175,10 +175,23 @@ group, and internal groups need App Store Connect users. `scripts/asc-api.py`
 does this over the App Store Connect API using the same `.p8` key CI submits
 with, which avoids an Apple ID password and a 2FA prompt entirely.
 
+It takes its configuration from the environment, because this repository is
+public and a key id, issuer and app id together tell an attacker exactly what to
+phish for:
+
 ```bash
+export ASC_KEY_ID=...            # the .p8 key id
+export ASC_ISSUER_ID=...         # App Store Connect issuer id
+export ASC_KEY_PATH="$HOME/Downloads/AuthKey_<id>.p8"
+export ASC_APP_ID=...            # the numeric app id
+export ASC_TESTER_EMAIL=...      # only needed by `setup`
+
 python3 scripts/asc-api.py survey                 # groups, users, builds
 python3 scripts/asc-api.py setup <build-id>       # group + tester + assign
 ```
+
+`survey` redacts App Store Connect usernames, which are email addresses. Pass
+`ASC_SHOW_USERS=1` when you actually need them.
 
 It is idempotent: an existing group is reused and an existing tester is left
 alone, so re-running it is safe.

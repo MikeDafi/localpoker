@@ -8,6 +8,7 @@ first-class part of the same API that uploads the build.
 """
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -18,11 +19,28 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives import hashes
 
-KEY_ID = "YMUGSZ476Q"
-ISSUER_ID = "92c03eb1-db75-47cf-a217-485ede98fb89"
-KEY_PATH = "/Users/maskndaf/Downloads/AuthKey_YMUGSZ476Q.p8"
-APP_ID = "6815726621"
+# This repository is public, so nothing identifying is baked in. These are not
+# secrets on their own, but an App Store Connect key id, issuer and app id
+# together tell an attacker exactly what to phish for, and the key path names a
+# real file on a real machine.
+KEY_ID = os.environ.get("ASC_KEY_ID", "")
+ISSUER_ID = os.environ.get("ASC_ISSUER_ID", "")
+KEY_PATH = os.environ.get("ASC_KEY_PATH", "")
+APP_ID = os.environ.get("ASC_APP_ID", "")
 BASE = "https://api.appstoreconnect.apple.com"
+
+
+def require_config() -> None:
+    missing = [
+        name for name, value in (
+            ("ASC_KEY_ID", KEY_ID), ("ASC_ISSUER_ID", ISSUER_ID),
+            ("ASC_KEY_PATH", KEY_PATH), ("ASC_APP_ID", APP_ID),
+        ) if not value
+    ]
+    if missing:
+        raise SystemExit(
+            "Set these first (see docs/store/EAS-SUBMIT.md): " + ", ".join(missing)
+        )
 
 
 def _b64(raw: bytes) -> str:
@@ -79,6 +97,7 @@ def show(status, payload, label):
 
 if __name__ == "__main__":
     what = sys.argv[1] if len(sys.argv) > 1 else "survey"
+    require_config()
     if what == "survey":
         status, payload = call("GET", f"/v1/apps/{APP_ID}/betaGroups?limit=50")
         show(status, payload, "beta groups")
@@ -90,7 +109,12 @@ if __name__ == "__main__":
         show(status, payload, "App Store Connect users")
         for user in payload.get("data", []):
             attrs = user["attributes"]
-            print(f"    id={user['id']} {attrs.get('username')} roles={attrs.get('roles')}")
+            # Usernames are email addresses, so only the count and roles are
+            # printed; pass ASC_SHOW_USERS=1 when you genuinely need them.
+            if os.environ.get("ASC_SHOW_USERS") == "1":
+                print(f"    {attrs.get('username')} roles={attrs.get('roles')}")
+            else:
+                print(f"    <user {user['id'][:8]}> roles={attrs.get('roles')}")
 
         status, payload = call("GET", f"/v1/apps/{APP_ID}/builds?limit=5")
         show(status, payload, "builds")
@@ -99,7 +123,9 @@ if __name__ == "__main__":
             print(f"    id={build['id']} v={attrs.get('version')} state={attrs.get('processingState')}")
 
     if what == "setup":
-        email = "maskndafi@gmail.com"
+        email = os.environ.get("ASC_TESTER_EMAIL", "")
+        if not email:
+            raise SystemExit("Set ASC_TESTER_EMAIL to the tester to add.")
         build_id = sys.argv[2] if len(sys.argv) > 2 else None
 
         # 1. An internal group, created only if one is not already there.
