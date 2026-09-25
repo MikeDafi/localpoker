@@ -525,12 +525,16 @@ export function TableScreen({ navigation, route }: Props) {
         ]);
       };
 
+      // One timestamp for both fields. Two `Date.now()` calls can straddle a
+      // millisecond boundary, leaving an action whose sequence number and
+      // timestamp disagree.
+      const now = Date.now();
       pushAction(roomCode, {
         playerId: human.id,
         type: action,
         ...(typeof amount === 'number' ? { amount } : {}),
-        seq: Date.now(),
-        ts: Date.now(),
+        seq: now,
+        ts: now,
       })
         .then((result) => {
           if (result.ok) {

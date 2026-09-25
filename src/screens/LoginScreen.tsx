@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -92,7 +92,7 @@ export function LoginScreen({ navigation }: Props) {
                 </Text>
 
                 <View style={styles.buttonStack}>
-                  {isGoogleSignInConfigured() ? (
+                  {isGoogleSignInConfigured(Platform.OS) ? (
                     <SignInBoundary>
                       <GoogleSignInButton onError={setError} />
                     </SignInBoundary>
@@ -220,13 +220,19 @@ function GoogleSignInButton({ onError }: { onError: (message: string | null) => 
         return;
       }
       const { name } = googleSignUpField(result.identity);
-      // The Firebase uid is the account key, so this account's own name, Pal,
-      // coins and stats get swapped in rather than inheriting the last one's.
-      const loggedIn = await login('google', { accountKey: result.identity.uid, name });
+      // `linked` means Firebase upgraded the anonymous session in place, so the
+      // uid, and the coins, stats and Pal the guest just built up, are already
+      // this account's. Adopt them rather than starting the account fresh.
+      const options = {
+        accountKey: result.identity.uid,
+        adoptCurrent: result.identity.linked,
+        name,
+      };
+      const loggedIn = await login('google', options);
       if (!loggedIn.ok) {
         // A rejected name is not worth blocking the sign-in over: retry bare
         // and let the directory fall back to a friend code.
-        const bare = await login('google', { accountKey: result.identity.uid });
+        const bare = await login('google', { ...options, name: undefined });
         if (!bare.ok) onError(bare.reason || 'Could not finish signing in.');
       }
     })();

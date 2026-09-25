@@ -212,7 +212,7 @@ interface AppContextValue {
   textScaleTick: number;
   login: (
     provider: AuthState['provider'],
-    options?: { accountKey?: string; name?: string },
+    options?: { accountKey?: string; name?: string; adoptCurrent?: boolean },
   ) => Promise<ActionResult>;
   logout: () => void;
   updateProfile: (patch: Partial<Profile>) => ActionResult;
@@ -349,7 +349,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    * first account's name, Pal, coins, stats and friends in place, so the second
    * account inherited them and then overwrote the name.
    */
-  const switchAccount = useCallback(async (nextAccount: string): Promise<Bundle | null> => {
+  const switchAccount = useCallback(async (
+    nextAccount: string,
+  ): Promise<{ bundle: Bundle; isNew: boolean } | null> => {
     const current = activeAccount.current;
     if (current === nextAccount) return null;
 
@@ -380,29 +382,66 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         [BLOCKS_KEY, JSON.stringify(incoming.blockedUsers)],
         [SAVED_GAME_KEY, JSON.stringify(incoming.savedGame)],
       ]);
-      return incoming;
+      return { bundle: incoming, isNew: stored === null };
     } catch (error) {
       captureError(error, { tags: { area: 'async-storage', operation: 'switch-account' } });
       return null;
     }
   }, [blockedUsers, friends, profile, savedGame, stats]);
 
+  /**
+   * Take the data currently on screen with you into a new account key.
+   *
+   * Used when a guest signs in with Google and Firebase *linked* the anonymous
+   * user rather than swapping it: the uid is unchanged, so the coins, stats,
+   * Pal and name the guest just built up belong to this account. Parking them
+   * under the guest key and starting fresh, which is what a plain switch would
+   * do, silently threw all of it away.
+   */
+  const adoptAccount = useCallback(async (nextAccount: string): Promise<void> => {
+    const current = activeAccount.current;
+    if (current === nextAccount) return;
+
+    try {
+      activeAccount.current = nextAccount;
+      await AsyncStorage.setItem(ACTIVE_ACCOUNT_KEY, nextAccount);
+      // The old key's parked copy is stale now that this data has moved.
+      await AsyncStorage.removeItem(accountBundleKey(current));
+    } catch (error) {
+      captureError(error, { tags: { area: 'async-storage', operation: 'adopt-account' } });
+    }
+  }, []);
+
   const login = useCallback(async (
     provider: AuthState['provider'],
-    options: { accountKey?: string; name?: string } = {},
+    options: { accountKey?: string; name?: string; adoptCurrent?: boolean } = {},
   ): Promise<ActionResult> => {
     const requested = options.name?.trim();
     if (requested && !normalizeHandle(requested)) {
       return { ok: false, reason: 'Choose a name using 3 to 20 letters, numbers, or underscores.' };
     }
 
-    // Swap in this account's own data first, so the name resolved below is
-    // written against the right account rather than the previous one's.
-    const switched = await switchAccount(options.accountKey || GUEST_ACCOUNT);
-    const baseProfile = switched?.profile ?? profile;
+    const nextAccount = options.accountKey || GUEST_ACCOUNT;
+    let baseProfile = profile;
+    // A brand new account is the only one that should take the suggested name.
+    // An account that already exists keeps the name it has, so signing in
+    // never renames anybody.
+    let isNewAccount = false;
+    if (options.adoptCurrent) {
+      await adoptAccount(nextAccount);
+    } else {
+      // Swap in this account's own data first, so the name resolved below is
+      // written against the right account rather than the previous one's.
+      const switched = await switchAccount(nextAccount);
+      if (switched) {
+        baseProfile = switched.bundle.profile;
+        isNewAccount = switched.isNew;
+      }
+    }
 
-    const name = normalizeHandle(requested ?? '')
-      ?? normalizeHandle(baseProfile.name)
+    const suggested = normalizeHandle(requested ?? '');
+    const existing = normalizeHandle(baseProfile.name);
+    const name = (isNewAccount ? suggested ?? existing : existing ?? suggested)
       ?? profileHandleFallback(baseProfile);
 
     const nextProfile = { ...baseProfile, name };
@@ -413,14 +452,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       captureError(error, { tags: { area: 'firebase-friends', operation: 'login-publish-directory' } });
     });
     return { ok: true };
-  }, [persistAuth, persistProfile, profile, publishDirectory, switchAccount]);
+  }, [adoptAccount, persistAuth, persistProfile, profile, publishDirectory, switchAccount]);
+
+  /**
+   * The identity last written to the directory.
+   *
+   * The effect below depends on the whole profile object, and `recordHand`
+   * replaces that object after every hand to bump coins and XP. Without this
+   * guard each hand fired a read, a transaction and a write against a record
+   * whose contents had not changed, which is pure quota burn on the free tier.
+   */
+  const publishedIdentity = useRef<string | null>(null);
 
   useEffect(() => {
     if (!ready || !auth.loggedIn) {
       return;
     }
 
+    const identity = `${activeAccount.current}|${auth.handle ?? ''}|${profile.name}`;
+    if (publishedIdentity.current === identity) {
+      return;
+    }
+    publishedIdentity.current = identity;
+
     publishDirectory(auth, profile).catch((error) => {
+      publishedIdentity.current = null;
       captureError(error, { tags: { area: 'firebase-friends', operation: 'profile-publish-directory' } });
     });
   }, [auth, profile, publishDirectory, ready]);
@@ -440,7 +496,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
     });
-  }, [auth.loggedIn, persist, ready]);
+    // The subscription belongs to one account, so it has to be torn down and
+    // rebuilt when the account changes, not only when login state flips.
+  }, [auth.handle, auth.loggedIn, persist, ready]);
 
   const verifyAge = useCallback((birthYear: number): { ok: boolean; reason?: string } => {
     const year = Number(birthYear);

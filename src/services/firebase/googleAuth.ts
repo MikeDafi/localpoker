@@ -24,6 +24,12 @@ export type GoogleIdentity = {
   uid: string;
   email: string | null;
   displayName: string | null;
+  /**
+   * True when the anonymous session was upgraded in place, so this uid is the
+   * one the guest was already playing as. The caller uses this to keep the
+   * guest's local coins, stats and Pal instead of starting the account fresh.
+   */
+  linked: boolean;
 };
 
 export type GoogleSignInResult =
@@ -31,12 +37,19 @@ export type GoogleSignInResult =
   | { ok: false; reason: string };
 
 /**
- * True when there is at least one client ID for this platform. Callers use this
- * to decide whether to show the Google button at all: without it the OAuth
- * request would throw while loading.
+ * True when this platform has the client ID its OAuth request needs.
+ *
+ * Checked per platform on purpose. `useAuthRequest` picks `iosClientId` on iOS
+ * and `androidClientId` on Android, falling back to the generic `clientId`; on
+ * Android that fallback is the *web* client, which Google rejects for an
+ * installed app. Without this the button would render on Android and fail at
+ * the consent screen.
  */
-export function isGoogleSignInConfigured(): boolean {
-  return isFirebaseConfigured() && Boolean(GOOGLE_IOS_CLIENT_ID || GOOGLE_WEB_CLIENT_ID);
+export function isGoogleSignInConfigured(platform: string): boolean {
+  if (!isFirebaseConfigured()) return false;
+  if (platform === 'ios') return Boolean(GOOGLE_IOS_CLIENT_ID);
+  if (platform === 'android') return Boolean(GOOGLE_ANDROID_CLIENT_ID);
+  return Boolean(GOOGLE_WEB_CLIENT_ID);
 }
 
 /**
@@ -82,9 +95,13 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<GoogleSi
     const anonymous = auth.currentUser?.isAnonymous ? auth.currentUser : null;
 
     let user: import('firebase/auth').User;
+    let linked = false;
     if (anonymous) {
       try {
         user = (await authMod.linkWithCredential(anonymous, credential)).user;
+        // Linking keeps the anonymous uid, so the guest who was playing a
+        // moment ago and this Google account are the same person.
+        linked = true;
       } catch (error) {
         if (!ALREADY_CLAIMED.has(errorCode(error))) throw error;
         user = (await authMod.signInWithCredential(auth, credential)).user;
@@ -96,7 +113,7 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<GoogleSi
     noteSignedInUid(user.uid);
     return {
       ok: true,
-      identity: { uid: user.uid, email: user.email, displayName: user.displayName },
+      identity: { uid: user.uid, email: user.email, displayName: user.displayName, linked },
     };
   } catch (error) {
     captureError(error, { tags: { area: 'firebase-auth', operation: 'google-sign-in' } });

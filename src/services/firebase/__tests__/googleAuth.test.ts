@@ -52,18 +52,38 @@ describe('googleSignUpField', () => {
   it('seeds the name from the email local part', async () => {
     const { googleSignUpField } = await import('../googleAuth');
     expect(
-      googleSignUpField({ uid: 'u1', email: 'ada.lovelace@example.com', displayName: 'Ada' }),
+      googleSignUpField({ uid: 'u1', email: 'ada.lovelace@example.com', displayName: 'Ada', linked: false }),
     ).toEqual({ name: 'ada.lovelace' });
   });
 
   it('leaves the name undefined when Google gives us nothing, so login falls back', async () => {
     const { googleSignUpField } = await import('../googleAuth');
-    expect(googleSignUpField({ uid: 'u1', email: null, displayName: null })).toEqual({
+    expect(googleSignUpField({ uid: 'u1', email: null, displayName: null, linked: false })).toEqual({
       name: undefined,
     });
-    expect(googleSignUpField({ uid: 'u1', email: '', displayName: '   ' })).toEqual({
+    expect(googleSignUpField({ uid: 'u1', email: '', displayName: '   ', linked: false })).toEqual({
       name: undefined,
     });
+  });
+});
+
+describe('isGoogleSignInConfigured', () => {
+  beforeEach(() => {
+    configured.value = true;
+  });
+
+  it('is false on a platform with no client ID of its own', async () => {
+    const { isGoogleSignInConfigured } = await import('../googleAuth');
+    // No Android client ID is set, and falling back to the web one would be
+    // rejected by Google for an installed app, so the button must stay hidden.
+    expect(isGoogleSignInConfigured('android')).toBe(false);
+  });
+
+  it('is false everywhere when Firebase itself is unconfigured', async () => {
+    configured.value = false;
+    const { isGoogleSignInConfigured } = await import('../googleAuth');
+    expect(isGoogleSignInConfigured('ios')).toBe(false);
+    expect(isGoogleSignInConfigured('web')).toBe(false);
   });
 });
 
@@ -85,7 +105,7 @@ describe('signInWithGoogleIdToken', () => {
     expect(signInWithCredential).not.toHaveBeenCalled();
     expect(result).toEqual({
       ok: true,
-      identity: { uid: 'anon-uid', email: 'ada@example.com', displayName: 'Ada Lovelace' },
+      identity: { uid: 'anon-uid', email: 'ada@example.com', displayName: 'Ada Lovelace', linked: true },
     });
     expect(noteSignedInUid).toHaveBeenCalledWith('anon-uid');
   });
@@ -125,11 +145,34 @@ describe('signInWithGoogleIdToken', () => {
     expect(noteSignedInUid).not.toHaveBeenCalled();
   });
 
+  it('reports the link so the guest keeps the coins and stats they just earned', async () => {
+    authState.currentUser = { uid: 'anon-uid', isAnonymous: true };
+    linkWithCredential.mockResolvedValue(googleUser('anon-uid'));
+
+    const { signInWithGoogleIdToken } = await import('../googleAuth');
+    const result = await signInWithGoogleIdToken('id-token');
+
+    // `linked` is what tells the caller to adopt the guest's local data rather
+    // than park it and hand the account a fresh profile.
+    expect(result.ok && result.identity.linked).toBe(true);
+  });
+
+  it('does not report a link when signing into a separate existing account', async () => {
+    authState.currentUser = { uid: 'anon-uid', isAnonymous: true };
+    linkWithCredential.mockRejectedValue(withCode('auth/credential-already-in-use'));
+    signInWithCredential.mockResolvedValue(googleUser('google-uid'));
+
+    const { signInWithGoogleIdToken } = await import('../googleAuth');
+    const result = await signInWithGoogleIdToken('id-token');
+
+    expect(result.ok && result.identity.linked).toBe(false);
+  });
+
   it('refuses up front when the build has no Firebase config', async () => {
     configured.value = false;
 
     const { signInWithGoogleIdToken, isGoogleSignInConfigured } = await import('../googleAuth');
-    expect(isGoogleSignInConfigured()).toBe(false);
+    expect(isGoogleSignInConfigured('ios')).toBe(false);
     expect(await signInWithGoogleIdToken('id-token')).toEqual({
       ok: false,
       reason: 'Online play is not configured in this build.',
