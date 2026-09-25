@@ -6,13 +6,20 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 ## 1. Current submission blockers
 
-1. **Ads decision required.** The app is positioned as free with ads, but `AdBanner` is only a static placeholder and no ad SDK is installed. The visible fake ad slot is an App Review rejection risk as placeholder content, separate from the privacy-label issue. For 1.0, either hide ad placeholders and submit as no-ads, or integrate real ads and complete ATT, consent, SKAdNetwork, and privacy disclosures.
-2. **Legal pages still need human-owned legal values.** The support and privacy contact email is resolved as `maskndafi@gmail.com`. The GitHub Actions Pages workflow still refuses to publish while the remaining legal placeholder markers remain. Fill the exact fields in section 2 below, then enable Pages with **Source: GitHub Actions** and run the Legal Pages workflow.
-3. **Online rooms need production Firebase setup.** Enable Anonymous and Google Authentication, publish `database.rules.json`, add the `EXPO_PUBLIC_*` repository secrets listed in `docs/online/ENABLING-ONLINE.md` so EAS builds are configured at all, and define room cleanup. Build 8 on TestFlight predates that fix and has no working online play.
-4. **EAS submit values are not committed.** `eas.json` has no placeholder submit values. Follow `EAS-SUBMIT.md` to supply Apple, ASC, team, and Google Play credentials without committing secrets or fake IDs.
-5. **Sentry is off by default.** If you want Sentry in the release, add a real DSN, restore real Expo plugin org/project config, and update diagnostics disclosures.
-6. **Screenshots are captured but blocked by ad placeholders.** `docs/store/screenshots/` has a real `1320 x 2868` iPhone 6.9-inch set. Do not upload the four screenshots that show `Reserved banner slot` until that placeholder is hidden or replaced by real disclosed ads.
-7. **Google is the only third-party login, deliberately.** App Review guideline 4.8 (Login Services) requires an equivalent privacy-respecting option alongside a third-party login. The decision here is to ship Google plus Guest and not add Sign in with Apple.
+1. **Ads decision required.** The app is positioned as free with ads, but `AdBanner` is only a static placeholder and no ad SDK is installed. The visible fake ad slot is an App Review rejection risk as placeholder content, separate from the privacy-label issue. For 1.0, either hide ad placeholders and submit as no-ads, or integrate real ads and complete ATT, consent, SKAdNetwork, and privacy disclosures. **Currently resolved by omission:** `EXPO_PUBLIC_ADS_ENABLED` is unset, so `ADS_ENABLED` is false and every ad slot renders nothing. Build 9 ships with no ad UI at all.
+2. **Done: legal pages are published and wired into App Store Connect.** No placeholder markers remain, so the Legal Pages workflow builds and deploys. All four URLs return 200:
+   - <https://mikedafi.github.io/localpoker/>
+   - <https://mikedafi.github.io/localpoker/privacy/>
+   - <https://mikedafi.github.io/localpoker/terms/>
+   - <https://mikedafi.github.io/localpoker/support/>
+
+   The privacy, support, and marketing URLs are set on the App Store Connect record over the API. The jurisdiction, entity and venue questions in section 2 are deliberately answered by *not* naming a jurisdiction: the Terms defer to the consumer law of wherever the player lives, which is a defensible position for a solo developer with no legal entity, and avoids asserting facts nobody has decided yet. Revisit if an entity is formed.
+3. **App Privacy questionnaire still has to be answered by hand.** Apple exposes no public API for the privacy nutrition label, so this one genuinely needs the App Store Connect web UI. Use the answer sheet in `docs/store/APP-PRIVACY-LABELS.md`; note that **Contact Info > Email Address is now Yes, linked to the user**, because Google sign-in makes Firebase Authentication store the account email.
+4. **Done: online rooms are configured.** Anonymous and Google authentication are enabled, `database.rules.json` is published and verified against the live instance, and the `EXPO_PUBLIC_*` repository secrets are set so EAS builds are configured. Build 8 predates all of this and is silently offline; build 9 is the first working one. Room cleanup is still undefined.
+5. **EAS submit values are not committed.** `eas.json` has no placeholder submit values. Follow `EAS-SUBMIT.md` to supply Apple, ASC, team, and Google Play credentials without committing secrets or fake IDs.
+6. **Sentry is off by default.** If you want Sentry in the release, add a real DSN, restore real Expo plugin org/project config, and update diagnostics disclosures.
+7. **Screenshots need recapturing.** `docs/store/screenshots/` has a real `1320 x 2868` iPhone 6.9-inch set, but four of them show `Reserved banner slot` and the login shot shows the removed email form. Recapture from build 9, where the ad slots render nothing and the login screen offers Google and Guest.
+8. **Google is the only third-party login, deliberately.** App Review guideline 4.8 (Login Services) requires an equivalent privacy-respecting option alongside a third-party login. The decision here is to ship Google plus Guest and not add Sign in with Apple.
 
    The argument for that reading: 4.8's requirement is that the alternative limit data collection to name and email, let the user keep the email private, and not collect interactions for advertising. **Play as Guest** does better than all three, because it collects no name, no email and no advertising data at all, and it is offered with equal prominence on the same screen.
 
@@ -24,19 +31,17 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
    None of that blocks TestFlight, which does not go through App Review for internal testers.
 
-## 2. Human-owned legal fields required before publishing
+## 2. Human-owned legal fields, and how they were resolved
 
-The site build intentionally fails while any `[PLACEHOLDER: ...]` or similar marker remains. The support, privacy, and Terms contact email is now `maskndafi@gmail.com`, which is a reasonable published developer contact for a solo indie app. If LocalPoker grows, a dedicated support alias is the usual next step.
+The site build intentionally fails while any `[PLACEHOLDER: ...]` or similar marker remains. None remain, so the Legal Pages workflow deploys. The support, privacy, and Terms contact email is `maskndafi@gmail.com`, which is a reasonable published developer contact for a solo indie app. If LocalPoker grows, a dedicated support alias is the usual next step.
 
-The remaining fields need a human owner. The jurisdiction, representative, DPO, transfer mechanism, liability cap, governing law, and venue choices likely need legal review. Do not publish the GitHub Pages site until these are settled.
+The jurisdiction and entity questions were resolved by **not** answering them. LocalPoker is published by an individual with no legal entity, so there is no company name, registered address, EU/UK representative or DPO to name, and inventing any of them would be worse than omitting them. The Terms therefore defer to the consumer law of wherever the player lives rather than asserting a governing law and venue, and the Privacy Policy describes vendor transfer safeguards rather than claiming a transfer mechanism of its own. For a free, play-money, no-purchase app that collects an email address only through Google sign-in, that is a defensible position.
 
-Decide first whether LocalPoker is published by a legal entity or by an individual. That choice changes the publisher/entity fields, contact block, Terms owner language, and possibly the governing law and dispute venue.
+Revisit all of it if any of these change:
 
-Fields only the user or counsel can provide:
-
-- **Publisher choice:** whether LocalPoker is published by a legal entity or by an individual.
-- **Privacy Policy:** effective date, publisher or legal entity name, mailing address, governing jurisdiction, EU/UK representative or DPO if required, and the international data-transfer mechanism clause.
-- **Terms:** effective date, publisher or legal entity name, mailing address, governing law and dispute venue, and liability cap.
+- an entity is formed, or the app starts taking money;
+- the app ships real ads, which adds an advertising-data relationship and usually a consent vendor;
+- the user base grows enough that a GDPR representative is genuinely required.
 
 The Markdown files are:
 
@@ -44,12 +49,23 @@ The Markdown files are:
 - `docs/store/PRIVACY-POLICY.md`
 - `docs/store/TERMS.md`
 
+Published at:
+
+| Page | URL |
+|---|---|
+| Landing | <https://mikedafi.github.io/localpoker/> |
+| Privacy Policy | <https://mikedafi.github.io/localpoker/privacy/> |
+| Terms | <https://mikedafi.github.io/localpoker/terms/> |
+| Support | <https://mikedafi.github.io/localpoker/support/> |
+
+All three are already set on the App Store Connect record: privacy policy on the app info localization, support and marketing URLs on the 1.0 version localization.
+
 ## 3. Identity and build readiness
 
 - App name: **LocalPoker: Poker with Friends**. Count: 30 of 30 characters.
 - Bundle/package: `com.mike0264.localpoker` in `app.json`.
 - Store-facing app version: `1.0.0` in `app.json`.
-- iOS build number: `1`; Android version code: `1` in `app.json`.
+- iOS build number: `app.json` says `1`, but EAS owns the real number (`appVersionSource: remote` with `autoIncrement`), so it is ignored for iOS. TestFlight is on build **9**. Android version code is `1` in `app.json`.
 - Expo SDK: `~57.0.23` in `package.json`.
 - EAS config exists with an explicit store production build profile and submit profiles that contain only safe metadata.
 - iOS is now phone-only by deliberate product decision: `ios.supportsTablet = false` in `app.json`. The table UI is phone-tuned, so there is no iPad support at launch.
