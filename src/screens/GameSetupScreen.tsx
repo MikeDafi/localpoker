@@ -211,7 +211,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
                   </View>
                   <View>
                     <Text style={styles.sectionTitle}>{activeSection.title}</Text>
-                    <Text style={styles.sectionSubtitle}>{visibleFields.length} settings in this section</Text>
+                    <Text style={styles.sectionSubtitle}>{visibleFields.length} setting{visibleFields.length === 1 ? '' : 's'} in this section</Text>
                   </View>
                 </View>
               </View>

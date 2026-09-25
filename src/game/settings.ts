@@ -107,7 +107,6 @@ export interface GameSettings {
 
   // Accessibility
   largeText: boolean;
-  highContrast: boolean;
   leftHandedLayout: boolean;
   fourColorDeck: boolean;
   alwaysShowOdds: boolean;
@@ -222,7 +221,6 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   reduceMotion: false,
 
   largeText: false,
-  highContrast: false,
   leftHandedLayout: false,
   fourColorDeck: false,
   alwaysShowOdds: false,
@@ -320,7 +318,6 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     id: 'a11y', title: 'Accessibility', icon: '♿',
     fields: [
       { key: 'largeText', label: 'Large Text', type: 'toggle', help: 'Bigger type across menus and the table.' },
-      { key: 'highContrast', label: 'High Contrast', type: 'toggle' },
     ],
   },
 ];
