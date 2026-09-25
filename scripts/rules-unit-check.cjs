@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { get, ref, set, update } = require('firebase/database');
+const { endAt, get, limitToFirst, orderByKey, query, ref, set, startAt, update } = require('firebase/database');
 
 const projectId = 'demo-localpoker';
 const rules = fs.readFileSync('database.rules.json', 'utf8');
@@ -127,6 +127,34 @@ function logOk(message) {
 
     await assertFails(get(ref(playerDb, 'localpoker/handles')));
     logOk('handles collection cannot be listed');
+
+    // The add-friend autocomplete needs a prefix query. It is allowed only
+    // when it is bounded on both ends and limited, so the directory still
+    // cannot be pulled down in one request.
+    await assertSucceeds(get(query(
+      ref(playerDb, 'localpoker/handles'),
+      orderByKey(),
+      startAt('ho'),
+      endAt('ho\uf8ff'),
+      limitToFirst(8),
+    )));
+    logOk('bounded prefix search over handles is allowed');
+
+    await assertFails(get(query(
+      ref(playerDb, 'localpoker/handles'),
+      orderByKey(),
+      startAt('ho'),
+      endAt('ho\uf8ff'),
+      limitToFirst(500),
+    )));
+    logOk('prefix search cannot raise its own limit');
+
+    await assertFails(get(query(
+      ref(playerDb, 'localpoker/handles'),
+      orderByKey(),
+      limitToFirst(8),
+    )));
+    logOk('unbounded query over handles is still refused');
 
     await assertSucceeds(get(ref(playerDb, 'localpoker/users/host')));
     logOk('known user profile can be read exactly');

@@ -223,6 +223,7 @@
         }
       },
       "handles": {
+        ".read": "auth != null && query.orderByKey === true && query.limitToFirst <= 10 && query.startAt !== null && query.endAt !== null",
         "$handle": {
           ".read": "auth != null",
           ".write": "auth != null && ((!data.exists() && newData.isString() && newData.val() === auth.uid && $handle.matches(/^[a-z0-9_]{3,20}$/) && !$handle.matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/)) || (data.exists() && data.val() === auth.uid && !newData.exists()))",

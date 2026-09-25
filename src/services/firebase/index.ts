@@ -19,12 +19,15 @@ export {
   removeFriendship,
   reportUser,
   resolveHandle,
+  searchHandles,
+  HANDLE_SEARCH_MIN_PREFIX,
   sendFriendRequest,
   subscribeSocialGraph,
 } from './friends';
 export type {
   BlockRecord,
   DeleteAccountHints,
+  DirectoryMatch,
   DirectoryUser,
   FirebaseFriendResult,
   FriendEdgeRecord,

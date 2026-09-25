@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, Keyboard, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import { ScreenBackground } from '../components/ScreenBackground';
@@ -15,6 +15,12 @@ import { sound } from '../services/sound';
 import { useApp } from '../state/AppContext';
 import type { Friend } from '../state/AppContext';
 import { RootStackParamList } from '../navigation/types';
+import {
+  HANDLE_SEARCH_MIN_PREFIX,
+  isFirebaseConfigured,
+  searchHandles,
+  type DirectoryMatch,
+} from '../services/firebase';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
@@ -32,6 +38,8 @@ export function FriendsScreen({ navigation }: Props) {
   const [friendText, setFriendText] = useState('');
   const [inputError, setInputError] = useState<string | null>(null);
   const [addingFriend, setAddingFriend] = useState(false);
+  const [matches, setMatches] = useState<DirectoryMatch[]>([]);
+  const [searching, setSearching] = useState(false);
 
   const { onlineFriends, offlineFriends } = useMemo(() => {
     const online = friends.filter((friend) => friend.online && friend.friendshipStatus === 'accepted');
@@ -47,8 +55,40 @@ export function FriendsScreen({ navigation }: Props) {
     if (inputError && text.trim()) setInputError(null);
   };
 
-  const handleAddFriend = async () => {
-    const trimmed = friendText.trim();
+  // Debounced so a burst of typing issues one query, not one per keystroke.
+  useEffect(() => {
+    const prefix = friendText.trim();
+    if (prefix.length < HANDLE_SEARCH_MIN_PREFIX || !isFirebaseConfigured()) {
+      setMatches([]);
+      return undefined;
+    }
+
+    let active = true;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      searchHandles(prefix)
+        .then((result) => {
+          if (!active) return;
+          // Anyone already in the list is not someone to add.
+          const known = new Set(friends.map((f) => f.uid ?? f.id));
+          setMatches(result.ok ? result.matches.filter((m) => !known.has(m.uid)) : []);
+        })
+        .catch(() => {
+          if (active) setMatches([]);
+        })
+        .finally(() => {
+          if (active) setSearching(false);
+        });
+    }, 220);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [friendText, friends]);
+
+  const handleAddFriend = async (nameOverride?: string) => {
+    const trimmed = (nameOverride ?? friendText).trim();
     if (!trimmed) {
       setInputError("Enter your friend's name.");
       return;
@@ -63,6 +103,7 @@ export function FriendsScreen({ navigation }: Props) {
     }
     sound.play('select');
     setFriendText('');
+    setMatches([]);
     setInputError(null);
     Keyboard.dismiss();
   };
@@ -142,7 +183,7 @@ export function FriendsScreen({ navigation }: Props) {
               <View style={styles.titleCopy}>
                 <Text style={styles.panelTitle}>Add friend</Text>
                 <Text style={styles.panelSubtitle}>
-                  {auth.handle ? `You are @${auth.handle}. Add friends by their exact name.` : 'Add friends by their exact name.'}
+                  {auth.handle ? `You are @${auth.handle}. Start typing to find a friend.` : 'Start typing to find a friend.'}
                 </Text>
               </View>
             </View>
@@ -151,7 +192,7 @@ export function FriendsScreen({ navigation }: Props) {
               <TextInput
                 value={friendText}
                 onChangeText={handleChangeFriendText}
-                onSubmitEditing={handleAddFriend}
+                onSubmitEditing={() => handleAddFriend()}
                 placeholder="friend_name"
                 placeholderTextColor={colors.inkMuted}
                 autoCapitalize="none"
@@ -160,9 +201,37 @@ export function FriendsScreen({ navigation }: Props) {
                 returnKeyType="done"
                 style={[styles.input, inputError ? styles.inputError : null]}
               />
-              <WiiButton label={addingFriend ? 'Sending…' : 'Add'} variant="blue" size="sm" disabled={addingFriend} onPress={handleAddFriend} />
+              <WiiButton label={addingFriend ? 'Sending…' : 'Add'} variant="blue" size="sm" disabled={addingFriend} onPress={() => handleAddFriend()} />
             </View>
             {inputError ? <Text style={styles.errorText}>{inputError}</Text> : null}
+
+            {friendText.trim().length >= HANDLE_SEARCH_MIN_PREFIX ? (
+              <View style={styles.suggestions}>
+                {searching && matches.length === 0 ? (
+                  <Text style={styles.suggestionEmpty}>Searching…</Text>
+                ) : matches.length === 0 ? (
+                  <Text style={styles.suggestionEmpty}>No players start with that.</Text>
+                ) : (
+                  matches.map((match) => (
+                    <Pressable
+                      key={match.uid}
+                      style={({ pressed }) => [styles.suggestion, pressed && styles.suggestionPressed]}
+                      disabled={addingFriend}
+                      onPress={() => handleAddFriend(match.handle)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${match.displayName}`}
+                    >
+                      <AnimatedPal config={palFromSeed(match.handle)} size={30} />
+                      <View style={styles.suggestionCopy}>
+                        <Text numberOfLines={1} style={styles.suggestionName}>{match.displayName}</Text>
+                        <Text numberOfLines={1} style={styles.suggestionHandle}>@{match.handle}</Text>
+                      </View>
+                      <Text style={styles.suggestionAdd}>Add</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            ) : null}
           </WiiPanel>
         </Animated.View>
 
@@ -406,6 +475,51 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 12,
     color: colors.red,
+  },
+  suggestions: {
+    marginTop: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panelAlt,
+    overflow: 'hidden',
+  },
+  suggestion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  suggestionPressed: {
+    backgroundColor: colors.panel,
+  },
+  suggestionCopy: {
+    flex: 1,
+  },
+  suggestionName: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.ink,
+  },
+  suggestionHandle: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.inkMuted,
+  },
+  suggestionAdd: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.blue,
+  },
+  suggestionEmpty: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.inkMuted,
   },
   summaryRow: {
     flexDirection: 'row',

@@ -1,11 +1,16 @@
 import {
+  endAt,
   get,
+  limitToFirst,
   onValue,
+  orderByKey,
   push,
+  query,
   ref,
   runTransaction,
   serverTimestamp,
   set,
+  startAt,
   update,
   type Database,
 } from 'firebase/database';
@@ -79,6 +84,10 @@ const noop = (): void => {};
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Unexpected Firebase error';
+
+/** True for a write the database rules refused. */
+const isPermissionDenied = (error: unknown): boolean =>
+  /permission[_ ]denied/i.test(error instanceof Error ? error.message : String(error));
 
 const reportFirebaseError = (operation: string, error: unknown): void => {
   captureError(error, { tags: { area: 'firebase-friends', operation } });
@@ -201,6 +210,88 @@ export const publishUserDirectory = async (
   }
 };
 
+export type DirectoryMatch = { uid: string; handle: string; displayName: string };
+
+/** The most names the autocomplete will ever ask for or show. */
+export const HANDLE_SEARCH_LIMIT = 8;
+
+/** Below this a prefix matches most of the directory, so it is not a search. */
+export const HANDLE_SEARCH_MIN_PREFIX = 2;
+
+/**
+ * Names starting with `prefix`, for the add-friend autocomplete.
+ *
+ * Exact-name-only meant you had to already know how somebody spelled
+ * themselves, and a near miss just reported that nobody exists. This issues
+ * the bounded key query the rules allow: ordered by key, limited, and fenced
+ * by a start and an end, so the directory still cannot be pulled down whole.
+ *
+ * `\uf8ff` is the last character Firebase will sort, so the range
+ * `[prefix, prefix + \uf8ff]` is exactly the keys starting with the prefix.
+ */
+export const searchHandles = async (
+  prefixInput: string,
+): Promise<FirebaseFriendResult<{ matches: DirectoryMatch[] }>> => {
+  const db = getConfiguredDb();
+  if (!db) {
+    return { ok: false, reason: NOT_CONFIGURED_REASON };
+  }
+
+  const uid = await ensureSignedIn();
+  if (!uid) {
+    return notSignedInResult();
+  }
+
+  // Not `normalizeHandle`: that enforces the full three character minimum, and
+  // a search should narrow the list before the name is finished.
+  const prefix = prefixInput.trim().toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_]/g, '');
+  if (prefix.length < HANDLE_SEARCH_MIN_PREFIX) {
+    return { ok: true, matches: [] };
+  }
+
+  try {
+    const snapshot = await get(query(
+      ref(db, 'localpoker/handles'),
+      orderByKey(),
+      startAt(prefix),
+      endAt(`${prefix}\uf8ff`),
+      limitToFirst(HANDLE_SEARCH_LIMIT),
+    ));
+    if (!snapshot.exists()) {
+      return { ok: true, matches: [] };
+    }
+
+    const owners: { handle: string; uid: string }[] = [];
+    snapshot.forEach((child) => {
+      const ownerUid = child.val() as string;
+      // Never offer to friend yourself.
+      if (child.key && typeof ownerUid === 'string' && ownerUid !== uid) {
+        owners.push({ handle: child.key, uid: ownerUid });
+      }
+    });
+
+    // The display name lives on the profile, so each hit needs its own read.
+    // The query limit above bounds this to a handful.
+    const matches = await Promise.all(owners.map(async ({ handle, uid: ownerUid }) => {
+      let displayName = `@${handle}`;
+      try {
+        const userSnapshot = await get(ref(db, usersPath(ownerUid)));
+        const user = userSnapshot.exists() ? (userSnapshot.val() as Partial<DirectoryUser>) : null;
+        displayName = cleanDisplayName(user?.displayName ?? '') || `@${handle}`;
+      } catch {
+        // A profile that cannot be read still has a usable name: the handle.
+      }
+      return { uid: ownerUid, handle, displayName: maskedPublicName(displayName) };
+    }));
+
+    return { ok: true, matches };
+  } catch (error) {
+    reportFirebaseError('search-handles', error);
+    console.warn('Unable to search the Firebase directory.', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
 export const resolveHandle = async (
   handleInput: string,
 ): Promise<FirebaseFriendResult<{ uid: string; handle: string; displayName: string }>> => {
@@ -275,10 +366,12 @@ export const sendFriendRequest = async (
       return { ok: false, reason: `${target.displayName} is already in your crew.` };
     }
 
-    const blockedByTarget = await get(ref(db, blockPath(target.uid, fromUid)));
-    if (blockedByTarget.exists()) {
-      return { ok: false, reason: 'That player is not accepting friend requests from you.' };
-    }
+    // There used to be a `get` on `blocks/<target>/<me>` here to check whether
+    // the target had blocked the sender. Only the owner of a block list can
+    // read it, so that read was rejected and the whole request failed with
+    // "permission denied" for everybody, blocked or not. The rules already
+    // refuse the write itself when a block exists, so the check was both
+    // unauthorised and redundant; the rejection is translated below instead.
 
     const fromName = cleanDisplayName(fromDisplayName) || `@${ownHandle}`;
     const fromNameIssue = publicNameIssue(fromName, 'name');
@@ -312,6 +405,13 @@ export const sendFriendRequest = async (
   } catch (error) {
     reportFirebaseError('send-friend-request', error);
     console.warn('Unable to send Firebase friend request.', error);
+    // The rules refuse the write when the target has blocked the sender, and
+    // that is the only way a request that got this far can be rejected. Saying
+    // "permission denied" would be both unhelpful and a hint that the block
+    // exists, so it reads as the target simply not accepting requests.
+    if (isPermissionDenied(error)) {
+      return { ok: false, reason: 'That player is not accepting friend requests from you.' };
+    }
     return { ok: false, reason: getErrorMessage(error) };
   }
 };
