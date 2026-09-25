@@ -84,3 +84,6 @@ _site/
 
 # Screenshots extracted from .xcresult bundles, duplicate build output
 docs/qa/xcresult-attachments/
+
+# Local native builds: `eas build --local` drops a signed .ipa and its log here.
+build/

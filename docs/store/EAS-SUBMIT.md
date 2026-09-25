@@ -118,6 +118,71 @@ in the CI checkout and never committed. The key itself is written to the
 runner's temp directory, never the workspace, and deleted in an `always()`
 step.
 
+## Building on this Mac instead of on EAS
+
+A cloud build is the easy path but spends EAS Build minutes. `--local` runs the
+same build on your own machine and spends none. Credentials still come from EAS,
+so the binary is signed with exactly what CI would have used.
+
+```bash
+export PATH="/opt/homebrew/bin:$PATH"
+export GIT_CONFIG_COUNT=0                      # see the gotcha below
+export EXPO_ASC_API_KEY_PATH="$HOME/Downloads/AuthKey_YMUGSZ476Q.p8"
+export EXPO_ASC_KEY_ID=YMUGSZ476Q
+export EXPO_ASC_ISSUER_ID=92c03eb1-db75-47cf-a217-485ede98fb89
+export EXPO_APPLE_TEAM_ID=D7VUBSSP2F EXPO_APPLE_TEAM_TYPE=INDIVIDUAL
+
+npx eas-cli build --platform ios --profile production --local \
+  --non-interactive --output "$PWD/build/localpoker.ipa"
+```
+
+Then upload with Apple's own tool, which avoids `eas submit` and so avoids
+having to write key fields into `eas.json` at all:
+
+```bash
+cp ~/Downloads/AuthKey_YMUGSZ476Q.p8 ~/.appstoreconnect/private_keys/
+xcrun altool --validate-app -f build/localpoker.ipa -t ios \
+  --apiKey YMUGSZ476Q --apiIssuer 92c03eb1-db75-47cf-a217-485ede98fb89
+xcrun altool --upload-app   -f build/localpoker.ipa -t ios \
+  --apiKey YMUGSZ476Q --apiIssuer 92c03eb1-db75-47cf-a217-485ede98fb89
+```
+
+Validate first. It catches the same problems the upload would, in seconds,
+without burning a build number.
+
+### Three things that will bite
+
+**`GIT_CONFIG_COUNT` with an empty value.** If the shell exports
+`GIT_CONFIG_COUNT=3` while `GIT_CONFIG_VALUE_2` is an empty string, spawning
+drops the empty variable, so git sees three keys and two values and refuses to
+run. `pod install` then fails cloning a pod from source and the build reports
+only `Unknown error. See logs of the Install pods build phase`. Setting
+`GIT_CONFIG_COUNT=0` for the build is the fix.
+
+**Installing fastlane can break CocoaPods.** `eas build --local` needs fastlane
+for iOS, and `brew install fastlane` upgrades Ruby underneath an existing
+CocoaPods, which then cannot activate its own gems. `brew reinstall cocoapods`
+repairs it.
+
+**Build numbers are spent, not reserved.** `autoIncrement: true` with
+`appVersionSource: remote` takes the next number when a build *starts*, so
+failed attempts leave gaps. Do not expect the next build to be the next integer.
+
+## Getting a build to a tester
+
+A build that finishes processing is still not installable: TestFlight needs a
+group, and internal groups need App Store Connect users. `scripts/asc-api.py`
+does this over the App Store Connect API using the same `.p8` key CI submits
+with, which avoids an Apple ID password and a 2FA prompt entirely.
+
+```bash
+python3 scripts/asc-api.py survey                 # groups, users, builds
+python3 scripts/asc-api.py setup <build-id>       # group + tester + assign
+```
+
+It is idempotent: an existing group is reused and an existing tester is left
+alone, so re-running it is safe.
+
 ## Running a submit by hand instead
 
 Everything below is the manual path, for when you are not going through CI.

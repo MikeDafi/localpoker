@@ -1,5 +1,9 @@
 name: CI
 
+# Pushes and pull requests run the checks only. A native build is never
+# triggered automatically: it costs EAS Build minutes and creates a real App
+# Store Connect submission, so it has to be asked for by hand through
+# workflow_dispatch with `ios_release` ticked.
 on:
   push:
     branches:
