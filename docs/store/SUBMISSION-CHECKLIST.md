@@ -12,13 +12,17 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 4. **EAS submit values are not committed.** `eas.json` has no placeholder submit values. Follow `EAS-SUBMIT.md` to supply Apple, ASC, team, and Google Play credentials without committing secrets or fake IDs.
 5. **Sentry is off by default.** If you want Sentry in the release, add a real DSN, restore real Expo plugin org/project config, and update diagnostics disclosures.
 6. **Screenshots are captured but blocked by ad placeholders.** `docs/store/screenshots/` has a real `1320 x 2868` iPhone 6.9-inch set. Do not upload the four screenshots that show `Reserved banner slot` until that placeholder is hidden or replaced by real disclosed ads.
-7. **Sign in with Apple is very likely required.** The login screen now offers Google sign-in. App Review guideline 4.8 (Login Services) requires an equivalent privacy-respecting option whenever an app offers a third-party login, and Sign in with Apple is the reliable way to satisfy it. Guest play is unlikely to count, because it creates no account the player can carry to another device, which is the whole point of the rule. Plan on shipping Sign in with Apple before submission:
+7. **Google is the only third-party login, deliberately.** App Review guideline 4.8 (Login Services) requires an equivalent privacy-respecting option alongside a third-party login. The decision here is to ship Google plus Guest and not add Sign in with Apple.
+
+   The argument for that reading: 4.8's requirement is that the alternative limit data collection to name and email, let the user keep the email private, and not collect interactions for advertising. **Play as Guest** does better than all three, because it collects no name, no email and no advertising data at all, and it is offered with equal prominence on the same screen.
+
+   The risk is real, though, because Apple has historically read 4.8 as being about *account* options rather than about playing without one. If a reviewer rejects on 4.8, the fix is Sign in with Apple:
    - add `expo-apple-authentication` and request the `FULL_NAME` and `EMAIL` scopes with a SHA-256 nonce;
    - in the Apple Developer portal, enable the Sign in with Apple capability, then create a Services ID and a key for it;
    - enable the Apple provider in Firebase Authentication and paste in the Services ID, Team ID, Key ID and key;
-   - sign in through `OAuthProvider('apple.com')` and reuse the same link-then-fall-back path as `googleAuth.ts`, so an anonymous guest keeps their uid.
+   - sign in through `OAuthProvider('apple.com')` and reuse the link-then-fall-back path in `googleAuth.ts`, so an anonymous guest keeps their uid.
 
-   The Apple portal and Firebase console steps need a human with those accounts, so they are not done here. Submitting with Google only risks a 4.8 rejection.
+   None of that blocks TestFlight, which does not go through App Review for internal testers.
 
 ## 2. Human-owned legal fields required before publishing
 

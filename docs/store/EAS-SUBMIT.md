@@ -125,15 +125,29 @@ same build on your own machine and spends none. Credentials still come from EAS,
 so the binary is signed with exactly what CI would have used.
 
 ```bash
-export PATH="/opt/homebrew/bin:$PATH"
-export GIT_CONFIG_COUNT=0                      # see the gotcha below
 export EXPO_ASC_API_KEY_PATH="$HOME/Downloads/AuthKey_YMUGSZ476Q.p8"
 export EXPO_ASC_KEY_ID=YMUGSZ476Q
 export EXPO_ASC_ISSUER_ID=92c03eb1-db75-47cf-a217-485ede98fb89
 export EXPO_APPLE_TEAM_ID=D7VUBSSP2F EXPO_APPLE_TEAM_TYPE=INDIVIDUAL
 
-npx eas-cli build --platform ios --profile production --local \
-  --non-interactive --output "$PWD/build/localpoker.ipa"
+./scripts/build-ios-local.sh
+```
+
+**Use the script rather than calling `eas build --local` directly.** EAS
+archives the project through git, and `.env` is gitignored, so the build never
+sees the `EXPO_PUBLIC_*` values. Those are inlined into the JS bundle at build
+time, so a build without them installs and runs while reporting every online
+feature as "not configured". That is how build 8 shipped with no working online
+play. The script copies `.env` into the production profile's `env` block,
+builds, and restores `eas.json` on any exit, which is the same thing CI does
+from repository secrets.
+
+Always confirm the values actually landed in the binary before uploading:
+
+```bash
+unzip -q build/localpoker.ipa -d build/ipa-check
+grep -c -a -F "$EXPO_PUBLIC_FIREBASE_API_KEY" \
+  build/ipa-check/Payload/*.app/main.jsbundle    # must be 1, not 0
 ```
 
 Then upload with Apple's own tool, which avoids `eas submit` and so avoids
@@ -157,7 +171,8 @@ without burning a build number.
 drops the empty variable, so git sees three keys and two values and refuses to
 run. `pod install` then fails cloning a pod from source and the build reports
 only `Unknown error. See logs of the Install pods build phase`. Setting
-`GIT_CONFIG_COUNT=0` for the build is the fix.
+`GIT_CONFIG_COUNT=0` for the build is the fix, which `build-ios-local.sh` does
+for you.
 
 **Installing fastlane can break CocoaPods.** `eas build --local` needs fastlane
 for iOS, and `brew install fastlane` upgrades Ruby underneath an existing
