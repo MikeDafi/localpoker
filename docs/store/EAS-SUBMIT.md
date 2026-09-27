@@ -185,9 +185,24 @@ failed attempts leave gaps. Do not expect the next build to be the next integer.
 
 ## Opening the app to the public internet
 
-`expo start --tunnel` is not an option here: Expo implements it with ngrok, and
-ngrok is not permitted. There is no alternate tunnel backend to swap in, and a
-tunnel would only expose a dev server tied to one laptop anyway.
+`expo start --tunnel` is not an option here, and the reason is worth recording
+because the symptom is misleading. Expo implements the tunnel with ngrok, and
+ngrok fails on this machine with `ngrok tunnel took too long to connect`, which
+reads like a network problem. It is not:
+
+- ngrok's endpoints resolve and accept TLS on 443, so egress is open;
+- the binary carries a valid Developer ID signature from ngrok LLC;
+- Rosetta works, since node itself runs as x86_64 here.
+
+The binary is `SIGKILL`ed in well under a second with no output. Copying the
+same bytes to a different filename and running them succeeds, so the kill
+follows the *name*, not the code: an endpoint security agent (Microsoft
+Defender is present) is blocking execution of ngrok by identity. That is a
+deliberate policy control, so the answer is to use a different distribution
+mechanism, not to rename the binary around it.
+
+A tunnel would also only have exposed a dev server tied to one laptop, which
+stops working the moment that laptop sleeps.
 
 The real mechanism for public iOS distribution is a **TestFlight public link**,
 which needs an *external* group; internal groups cannot have one. The setup is
