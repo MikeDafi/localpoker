@@ -4,7 +4,11 @@
 
 Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
-## 1. Current submission blockers
+## 1. Submission status
+
+**1.0.0 was submitted to App Review on 2026-09-27 and is `WAITING_FOR_REVIEW`,** carrying build 13.
+
+Submitting locks the build: shipping a different one means removing the version from review first. The review notes point Apple at "Play as Guest", so no credentials are needed on their end.
 
 Audited against the live App Store Connect record, not just the code. Several fields were silently unset and have been filled in over the API; what remains is listed after them.
 
@@ -22,7 +26,16 @@ Audited against the live App Store Connect record, not just the code. Several fi
 **Still open:**
 
 9. **Done: a real 6.9 inch screenshot set is uploaded.** Six shots at 1320 x 2868, captured from the shipping build and accepted by Apple as COMPLETE: home, game setup, a dealt table, stats, friends and the store. `StoreShots` in `.maestro/xctest/LocalPokerUITests/LocalPokerUITests.swift` drives the capture, so the set can be regenerated whenever the UI changes rather than being re-shot by hand.
-10. **App Privacy questionnaire is unanswered.** Apple exposes no public API for the nutrition label, so it needs the web UI. Use `docs/store/APP-PRIVACY-LABELS.md`; the answer that changed is **Contact Info > Email Address: Yes, linked to the user**, because Google sign-in makes Firebase Authentication store the account email.
+10. **Done: the App Privacy nutrition label is answered and published.** Apple exposes no API for it, so it was filled in the console. Four data types are declared, each used only for App Functionality, each linked to the user's identity, and none used for tracking:
+
+    | Data type | Why |
+    |---|---|
+    | Email Address | Firebase Authentication stores the Google account address |
+    | Gameplay Content | room state, actions, chips and private hole-card views |
+    | Other User Content | friend requests, blocks and abuse reports |
+    | User ID | the Firebase `auth.uid` every rule is scoped to |
+
+    Deliberately not declared, with reasons, so a future reviewer of this file does not "correct" them: **Name** (the app has one handle-shaped screen name, not a legal name), **Device ID** (no advertising SDK), **Product Interaction** (no analytics), **Diagnostics** (Sentry ships disabled), and **Giphy request metadata**. That last one is the arguable case: Apple defines third-party partners as vendors *whose code you added to the app*, and the reaction pack is hotlinked images with no SDK, so transient CDN delivery falls under the real-time-request carve-out rather than collection.
 11. **Done: Giphy content is attributed and declared.** The reaction sheet now carries a "POWERED BY GIPHY" mark beside the GIF row, which is what their terms require wherever their content is shown, and `contentRightsDeclaration` on the app record says the app uses third-party content. Replacing the pack with owned artwork would remove the dependency entirely, which is still the cleaner long-term answer.
 12. **Google is the only third-party login, deliberately.** Guideline 4.8 wants an equivalent privacy-respecting option alongside a third-party login.
 
@@ -33,8 +46,9 @@ Audited against the live App Store Connect record, not just the code. Several fi
     - in the Apple Developer portal, enable the Sign in with Apple capability, then create a Services ID and a key for it;
     - enable the Apple provider in Firebase Authentication and paste in the Services ID, Team ID, Key ID and key;
     - sign in through `OAuthProvider('apple.com')` and reuse the link-then-fall-back path in `googleAuth.ts`, so an anonymous guest keeps their uid.
-13. **EAS submit values are not committed.** `eas.json` carries no submit credentials. Follow `EAS-SUBMIT.md`.
-14. **Sentry is off, so production has no error reporting.** `EXPO_PUBLIC_SENTRY_DSN` is blank, so every `captureError` call reports nowhere. Either set a real DSN and disclose diagnostics in App Privacy, or accept flying blind on 1.0.
+13. **Done: pricing and the App Review contact were set.** Neither was obvious from the code, and both blocked submission outright: the price tier was never chosen (now free in 175 regions), and App Review requires a contact name, email and phone, which were empty.
+14. **EAS submit values are not committed.** `eas.json` carries no submit credentials. Follow `EAS-SUBMIT.md`.
+15. **Sentry is off, so production has no error reporting.** `EXPO_PUBLIC_SENTRY_DSN` is blank, so every `captureError` call reports nowhere. Either set a real DSN and disclose diagnostics in App Privacy, or accept flying blind on 1.0.
 
 **Checked and already compliant:**
 

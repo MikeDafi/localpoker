@@ -87,3 +87,6 @@ docs/qa/xcresult-attachments/
 
 # Local native builds: `eas build --local` drops a signed .ipa and its log here.
 build/
+
+# Playwright MCP scratch output.
+.playwright-mcp/
