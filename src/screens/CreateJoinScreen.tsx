@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Share, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import * as Haptics from 'expo-haptics';
 import * as Crypto from 'expo-crypto';
+import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiPanel } from '../components/WiiPanel';
@@ -11,32 +11,13 @@ import { AdBanner } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { palFromSeed } from '../avatar/palConfig';
 import { useApp } from '../state/AppContext';
-import { subscribeOpenRooms } from '../services/firebase/roomSync';
+import { isRoomCodeTaken, subscribeOpenRooms } from '../services/firebase/roomSync';
+import { CODE_LENGTH, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
 import type { RoomSummary } from '../services/firebase/types';
 import { colors, fonts, radii, spacing } from '../theme/theme';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateJoin'>;
-
-/**
- * A room code is a bearer token: anyone holding it can sit down. It therefore
- * needs a real random source, not `Math.random`, which is predictable from
- * prior outputs, and enough length that guessing is not worth attempting.
- *
- * The alphabet omits characters that are misread aloud or in print (I, O, 0, 1)
- * because these get shared by voice and screenshot.
- */
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 10;
-
-function makeCode(): string {
-  const bytes = Crypto.getRandomBytes(CODE_LENGTH);
-  let out = '';
-  for (let i = 0; i < CODE_LENGTH; i += 1) {
-    out += CODE_ALPHABET[bytes[i]! % CODE_ALPHABET.length];
-  }
-  return out;
-}
 
 export function CreateJoinScreen({ navigation }: Props) {
   const { friends } = useApp();
@@ -44,7 +25,16 @@ export function CreateJoinScreen({ navigation }: Props) {
   const [mode, setMode] = useState<'create' | 'join'>('join');
   const [joinCode, setJoinCode] = useState('');
   const [invited, setInvited] = useState<Record<string, boolean>>({});
-  const roomCode = useMemo(() => makeCode(), []);
+  // Shown immediately so hosting never waits on the network, then replaced if
+  // the availability check finds that code already belongs to a live room.
+  const [roomCode, setRoomCode] = useState(() => makeRoomCode(Crypto.getRandomBytes));
+  useEffect(() => {
+    let active = true;
+    makeAvailableRoomCode(isRoomCodeTaken, Crypto.getRandomBytes)
+      .then((free) => { if (active) setRoomCode(free); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   const onlineFriends = useMemo(() => friends.filter((f) => f.online), [friends]);
   const [openRooms, setOpenRooms] = useState<{ friends: RoomSummary[]; public: RoomSummary[] }>({ friends: [], public: [] });
 
@@ -71,11 +61,11 @@ export function CreateJoinScreen({ navigation }: Props) {
 
   const startCreate = () => navigation.navigate('GameSetup', { mode: 'friends', roomCode });
   const startJoin = () => {
-    if (joinCode.trim().length < 4) {
+    if (!isRoomCodeShaped(joinCode)) {
       Alert.alert('Invalid code', `Enter the ${CODE_LENGTH}-character room code your friend shared.`);
       return;
     }
-    navigation.navigate('Lobby', { roomCode: joinCode.trim().toUpperCase(), host: false });
+    navigation.navigate('Lobby', { roomCode: normalizeRoomCode(joinCode), host: false });
   };
 
   return (
@@ -135,7 +125,7 @@ export function CreateJoinScreen({ navigation }: Props) {
           <>
           <WiiPanel padding={20}>
             <Text style={styles.label}>Enter room code</Text>
-            <TextInput value={joinCode} onChangeText={(t) => setJoinCode(t.toUpperCase())} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="ABCD234XYZ" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
+            <TextInput value={joinCode} onChangeText={(t) => setJoinCode(t.toUpperCase())} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="AB24" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
             <View style={{ height: spacing.md }} />
             <WiiButton label="Join Table" variant="blue" size="lg" fullWidth onPress={startJoin} />
             <Text style={styles.note}>Ask a friend for their room code.</Text>

@@ -41,6 +41,25 @@ Not protected, and not protectable without a trusted server:
 - the host chooses the shuffle seed;
 - the host could publish a state that does not follow from the previous one.
 
+## Room codes are short on purpose
+
+A code is four characters from a 32 character alphabet, so roughly 1.05 million
+of them exist. That is deliberately short: people read these aloud and retype
+them, and the ten character codes they replaced were unpleasant at both ends.
+
+What that buys an attacker is less than it looks. A guessed code only reaches a
+room that is still sitting in the lobby, because the rules refuse joins once a
+game is under way, and a public room is listed anyway so guessing at it gains
+nothing. What it does not protect is a private room that sits open for a long
+time; someone willing to spend a million requests would eventually land on one.
+If that ever matters, lengthen `CODE_LENGTH` in `src/game/roomCode.ts` rather
+than inventing a second mechanism.
+
+The real cost of four characters is collisions, not guessing. By the birthday
+bound a few hundred live rooms already make a clash likely, so the create screen
+checks a candidate with `isRoomCodeTaken` before showing it, and `createRoom`
+still refuses to overwrite a live room as the backstop.
+
 ## Why it is tolerable today, and when it stops being
 
 LocalPoker is play-money only. There are no cash prizes, nothing convertible,

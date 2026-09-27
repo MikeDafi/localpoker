@@ -47,6 +47,7 @@ export {
   setPlayerConnected,
   subscribeActions,
   subscribePrivateView,
+  isRoomCodeTaken,
   subscribeRoom,
   startRoomGame,
 } from './roomSync';

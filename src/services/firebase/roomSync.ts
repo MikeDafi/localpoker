@@ -281,6 +281,28 @@ export const subscribeOpenRooms = (
   };
 };
 
+/**
+ * True when `code` already belongs to a room that cannot be taken over.
+ *
+ * Room codes are short enough that two hosts can land on the same one, so the
+ * create screen checks a candidate before showing it rather than letting the
+ * host discover the clash after they have already read the code out.
+ *
+ * A room that ended long enough ago is reclaimable, so it counts as free here
+ * for the same reason `createRoom` lets it be overwritten.
+ */
+export const isRoomCodeTaken = async (code: string): Promise<boolean> => {
+  const db = getConfiguredDb();
+  if (!db) return false;
+
+  const roomCode = cleanKey(code);
+  if (!roomCode) return false;
+
+  const snapshot = await get(ref(db, roomPath(roomCode)));
+  if (!snapshot.exists()) return false;
+  return !isReclaimableEndedRoom(snapshot.val() as Partial<RoomState> | null);
+};
+
 export const createRoom = async (
   code: string,
   host: RoomPlayer,
