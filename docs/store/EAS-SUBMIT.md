@@ -183,6 +183,34 @@ repairs it.
 `appVersionSource: remote` takes the next number when a build *starts*, so
 failed attempts leave gaps. Do not expect the next build to be the next integer.
 
+## Opening the app to the public internet
+
+`expo start --tunnel` is not an option here: Expo implements it with ngrok, and
+ngrok is not permitted. There is no alternate tunnel backend to swap in, and a
+tunnel would only expose a dev server tied to one laptop anyway.
+
+The real mechanism for public iOS distribution is a **TestFlight public link**,
+which needs an *external* group; internal groups cannot have one. The setup is
+scripted through the App Store Connect API the same way tester management is:
+
+1. Create an external group with `publicLinkEnabled` true. The link is issued
+   immediately, before any review.
+2. Attach a build to that group.
+3. Fill `betaAppReviewDetails` (contact, and notes saying Guest needs no
+   credentials) and create a `betaAppLocalizations` entry with a description,
+   feedback email and privacy URL. External testing refuses to submit without
+   both.
+4. `POST /v1/betaAppReviewSubmissions` for the build.
+
+Beta App Review is separate from, and lighter than, App Store review, but it is
+still a review: the link does not accept installs until the build leaves
+`WAITING_FOR_BETA_REVIEW`. The current link is
+<https://testflight.apple.com/join/etf57Rhk>, carrying build 13, and it admits
+up to 10,000 testers once approved.
+
+Worth knowing: submitting a build for beta review does not disturb an App Store
+submission that is already in flight. Both were in review at the same time here.
+
 ## Getting a build to a tester
 
 A build that finishes processing is still not installable: TestFlight needs a
