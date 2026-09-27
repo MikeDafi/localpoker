@@ -69,6 +69,19 @@ node -e '
   console.log("Injected " + Object.keys(env).length + " EXPO_PUBLIC_ values into eas.json.");
 '
 
+# Sentry changes what the app discloses, not just what it reports. A build that
+# ships a DSN collects Crash Data, and Apple's privacy label has to say so
+# before that build goes out, or the published label is wrong. The label on
+# record today says no diagnostics, which is correct for every build made
+# before the DSN existed.
+if grep -qE '^EXPO_PUBLIC_SENTRY_DSN=.+' .env; then
+  echo
+  echo "NOTE: this build will include Sentry."
+  echo "      App Privacy must declare Diagnostics > Crash Data before it ships."
+  echo "      See docs/store/APP-PRIVACY-LABELS.md."
+  echo
+fi
+
 mkdir -p "$(dirname "$OUTPUT")"
 
 npx eas-cli@latest build \

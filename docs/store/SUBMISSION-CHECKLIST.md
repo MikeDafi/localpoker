@@ -47,8 +47,12 @@ Audited against the live App Store Connect record, not just the code. Several fi
     - enable the Apple provider in Firebase Authentication and paste in the Services ID, Team ID, Key ID and key;
     - sign in through `OAuthProvider('apple.com')` and reuse the link-then-fall-back path in `googleAuth.ts`, so an anonymous guest keeps their uid.
 13. **Done: pricing and the App Review contact were set.** Neither was obvious from the code, and both blocked submission outright: the price tier was never chosen (now free in 175 regions), and App Review requires a contact name, email and phone, which were empty.
-14. **EAS submit values are not committed.** `eas.json` carries no submit credentials. Follow `EAS-SUBMIT.md`.
-15. **Sentry is off, so production has no error reporting.** `EXPO_PUBLIC_SENTRY_DSN` is blank, so every `captureError` call reports nowhere. Either set a real DSN and disclose diagnostics in App Privacy, or accept flying blind on 1.0.
+14. **Done, and intentional: `eas.json` carries no App Store Connect key fields.** This repository is public, so the key id, issuer and path are never committed. The `ios-release` job writes all three into `eas.json` on the runner immediately before submitting, and the local path uses `altool` instead, which needs none of them. All fourteen secrets the workflow references now exist, so neither path is missing anything.
+15. **Done: Sentry is wired up, and it carries one obligation.** A Sentry organisation and a `localpoker` React Native project exist, the DSN is in `.env` and in the repository secrets, and a production export confirms it is inlined into the bundle rather than silently dropped.
+
+    **The obligation:** a build that ships the DSN collects Crash Data, so App Privacy must declare **Diagnostics > Crash Data** before such a build goes out. The label on record today says no diagnostics, which is correct, because build 13 predates the DSN. `scripts/build-ios-local.sh` now prints a reminder whenever it is about to build with Sentry enabled, so this cannot be shipped by accident.
+
+    Sentry also cannot reach build 13, which is the one under review. The first build that reports anything will be 1.0.1 or later.
 
 **Checked and already compliant:**
 
