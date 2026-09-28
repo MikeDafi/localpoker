@@ -1064,6 +1064,37 @@ export const sendEmoteToRoom = async (
   }
 };
 
+/**
+ * Who is sitting at a listed table.
+ *
+ * Read from the room rather than carried on the summary, because the summary
+ * is written by the host and nobody updates it when a guest sits down, so its
+ * player count was stale the moment anybody joined. A lobby is readable by
+ * anyone signed in, which is what makes this possible without a second write
+ * path and without trusting a count the host last touched at creation.
+ */
+export const getRoomSeats = async (
+  code: string,
+  limit = 3,
+): Promise<{ id: string; name: string; palSeed?: string }[]> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return [];
+  try {
+    const snapshot = await get(ref(db, playersPath(roomCode)));
+    const players = (snapshot.val() as Record<string, RoomPlayer> | null) ?? {};
+    return Object.values(players)
+      // The host first, then everyone else, so the row always leads with the
+      // person whose table it is.
+      .sort((a, b) => Number(!!b.isHost) - Number(!!a.isHost) || (a.seatIndex ?? 0) - (b.seatIndex ?? 0))
+      .slice(0, limit)
+      .map((p) => ({ id: p.id, name: p.name, palSeed: p.palSeed }));
+  } catch {
+    // A table we cannot read is simply drawn without faces.
+    return [];
+  }
+};
+
 /** Reactions from everyone else at the table. */
 export const subscribeEmotes = (
   code: string,

@@ -11,7 +11,7 @@ import { AdBanner } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { palFromSeed } from '../avatar/palConfig';
 import { useApp } from '../state/AppContext';
-import { isRoomCodeTaken, subscribeOpenRooms } from '../services/firebase/roomSync';
+import { isRoomCodeTaken, subscribeOpenRooms, getRoomSeats } from '../services/firebase/roomSync';
 import { CODE_LENGTH, filterToCodeAlphabet, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
 import type { RoomSummary } from '../services/firebase/types';
 import { colors, fonts, radii, spacing } from '../theme/theme';
@@ -49,6 +49,28 @@ export function CreateJoinScreen({ navigation }: Props) {
   const [openRooms, setOpenRooms] = useState<{ friends: RoomSummary[]; public: RoomSummary[] }>({ friends: [], public: [] });
 
   useEffect(() => subscribeOpenRooms(setOpenRooms), []);
+
+  /*
+   * Who is already sitting at each listed table.
+   *
+   * Read from the rooms rather than the summaries: a summary is written by
+   * the host and nobody refreshes it when a guest sits down, so its "1 seated"
+   * was fixed at creation. Re-read whenever the set of listed codes changes,
+   * which is also when someone joins or leaves one of them.
+   */
+  const [seats, setSeats] = useState<Record<string, { id: string; name: string; palSeed?: string }[]>>({});
+  const listedCodes = useMemo(
+    () => [...openRooms.friends, ...openRooms.public].map((r) => r.code).join(','),
+    [openRooms],
+  );
+  useEffect(() => {
+    let active = true;
+    const codes = listedCodes ? listedCodes.split(',') : [];
+    Promise.all(codes.map(async (code) => [code, await getRoomSeats(code)] as const))
+      .then((pairs) => { if (active) setSeats(Object.fromEntries(pairs)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [listedCodes]);
 
   const joinListed = (summary: RoomSummary) => {
     Haptics.selectionAsync();
@@ -124,6 +146,7 @@ export function CreateJoinScreen({ navigation }: Props) {
               title="Friends' tables"
               hint="Private tables your friends opened."
               rooms={openRooms.friends}
+              seats={seats}
               tone="friends"
               onJoin={joinListed}
               emptyText="No friends have a table open right now."
@@ -132,6 +155,7 @@ export function CreateJoinScreen({ navigation }: Props) {
               title="Public tables"
               hint="Open to anyone."
               rooms={openRooms.public}
+              seats={seats}
               tone="public"
               onJoin={joinListed}
               emptyText="No public tables open right now."
@@ -152,13 +176,14 @@ export function CreateJoinScreen({ navigation }: Props) {
  * so the two differ by accent colour and by a badge rather than by position
  * alone.
  */
-function RoomList({ title, hint, rooms, tone, onJoin, emptyText }: {
+function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats }: {
   title: string;
   hint: string;
   rooms: RoomSummary[];
   tone: 'friends' | 'public';
   onJoin: (room: RoomSummary) => void;
   emptyText: string;
+  seats: Record<string, { id: string; name: string; palSeed?: string }[]>;
 }) {
   const accent = tone === 'friends' ? colors.blue : colors.felt;
   return (
@@ -181,8 +206,19 @@ function RoomList({ title, hint, rooms, tone, onJoin, emptyText }: {
                   <Text style={styles.roomBadgeText}>{tone === 'friends' ? 'FRIEND' : 'PUBLIC'}</Text>
                 </View>
               </View>
+              {/* Faces, so you can see who is already there rather than
+                  deciding from a host name and a blind level alone. */}
+              {(seats[room.code] ?? []).length > 0 && (
+                <View style={styles.seatFaces}>
+                  {(seats[room.code] ?? []).slice(0, 3).map((p) => (
+                    <View key={p.id} style={styles.seatFace}>
+                      <AnimatedPal config={palFromSeed(p.palSeed || p.id)} size={26} alive />
+                    </View>
+                  ))}
+                </View>
+              )}
               <Text style={styles.note}>
-                {`#${room.code} · ${room.smallBlind}/${room.bigBlind} · ${room.playerCount} seated`}
+                {`#${room.code} · ${room.smallBlind}/${room.bigBlind} · ${(seats[room.code] ?? []).length || room.playerCount} seated`}
               </Text>
             </View>
             <WiiButton label="Join" variant="blue" size="sm" onPress={() => onJoin(room)} />
@@ -202,6 +238,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm, paddingLeft: spacing.md,
     borderLeftWidth: 3, marginTop: spacing.sm,
   },
+  seatFaces: { flexDirection: 'row', marginTop: 6, marginBottom: 2 },
+  seatFace: { marginRight: -8 },
   roomTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   roomBadge: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
   roomBadgeText: { fontFamily: fonts.bold, fontSize: 9, color: '#fff', letterSpacing: 0.6 },

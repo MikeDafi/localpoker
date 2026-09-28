@@ -50,6 +50,7 @@ export {
   subscribeActions,
   sendEmoteToRoom,
   subscribeEmotes,
+  getRoomSeats,
   subscribePrivateView,
   isRoomCodeTaken,
   subscribeRoom,
