@@ -139,19 +139,22 @@ old rules already allowed, and fails with `PERMISSION_DENIED` only on whatever
 the new rules were meant to permit.
 
 ```sh
-npx firebase-tools database:set /.settings/rules database.rules.json \
-  --project localpoker --instance localpoker-default-rtdb --force
+npx firebase-tools deploy --only database --project localpoker
 ```
+
+This validates the syntax before releasing, which the raw `database:set` form
+does not. `--project` is required because there is no `.firebaserc` checked in;
+without it the CLI fails with the actively unhelpful
+`Failed to get details for project: undefined`.
 
 Then read them back and compare against the file, because a successful publish
 and a correct publish are not the same thing.
 
-**Outstanding:** `presence/$uid` and the `palJson` field on `users/$uid` were
-added for live friend status and Pal propagation, and are **not yet published**.
-Until they are, friends stay gray and Pal edits do not travel, both failing with
-permission denied. Nothing else regresses: the room creation fix deliberately
-needs no rules change, because it reorders writes to satisfy the rules that are
-already live.
+**Status: published.** `presence/$uid`, the `palJson` field on `users/$uid`, and
+`pushTokens/$uid` are all live, so friend status, Pal propagation and
+notifications work against the deployed rules. The room creation fix deliberately
+needed no rules change at all, because it reorders writes to satisfy rules that
+were already live.
 
 ## 4. Friend identity model
 
