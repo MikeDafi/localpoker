@@ -6,7 +6,7 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 ## 1. Submission status
 
-**1.0.0 is `WAITING_FOR_REVIEW`, carrying build 16.**
+**1.0.0 is `WAITING_FOR_REVIEW`, carrying build 17.**
 
 Build 13 was pulled and replaced on 2026-09-27. It predated the fix for rooms failing to create whenever the host had friends or ticked public, so "play with friends" (the app's headline feature, and its name) failed outright with `PERMISSION_DENIED`. A reviewer exercising it would have hit that, so replacing the build most likely avoided a 2.1 rejection rather than merely costing queue time. Build 16 also carries four-character room codes, friend presence, Pal propagation and notifications.
 
@@ -54,7 +54,7 @@ Audited against the live App Store Connect record, not just the code. Several fi
 
     **The obligation, now discharged:** a build that ships the DSN collects Crash Data, so App Privacy has to declare **Diagnostics > Crash Data**. That is now declared and published: used for App Functionality, **not** linked to identity, because `sendDefaultPii` is false and nothing calls `Sentry.setUser`. Performance Data and Other Diagnostic Data stay undeclared, since `tracesSampleRate` is 0.
 
-    Build 16 is the first build that ships the DSN, so it is the first that can report anything.
+    Build 16 was the first build to ship the DSN, so it is the first that can report anything.
 
 16. **Push notifications carry the same kind of obligation, for 1.0.1.** Friend requests and room invites now notify the recipient, sent peer to peer via the Expo push service because the Spark plan has no Cloud Functions.
 

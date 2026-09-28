@@ -55,7 +55,7 @@ Recommended **Tracking** answer: **No**. The current 1.0 path has no IDFA access
 - Do not answer Yes to tracking, IDFA, or advertising data for the current placeholder-ad build.
 - Do disclose Firebase user IDs and gameplay content if online rooms are enabled.
 - Diagnostics > Crash Data and Identifiers > Device ID are **already declared and published**, ahead of the 1.0.1 build that carries Sentry and notifications. Nothing further is needed for either at submission time.
-- The label and the binary now agree: build 16, submitted 2026-09-27, is the first to carry both Sentry and notifications. The declarations were published shortly before it, while build 13 was still in review, which was a deliberate brief over-declaration rather than an accident.
+- The label and the binary now agree: build 16, submitted 2026-09-27, was the first to carry both Sentry and notifications, and build 17 supersedes it. The declarations were published shortly before it, while build 13 was still in review, which was a deliberate brief over-declaration rather than an accident.
 - If Firebase is not configured for production, either narrow the privacy label or do not advertise online rooms.
 
 ## Apple App Privacy, if Sentry is enabled

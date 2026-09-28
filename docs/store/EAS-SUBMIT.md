@@ -374,6 +374,50 @@ Users and Access > Integrations > App Store Connect API; it is not a secret on
 its own, but it lives in repository secrets rather than in this file because
 naming it alongside the key id tells an attacker exactly what to phish for.
 
+## An approved build is not a distributed build
+
+A build passing beta review does **not** put it in front of testers. It also
+has to be added to each beta group, and nothing warns you that it has not
+been. Build 16 sat `APPROVED` while both groups still served build 13, so the
+tester saw a fortnight-old UI and reported bugs that had already been fixed.
+
+Check before believing a build has shipped:
+
+```
+GET /v1/betaGroups/<groupId>/builds
+```
+
+and add it explicitly:
+
+```
+POST /v1/betaGroups/<groupId>/relationships/builds
+{"data": [{"type": "builds", "id": "<buildId>"}]}
+```
+
+Both groups need it: `Internal Testers` and the public-link `Public Beta`.
+
+A related trap when reporting a bug from TestFlight: **room codes are not
+comparable across builds.** Build 13 issued ten-character codes and 16 onwards
+issue four, so a host and a joiner on different builds can never resolve the
+same code no matter what else is correct.
+
+## Half-built review submissions block the next one
+
+Creating a `reviewSubmission` and then failing to attach its
+`reviewSubmissionItem` leaves an orphan in `READY_FOR_REVIEW` that holds the
+version. The next submission then fails with a 409 that names the wrong
+problem:
+
+```
+ENTITY_ERROR.RELATIONSHIP.REQUIRED
+App ... must have an approved appStoreVersions for platform IOS
+```
+
+That reads like the app has never been approved. It actually means the version
+is already spoken for. Cancel any submission sitting in `READY_FOR_REVIEW`
+before creating a new one, and check the status of the `reviewSubmissionItems`
+POST rather than assuming it worked.
+
 ## Swapping the build on a version that is already in review
 
 App Store Connect will not let a new build attach to a version that is
