@@ -18,6 +18,7 @@ import {
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson } from '../game/settings';
+import type { GameSettings } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
@@ -132,10 +133,40 @@ export function LobbyScreen({ navigation, route }: Props) {
     return connected ? [me] : [];
   }, [room, me, connected]);
 
+  /**
+   * The settings the table will actually use.
+   *
+   * Read from the room rather than from this device, so a joiner sees the
+   * host's blinds instead of their own leftover preferences. Falls back to
+   * what the host picked in Game Setup for the moment before the room lands.
+   */
+  const tableSettings = useMemo(() => {
+    if (room?.settingsJson) {
+      try {
+        return normalizeSettings(JSON.parse(room.settingsJson) as Partial<GameSettings>);
+      } catch {
+        // A corrupt payload should not blank the panel.
+      }
+    }
+    return hostSettings ?? DEFAULT_GAME_SETTINGS;
+  }, [room?.settingsJson, hostSettings]);
+
   const canStart = host && connected && players.length >= 2;
 
   const share = async () => {
     try { await Share.share({ message: `Join my LocalPoker table! Room code: ${roomCode}` }); } catch {}
+  };
+
+  /**
+   * Re-open Game Setup for a room that already exists.
+   *
+   * Coming back replaces this screen, which runs `createRoom` again. That now
+   * recognises the host returning to their own lobby and refreshes the
+   * settings in place rather than reporting a collision, so the players who
+   * have already joined keep their seats.
+   */
+  const editSettings = () => {
+    navigation.replace('GameSetup', { mode: 'friends', roomCode });
   };
 
   const startGame = async () => {
@@ -177,6 +208,32 @@ export function LobbyScreen({ navigation, route }: Props) {
           <Text style={styles.status}>{status}</Text>
         </WiiPanel>
 
+        <WiiPanel>
+          <View style={styles.playersHeader}>
+            <Text style={styles.section}>Table rules</Text>
+            {host ? (
+              <WiiButton label="Change" variant="white" size="sm" onPress={editSettings} />
+            ) : null}
+          </View>
+          <View style={styles.settingsGrid}>
+            {[
+              ['Blinds', `${tableSettings.smallBlind} / ${tableSettings.bigBlind}`],
+              ['Ante', tableSettings.ante > 0 ? String(tableSettings.ante) : 'None'],
+              ['Starting stack', String(tableSettings.startingStack)],
+              ['Max players', String(tableSettings.maxPlayers)],
+              ['Table', tableSettings.roomVisibility === 'public' ? 'Public' : 'Private'],
+            ].map(([k, v]) => (
+              <View key={k} style={styles.settingsRow}>
+                <Text style={styles.settingsKey}>{k}</Text>
+                <Text style={styles.settingsValue}>{v}</Text>
+              </View>
+            ))}
+          </View>
+          {host ? (
+            <Text style={styles.settingsHint}>Change these until the first hand is dealt.</Text>
+          ) : null}
+        </WiiPanel>
+
         {host ? (
           <WiiButton
             label={canStart ? 'Start Game' : 'Waiting for players…'}
@@ -209,6 +266,11 @@ export function LobbyScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   label: { fontFamily: fonts.semibold, fontSize: 13, color: colors.inkSoft, marginBottom: 8 },
+  settingsGrid: { gap: 2 },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7 },
+  settingsKey: { fontFamily: fonts.medium, fontSize: 14, color: colors.inkSoft, flexShrink: 1, marginRight: spacing.md },
+  settingsValue: { fontFamily: fonts.semibold, fontSize: 15, color: colors.ink },
+  settingsHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.inkMuted, marginTop: 10 },
   codeBox: { backgroundColor: colors.panelAlt, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 16, alignItems: 'center', marginBottom: spacing.md },
   code: { fontFamily: fonts.bold, fontSize: 34, letterSpacing: 6, color: colors.blueDeep },
   playersHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },

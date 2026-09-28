@@ -304,6 +304,46 @@ export const isRoomCodeTaken = async (code: string): Promise<boolean> => {
   return !isReclaimableEndedRoom(snapshot.val() as Partial<RoomState> | null);
 };
 
+/**
+ * Publish the entries that let other people find a room.
+ *
+ * Deliberately separate from the room write and deliberately allowed to fail:
+ * these are hints. A room missing them is harder to find, not broken, so a
+ * refused invite must never read to the host as a refused table.
+ */
+const publishDiscovery = async (
+  db: Database,
+  roomCode: string,
+  hostId: string,
+  hostName: string,
+  options: { visibility?: RoomVisibility; friendUids?: readonly string[] },
+  status: string,
+  settingsJson: string,
+): Promise<void> => {
+  const visibility: RoomVisibility = options.visibility === 'public' ? 'public' : 'private';
+  const summary = roomSummaryOf(
+    { code: roomCode, hostId, status } as RoomState,
+    settingsJson, hostId, hostName, visibility,
+  );
+  const discovery: Record<string, unknown> = {};
+  if (visibility === 'public') discovery[publicRoomPath(roomCode)] = summary;
+  // Friends get told about the table either way: a private room is private
+  // from strangers, not from the people it is for.
+  for (const friendUid of options.friendUids ?? []) {
+    if (friendUid && friendUid !== hostId) discovery[roomInvitePath(friendUid, roomCode)] = summary;
+  }
+  if (Object.keys(discovery).length === 0) return;
+  try {
+    await update(ref(db), discovery);
+    for (const friendUid of options.friendUids ?? []) {
+      if (friendUid && friendUid !== hostId) void sendPush(friendUid, 'room-invite', hostName, roomCode);
+    }
+  } catch (error) {
+    reportFirebaseError('create-room-discovery', error);
+    console.warn('Room created but could not publish invites.', error);
+  }
+};
+
 export const createRoom = async (
   code: string,
   host: RoomPlayer,
@@ -329,6 +369,22 @@ export const createRoom = async (
     const existing = await get(roomRef);
     if (existing.exists()) {
       const existingRoom = existing.val() as Partial<RoomState> | null;
+      // Re-entering a lobby you already host is not a collision, it is the
+      // normal result of stepping back into Game Setup to change the blinds
+      // and returning. Treating it as one meant the host was told "Room
+      // already exists" about their own table, and editing settings after
+      // creating a room was impossible. Refresh the settings in place and
+      // leave the players who have already joined exactly where they are.
+      if (existingRoom?.hostId === hostId && existingRoom?.status === 'lobby') {
+        await update(roomRef, {
+          settingsJson,
+          visibility: options.visibility === 'public' ? 'public' : 'private',
+          hostName: host.name,
+        });
+        await publishDiscovery(db, roomCode, hostId, host.name, options, 'lobby', settingsJson);
+        await registerDisconnect(db, roomCode, hostId);
+        return { ok: true };
+      }
       if (!isReclaimableEndedRoom(existingRoom)) {
         return { ok: false, reason: 'Room already exists.' };
       }
@@ -372,33 +428,7 @@ export const createRoom = async (
       [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
     });
 
-    const summary = roomSummaryOf(room, settingsJson, hostId, host.name, visibility);
-    const discovery: Record<string, unknown> = {};
-    if (visibility === 'public') {
-      discovery[publicRoomPath(roomCode)] = summary;
-    }
-    // Friends get told about the table either way: a private room is private
-    // from strangers, not from the people it is for.
-    for (const friendUid of options.friendUids ?? []) {
-      if (friendUid && friendUid !== hostId) discovery[roomInvitePath(friendUid, roomCode)] = summary;
-    }
-
-    if (Object.keys(discovery).length > 0) {
-      try {
-        await update(ref(db), discovery);
-        // Tell the friends who were invited, once the invite actually exists.
-        for (const friendUid of options.friendUids ?? []) {
-          if (friendUid && friendUid !== hostId) {
-            void sendPush(friendUid, 'room-invite', host.name, roomCode);
-          }
-        }
-      } catch (error) {
-        // The table itself exists and is playable, so a failed invite must not
-        // read as a failed table. Report it and carry on.
-        reportFirebaseError('create-room-discovery', error);
-        console.warn('Room created but could not publish invites.', error);
-      }
-    }
+    await publishDiscovery(db, roomCode, hostId, host.name, options, 'lobby', settingsJson);
 
     await registerDisconnect(db, roomCode, hostId, true);
     return { ok: true };
@@ -471,6 +501,14 @@ const reconcileHostPresence = async (roomCode: string, room: RoomState | null): 
 };
 
 /** Adds or updates a player in an existing room and marks them connected. */
+/** True when Firebase refused a read or write, rather than failing some other way. */
+const isPermissionDenied = (error: unknown): boolean => {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && code.toUpperCase().includes('PERMISSION_DENIED')) return true;
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === 'string' && message.toUpperCase().includes('PERMISSION_DENIED');
+};
+
 export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result> => {
   const db = getConfiguredDb();
   if (!db) {
@@ -487,7 +525,19 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
   }
 
   try {
-    const roomSnapshot = await get(ref(db, roomPath(roomCode)));
+    let roomSnapshot;
+    try {
+      roomSnapshot = await get(ref(db, roomPath(roomCode)));
+    } catch (readError) {
+      // A room is readable to outsiders only while it sits in the lobby, so a
+      // refused read here means the room exists and has already dealt in. Say
+      // that, rather than surfacing a raw permission error for what is really
+      // an ordinary "you are too late".
+      if (isPermissionDenied(readError)) {
+        return { ok: false, reason: 'That game has already started.' };
+      }
+      throw readError;
+    }
     if (!roomSnapshot.exists()) {
       return { ok: false, reason: 'Room does not exist.' };
     }
@@ -495,6 +545,9 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
     const room = roomSnapshot.val() as Partial<RoomState> | null;
     if (room?.status === 'ended') {
       return { ok: false, reason: 'Room has ended.' };
+    }
+    if (room?.status && room.status !== 'lobby') {
+      return { ok: false, reason: 'That game has already started.' };
     }
 
     const playerValue = toDbPlayer(player, { id: playerId, connected: true });

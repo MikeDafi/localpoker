@@ -3,7 +3,20 @@
     "localpoker": {
       "rooms": {
         "$code": {
-          ".read": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
+          /*
+           * A room still in the lobby is readable by anyone signed in.
+           *
+           * Anyone holding the code is already permitted to seat themselves
+           * under players/$uid, so withholding the read granted no privacy and
+           * only made joining impossible: joinRoom confirms the room exists
+           * before writing, and that read was denied for precisely the people
+           * who needed it. The symptom was a joiner told either "permission
+           * denied" or "room does not exist" for a room that plainly existed.
+           *
+           * Once status leaves 'lobby' the room narrows back to its host and
+           * seated players, so nobody can watch a game they never joined.
+           */
+          ".read": "auth != null && (!data.exists() || data.child('status').val() === 'lobby' || data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
           ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid) || (data.exists() && data.child('hostId').val() === auth.uid) || (data.exists() && data.child('status').val() === 'ended' && data.child('endedAt').isNumber() && data.child('endedAt').val() < now - 86400000 && newData.child('hostId').val() === auth.uid))",
           ".validate": "newData.hasChildren(['code','hostId']) || !newData.exists()",
           "code": {

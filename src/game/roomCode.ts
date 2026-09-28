@@ -47,6 +47,18 @@ export function makeRoomCode(random: RandomBytes): string {
   return out;
 }
 
+/**
+ * Keep only characters a room code can actually contain.
+ *
+ * The alphabet deliberately omits I, O, 0 and 1 so a code read aloud or off a
+ * screen cannot be mistyped into a different one. Without filtering, typing
+ * the letter O produced a code that could never match any room and an error
+ * that did not explain why, so the character is dropped as it is typed.
+ */
+export function filterToCodeAlphabet(input: string): string {
+  return [...input.toUpperCase()].filter((ch) => CODE_ALPHABET.includes(ch)).join('').slice(0, CODE_LENGTH);
+}
+
 /** True when `input` could be a room code, ignoring case and stray spaces. */
 export function isRoomCodeShaped(input: string): boolean {
   const code = input.trim().toUpperCase();

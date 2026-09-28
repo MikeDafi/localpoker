@@ -7,6 +7,7 @@ import {
   makeAvailableRoomCode,
   makeRoomCode,
   normalizeRoomCode,
+  filterToCodeAlphabet,
 } from '../roomCode';
 
 /**
@@ -105,5 +106,35 @@ describe('makeAvailableRoomCode', () => {
     const isTaken = vi.fn(async () => { throw new Error('offline'); });
     const code = await makeAvailableRoomCode(isTaken, bytesOf(0, 0, 0, 0));
     expect(code).toBe('AAAA');
+  });
+});
+
+
+/**
+ * The alphabet omits I, O, 0 and 1 so a code cannot be misread. Typing one of
+ * them used to produce a code that matched no room, with an error that did not
+ * explain why, so they are dropped as the player types instead.
+ */
+describe('filterToCodeAlphabet', () => {
+  it('drops the characters the alphabet deliberately excludes', () => {
+    expect(filterToCodeAlphabet('IO01')).toBe('');
+    expect(filterToCodeAlphabet('A0B1')).toBe('AB');
+  });
+
+  it('uppercases, so a lowercase code still works', () => {
+    expect(filterToCodeAlphabet('ab24')).toBe('AB24');
+  });
+
+  it('strips spaces and punctuation people paste in', () => {
+    expect(filterToCodeAlphabet(' AB-24 ')).toBe('AB24');
+  });
+
+  it('never exceeds one code length, however much is pasted', () => {
+    expect(filterToCodeAlphabet('ABCDEFGH')).toHaveLength(CODE_LENGTH);
+  });
+
+  it('leaves a already valid code untouched', () => {
+    expect(filterToCodeAlphabet('AB24')).toBe('AB24');
+    expect(isRoomCodeShaped(filterToCodeAlphabet('AB24'))).toBe(true);
   });
 });

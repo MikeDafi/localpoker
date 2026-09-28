@@ -341,6 +341,39 @@ function logOk(message) {
     await assertSucceeds(get(ref(strangerDb, 'localpoker/pushTokens/host')));
     logOk('a pending requester can read a token, and only while pending');
 
+    // The join path. A joiner has to establish the room exists before seating
+    // themselves, and the old rule denied exactly that read, so nobody who was
+    // not already in a room could ever get into one.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/JOIN1'), {
+        code: 'JOIN1', hostId: 'host', status: 'lobby', createdAt: 40,
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: true } },
+      });
+      await set(ref(ctx.database(), 'localpoker/rooms/LIVE1'), {
+        code: 'LIVE1', hostId: 'host', status: 'playing', createdAt: 41,
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: true } },
+      });
+    });
+
+    await assertSucceeds(get(ref(strangerDb, 'localpoker/rooms/JOIN1')));
+    logOk('someone holding the code can read a room that is still in the lobby');
+
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/rooms/JOIN1/players/stranger'), {
+      id: 'stranger', name: 'Stranger', isHost: false, connected: true,
+    }));
+    logOk('and can then seat themselves, which is the whole join flow');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/rooms/LIVE1')));
+    logOk('but cannot read a game already in progress they never joined');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/LIVE1/players/stranger'), {
+      id: 'stranger', name: 'Stranger', isHost: false, connected: true,
+    }));
+    logOk('and cannot seat themselves into a game already under way');
+
+    await assertSucceeds(get(ref(strangerDb, 'localpoker/rooms/NOSUCH')));
+    logOk('a room that does not exist still reads as empty rather than denied');
+
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {
         code: 'BADHOST',

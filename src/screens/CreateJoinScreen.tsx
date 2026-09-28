@@ -12,7 +12,7 @@ import { AnimatedPal } from '../components/AnimatedPal';
 import { palFromSeed } from '../avatar/palConfig';
 import { useApp } from '../state/AppContext';
 import { isRoomCodeTaken, subscribeOpenRooms } from '../services/firebase/roomSync';
-import { CODE_LENGTH, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
+import { CODE_LENGTH, filterToCodeAlphabet, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
 import type { RoomSummary } from '../services/firebase/types';
 import { colors, fonts, radii, spacing } from '../theme/theme';
 import { RootStackParamList } from '../navigation/types';
@@ -62,7 +62,7 @@ export function CreateJoinScreen({ navigation }: Props) {
   const startCreate = () => navigation.navigate('GameSetup', { mode: 'friends', roomCode });
   const startJoin = () => {
     if (!isRoomCodeShaped(joinCode)) {
-      Alert.alert('Invalid code', `Enter the ${CODE_LENGTH}-character room code your friend shared.`);
+      Alert.alert('Invalid code', `Enter the ${CODE_LENGTH} character room code your friend shared.`);
       return;
     }
     navigation.navigate('Lobby', { roomCode: normalizeRoomCode(joinCode), host: false });
@@ -125,7 +125,7 @@ export function CreateJoinScreen({ navigation }: Props) {
           <>
           <WiiPanel padding={20}>
             <Text style={styles.label}>Enter room code</Text>
-            <TextInput value={joinCode} onChangeText={(t) => setJoinCode(t.toUpperCase())} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="AB24" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
+            <TextInput value={joinCode} onChangeText={(t) => setJoinCode(filterToCodeAlphabet(t))} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="AB24" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
             <View style={{ height: spacing.md }} />
             <WiiButton label="Join Table" variant="blue" size="lg" fullWidth onPress={startJoin} />
             <Text style={styles.note}>Ask a friend for their room code.</Text>
