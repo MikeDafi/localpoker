@@ -558,10 +558,28 @@ export function TableScreen({ navigation, route }: Props) {
 
     if (roomCode && firebaseOnline) {
       const warnFailed = (reason: string) => {
-        Alert.alert('Action not sent', reason, [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Retry', onPress: () => doHumanAction(action, amount) },
-        ]);
+        /*
+         * Only offer to retry something that retrying could fix.
+         *
+         * A refused permission is a decision, not a hiccup, so re-sending the
+         * identical write produces the identical refusal. Offering Retry for
+         * it turned one rejected bet into an unbounded loop of the same
+         * dialog, which is how the sequence bug presented: not as "betting is
+         * broken" but as a popup that would not go away.
+         */
+        const permanent = /permission[ _]denied/i.test(reason);
+        Alert.alert(
+          'Action not sent',
+          permanent
+            ? 'The table refused that action. It may have already moved on, so reopen the room and try again.'
+            : reason,
+          permanent
+            ? [{ text: 'OK', style: 'cancel' }]
+            : [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Retry', onPress: () => doHumanAction(action, amount) },
+              ],
+        );
       };
 
       // One timestamp for both fields. Two `Date.now()` calls can straddle a

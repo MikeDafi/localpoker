@@ -96,10 +96,6 @@ const toDbPlayer = (player: RoomPlayer, overrides: Partial<RoomPlayer> = {}): Ro
   };
 };
 
-const safePositiveSeq = (value: unknown): number | null =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= MAX_ACTION_SEQ
-    ? value
-    : null;
 
 const toDbAction = (action: RoomAction, seq: number): RoomAction => ({
   seq,
@@ -109,7 +105,7 @@ const toDbAction = (action: RoomAction, seq: number): RoomAction => ({
   ts: Number.isFinite(action.ts) && action.ts > 0 ? action.ts : (serverTimestamp() as unknown as number),
 });
 
-const nextActionSeq = (requestedSeq: unknown, roomSeq: unknown): Result & { seq?: number } => {
+const nextActionSeq = (roomSeq: unknown): Result & { seq?: number } => {
   const current = roomSeq === null || typeof roomSeq === 'undefined' ? 0 : roomSeq;
   if (typeof current !== 'number' || !Number.isSafeInteger(current) || current < 0 || current >= MAX_ACTION_SEQ) {
     return {
@@ -118,8 +114,22 @@ const nextActionSeq = (requestedSeq: unknown, roomSeq: unknown): Result & { seq?
     };
   }
 
-  const requested = safePositiveSeq(requestedSeq) ?? Date.now();
-  const seq = Math.max(requested, current + 1);
+  /*
+   * The next seat in the sequence, and nothing cleverer.
+   *
+   * This used to be Math.max(requestedSeq, current + 1), and the caller passes
+   * Date.now() as the requested value, so the very first action of every hand
+   * asked to jump the counter from 0 to about 1.7e12. The rule on actionSeq
+   * allows an increase of at most 100, to stop anyone exhausting the sequence,
+   * so every action was refused with PERMISSION_DENIED and the retry button
+   * re-sent the identical doomed write forever.
+   *
+   * Ordering by time is already carried by `ts`. The sequence only has to be
+   * monotonic, so it counts. Two players acting at once both compute the same
+   * number and one write loses the race, which is what the retry loop in
+   * pushAction is for: it re-reads the counter and takes the next seat.
+   */
+  const seq = current + 1;
   if (!Number.isSafeInteger(seq) || seq > MAX_ACTION_SEQ) {
     return {
       ok: false,
@@ -175,11 +185,24 @@ const registerDisconnect = async (
   try {
     await onDisconnect(ref(db, playerConnectedPath(code, playerId))).set(false);
     if (endRoomOnDisconnect) {
+      /*
+       * A host dropping off used to end the table there and then, so locking
+       * the phone, taking a call, or walking through a tunnel killed everyone
+       * else's game. Losing a connection is not the same as leaving.
+       *
+       * The room is marked as awaiting the host instead. It stays playable,
+       * the host can walk back into it, and only once nobody has been near it
+       * for ABANDONED_AFTER_MS does it become fair game for deletion. Leaving
+       * on purpose still ends it immediately, because that is a decision
+       * rather than an accident.
+       */
       await onDisconnect(ref(db, roomPath(code))).update({
-        status: 'ended',
-        endedReason: 'Host disconnected.',
-        endedAt: serverTimestamp() as unknown as number,
+        hostAwayAt: serverTimestamp() as unknown as number,
       });
+      // Registering means the host is here now, so clear any marker left by a
+      // previous drop; otherwise a host who reconnected still looked absent
+      // and the table stayed one sweep away from deletion.
+      await set(ref(db, `${roomPath(code)}/hostAwayAt`), null);
     }
   } catch (error) {
     reportFirebaseError('register-disconnect', error);
@@ -336,13 +359,63 @@ const publishDiscovery = async (
   if (Object.keys(discovery).length === 0) return;
   try {
     await update(ref(db), discovery);
+
+    /*
+     * Withdraw the advert automatically if the host's connection drops.
+     *
+     * Ending the room on disconnect was already handled, but the entries that
+     * advertise it were not, so a table whose host had long gone kept
+     * appearing under Join Room and simply refused anyone who tapped it.
+     * Firebase runs these server-side, which is the only way to clean up
+     * after a client that is no longer there and the closest thing to a
+     * scheduled job available without Cloud Functions.
+     */
+    for (const path of Object.keys(discovery)) {
+      try {
+        await onDisconnect(ref(db, path)).remove();
+      } catch (error) {
+        reportFirebaseError('register-discovery-disconnect', error);
+      }
+    }
+
+    /*
+     * Notify the friends who are not already looking at the app.
+     *
+     * Someone online sees the invite arrive in their Join Room list, so a push
+     * on top of that is just a second copy of the same news. Someone away has
+     * no other way of hearing about it, which is the case the notification
+     * exists for. Presence is read rather than assumed, and a failed read
+     * falls through to sending, because a missed invite is worse than a
+     * duplicate one.
+     */
     for (const friendUid of options.friendUids ?? []) {
-      if (friendUid && friendUid !== hostId) void sendPush(friendUid, 'room-invite', hostName, roomCode);
+      if (!friendUid || friendUid === hostId) continue;
+      void (async () => {
+        let away = true;
+        try {
+          const snap = await get(ref(db, `localpoker/presence/${friendUid}/online`));
+          away = snap.val() !== true;
+        } catch {
+          // Unreadable presence is not a reason to stay silent.
+        }
+        if (away) void sendPush(friendUid, 'room-invite', hostName, roomCode);
+      })();
     }
   } catch (error) {
     reportFirebaseError('create-room-discovery', error);
     console.warn('Room created but could not publish invites.', error);
   }
+};
+
+/** Everyone this room advertised itself to, so the advert can be withdrawn. */
+const invitedUidsOf = (room: Partial<RoomState> | null): string[] =>
+  Object.keys((room as { invited?: Record<string, unknown> } | null)?.invited ?? {});
+
+/** Paths that advertise a room, which stop being true the moment it starts. */
+const discoveryTeardown = (room: Partial<RoomState> | null, roomCode: string): Record<string, null> => {
+  const updates: Record<string, null> = { [publicRoomPath(roomCode)]: null };
+  for (const uid of invitedUidsOf(room)) updates[roomInvitePath(uid, roomCode)] = null;
+  return updates;
 };
 
 export const createRoom = async (
@@ -393,6 +466,10 @@ export const createRoom = async (
 
     const visibility: RoomVisibility = options.visibility === 'public' ? 'public' : 'private';
     const hostPlayer = toDbPlayer(host, { id: hostId, connected: true, isHost: true });
+    const invitedUids = (options.friendUids ?? []).filter((uid) => uid && uid !== hostId);
+    const invitedMap = invitedUids.length
+      ? Object.fromEntries(invitedUids.map((uid) => [uid, true]))
+      : null;
     const room: RoomState = {
       code: roomCode,
       hostId,
@@ -405,6 +482,10 @@ export const createRoom = async (
         [hostId]: hostPlayer,
       },
       actionSeq: 0,
+      // Who this table advertised itself to. Without it the host cannot
+      // withdraw its own invites later, which is exactly why a friend's Join
+      // Table kept opening a room that had already started or gone.
+      ...(invitedMap ? { invited: invitedMap } : {}),
     };
 
     // The room has to land before its discovery entries, and this cannot be one
@@ -502,6 +583,41 @@ const reconcileHostPresence = async (roomCode: string, room: RoomState | null): 
 };
 
 /** Adds or updates a player in an existing room and marks them connected. */
+/**
+ * Drop an invite that turned out to lead nowhere.
+ *
+ * The host withdraws its invites when the table starts or ends, but it cannot
+ * do so if it crashed, lost the network, or was simply killed, and the entry
+ * then sits in the invitee's list advertising a table that will refuse them.
+ * Whoever discovers it is dead is in the best position to remove it, and the
+ * rules already let someone delete their own invite.
+ */
+const forgetInvite = async (db: Database, roomCode: string, uid: string): Promise<void> => {
+  try {
+    await set(ref(db, roomInvitePath(uid, roomCode)), null);
+  } catch (error) {
+    reportFirebaseError('forget-stale-invite', error);
+  }
+};
+
+/**
+ * How long a table survives with nobody attending it.
+ *
+ * Long enough to cover a lock screen, a lift, or a phone call; short enough
+ * that abandoned rooms do not pile up in everyone's Join Room list.
+ */
+export const ABANDONED_AFTER_MS = 10 * 60 * 1000;
+
+/** True when nothing has attended this room for long enough to bin it. */
+export const isAbandonedRoom = (room: Partial<RoomState> | null, now = Date.now()): boolean => {
+  if (!room) return false;
+  const away = (room as { hostAwayAt?: unknown }).hostAwayAt;
+  const ended = (room as { endedAt?: unknown }).endedAt;
+  const stamp = typeof away === 'number' ? away : typeof ended === 'number' ? ended : null;
+  if (stamp === null) return false;
+  return now - stamp > ABANDONED_AFTER_MS;
+};
+
 /** True when Firebase refused a read or write, rather than failing some other way. */
 const isPermissionDenied = (error: unknown): boolean => {
   const code = (error as { code?: unknown } | null)?.code;
@@ -535,19 +651,23 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
       // that, rather than surfacing a raw permission error for what is really
       // an ordinary "you are too late".
       if (isPermissionDenied(readError)) {
+        void forgetInvite(db, roomCode, playerId);
         return { ok: false, reason: 'That game has already started.' };
       }
       throw readError;
     }
     if (!roomSnapshot.exists()) {
+      void forgetInvite(db, roomCode, playerId);
       return { ok: false, reason: 'Room does not exist.' };
     }
 
     const room = roomSnapshot.val() as Partial<RoomState> | null;
     if (room?.status === 'ended') {
+      void forgetInvite(db, roomCode, playerId);
       return { ok: false, reason: 'Room has ended.' };
     }
     if (room?.status && room.status !== 'lobby') {
+      void forgetInvite(db, roomCode, playerId);
       return { ok: false, reason: 'That game has already started.' };
     }
 
@@ -791,8 +911,11 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
     });
     const updates: Record<string, unknown> = {
       [`${roomPath(roomCode)}/status`]: 'playing',
-      // The browse list offers tables you can sit at, and this one has started.
-      [publicRoomPath(roomCode)]: null,
+      // The browse list offers tables you can sit at, and this one has
+      // started. Per-friend invites have to go too: clearing only the public
+      // advert left a friend's invite pointing at a table that would refuse
+      // them, which is what made Join Table look like it did nothing.
+      ...discoveryTeardown(room, roomCode),
       [`${roomPath(roomCode)}/publicState`]: publicState,
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/actionSeq`]: 0,
@@ -888,8 +1011,8 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
       [`${roomPath(roomCode)}/endedAt`]: Date.now(),
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/publicState`]: null,
-      // Stop advertising a table nobody can join any more.
-      [publicRoomPath(roomCode)]: null,
+      // Stop advertising a table nobody can join any more, to anybody.
+      ...discoveryTeardown(room, roomCode),
     };
 
     for (const playerId of Object.keys(room.players ?? {})) {
@@ -994,7 +1117,7 @@ export const pushAction = async (code: string, action: RoomAction): Promise<Push
   for (let attempt = 0; attempt < ACTION_PUSH_RETRIES; attempt += 1) {
     try {
       const seqSnapshot = await get(ref(db, actionSeqPath(roomCode)));
-      const sequenced = nextActionSeq(action.seq, seqSnapshot.exists() ? seqSnapshot.val() : 0);
+      const sequenced = nextActionSeq(seqSnapshot.exists() ? seqSnapshot.val() : 0);
       if (!sequenced.ok || typeof sequenced.seq !== 'number') {
         return sequenced;
       }

@@ -166,6 +166,23 @@ export function LobbyScreen({ navigation, route }: Props) {
     try { await Share.share({ message: `Join my LocalPoker table! Room code: ${roomCode}` }); } catch {}
   };
 
+  const [invited, setInvited] = useState<Record<string, boolean>>({});
+
+  /*
+   * Inviting moved here from Create Room, because this is the first point at
+   * which the code opens a table that exists. Everyone is listed, whoever is
+   * online first: an absent friend is the normal case and gets a notification.
+   */
+  const invitableFriends = useMemo(
+    () => [...friends].sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name)),
+    [friends],
+  );
+
+  const inviteFriend = async (id: string, name: string) => {
+    setInvited((prev) => ({ ...prev, [id]: true }));
+    try { await Share.share({ message: `${name}, join my LocalPoker table! Room code: ${roomCode}` }); } catch {}
+  };
+
   /**
    * Re-open Game Setup for a room that already exists.
    *
@@ -193,10 +210,47 @@ export function LobbyScreen({ navigation, route }: Props) {
     <ScreenBackground variant="menu">
       <ScreenHeader title="Friends Lobby" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
+        {host ? (
+          <WiiButton
+            label={canStart ? 'Start Game' : 'Waiting for players…'}
+            variant={canStart ? 'green' : 'white'}
+            size="lg"
+            fullWidth
+            disabled={!canStart}
+            onPress={startGame}
+          />
+        ) : (
+          <Text style={styles.waitHost}>Waiting for the host to start…</Text>
+        )}
+
         <WiiPanel padding={20}>
           <Text style={styles.label}>Room code</Text>
           <View style={styles.codeBox}><Text style={styles.code}>{roomCode}</Text></View>
           <WiiButton label="Share invite" variant="blue" size="md" fullWidth onPress={share} />
+        </WiiPanel>
+
+        <WiiPanel padding={16}>
+          <Text style={styles.section}>Invite friends</Text>
+          {invitableFriends.length === 0 ? (
+            <Text style={styles.note}>Add friends first, then invite them from here.</Text>
+          ) : (
+            invitableFriends.map((f) => (
+              <View key={f.id} style={styles.inviteRow}>
+                <AnimatedPal config={f.pal ?? palFromSeed(f.palSeed || f.id)} size={36} alive={!!f.online} />
+                <View style={{ flex: 1, marginLeft: spacing.md, minWidth: 0 }}>
+                  <Text style={styles.playerName} numberOfLines={1}>{f.name}</Text>
+                  <Text style={styles.playerMeta}>{f.online ? 'online' : 'offline'}</Text>
+                </View>
+                <WiiButton
+                  label={invited[f.id] ? 'Invited' : 'Invite'}
+                  variant={invited[f.id] ? 'white' : 'blue'}
+                  size="sm"
+                  disabled={invited[f.id]}
+                  onPress={() => inviteFriend(f.id, f.name)}
+                />
+              </View>
+            ))
+          )}
         </WiiPanel>
 
         <WiiPanel>
@@ -243,18 +297,6 @@ export function LobbyScreen({ navigation, route }: Props) {
           ) : null}
         </WiiPanel>
 
-        {host ? (
-          <WiiButton
-            label={canStart ? 'Start Game' : 'Waiting for players…'}
-            variant={canStart ? 'green' : 'white'}
-            size="lg"
-            fullWidth
-            disabled={!canStart}
-            onPress={startGame}
-          />
-        ) : (
-          <Text style={styles.waitHost}>Waiting for the host to start…</Text>
-        )}
 
         {!online && (
           <WiiPanel padding={16}>
@@ -275,6 +317,7 @@ export function LobbyScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   label: { fontFamily: fonts.semibold, fontSize: 13, color: colors.inkSoft, marginBottom: 8 },
+  inviteRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   settingsGrid: { gap: 2 },
   settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7 },
   settingsKey: { fontFamily: fonts.medium, fontSize: 14, color: colors.inkSoft, flexShrink: 1, marginRight: spacing.md },

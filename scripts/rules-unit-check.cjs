@@ -412,6 +412,23 @@ function logOk(message) {
     }));
     logOk('and nobody can act on another player behalf');
 
+    // The client used to send Date.now() as the sequence number, which asks to
+    // jump the counter from 0 to about 1.7e12. The cap that stops anyone
+    // exhausting the sequence refused it, so every action in every hand was
+    // denied. The earlier assertions here all used 1, 2, 3 and so agreed with
+    // my assumption rather than with what the app actually sent.
+    await assertFails(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/big': { playerId: 'player', type: 'call', seq: Date.now(), ts: 55 },
+      'localpoker/rooms/PLAY1/actionSeq': Date.now(),
+    }));
+    logOk('a timestamp sized sequence jump is refused, which is what broke betting');
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/a5': { playerId: 'player', type: 'call', seq: 3, ts: 56 },
+      'localpoker/rooms/PLAY1/actionSeq': 3,
+    }));
+    logOk('and simply taking the next number is accepted');
+
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
       type: 'emoji', value: '\u{1F525}', ts: 60,
     }));
@@ -436,6 +453,40 @@ function logOk(message) {
       type: 'essay', value: 'hello', ts: 64,
     }));
     logOk('and an unknown reaction kind is refused');
+
+    // Losing a connection is not leaving, so a dropped host marks the room
+    // rather than killing it, and the room only becomes disposable once
+    // nobody has come back for ten minutes.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/FRESH1'), {
+        code: 'FRESH1', hostId: 'host', status: 'lobby', createdAt: 70,
+        hostAwayAt: Date.now(),
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: false } },
+      });
+      await set(ref(ctx.database(), 'localpoker/rooms/COLD1'), {
+        code: 'COLD1', hostId: 'host', status: 'lobby', createdAt: 71,
+        hostAwayAt: Date.now() - 11 * 60 * 1000,
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: false } },
+      });
+    });
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/FRESH1'), null));
+    logOk('a table whose host just dropped cannot be binned out from under them');
+
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/rooms/COLD1'), null));
+    logOk('a table nobody returned to for ten minutes can be cleared by anyone');
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/COLD2'), {
+        code: 'COLD2', hostId: 'host', status: 'lobby', createdAt: 72,
+        hostAwayAt: Date.now() - 11 * 60 * 1000,
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: false } },
+      });
+    });
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/COLD2'), {
+      code: 'COLD2', hostId: 'stranger', status: 'lobby', createdAt: 73,
+    }));
+    logOk('and clearing it means deleting it, not seizing it');
 
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {

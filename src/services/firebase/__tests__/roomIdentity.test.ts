@@ -118,13 +118,20 @@ describe('room writes are keyed by auth.uid', () => {
     // palSeed is cosmetic (it seeds the avatar), so it deliberately keeps the
     // local profile id, the player's avatar shouldn't change when they sign in.
     expect(room.players[AUTH_UID].palSeed).toBe(LOCAL_PROFILE_ID);
+    /*
+     * A dropped host marks the room, it does not end it.
+     *
+     * This asserted `status: 'ended'` until locking the phone mid-hand was
+     * found to kill everyone else's game. Losing a connection is not the same
+     * as leaving, so the room now records when the host went away and stays
+     * playable; only once nobody has returned for ten minutes does it become
+     * disposable, which the rules suite covers separately.
+     */
     expect(disconnectWrites).toContainEqual({
       path: 'localpoker/rooms/ROOM12',
-      value: expect.objectContaining({
-        status: 'ended',
-        endedReason: 'Host disconnected.',
-      }),
+      value: expect.objectContaining({ hostAwayAt: expect.anything() }),
     });
+    expect(disconnectWrites.some((w) => JSON.stringify(w.value).includes('ended'))).toBe(false);
   });
 
   it('refuses to write when the player could not be signed in', async () => {

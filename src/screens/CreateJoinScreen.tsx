@@ -35,7 +35,17 @@ export function CreateJoinScreen({ navigation }: Props) {
       .catch(() => {});
     return () => { active = false; };
   }, []);
-  const onlineFriends = useMemo(() => friends.filter((f) => f.online), [friends]);
+  /*
+   * Everyone, with whoever is online first.
+   *
+   * Filtering to online friends meant the list was usually empty and the
+   * screen told you to come back later, when inviting someone who is away is
+   * the normal case: they get a notification and join when they see it.
+   */
+  const invitableFriends = useMemo(
+    () => [...friends].sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name)),
+    [friends],
+  );
   const [openRooms, setOpenRooms] = useState<{ friends: RoomSummary[]; public: RoomSummary[] }>({ friends: [], public: [] });
 
   useEffect(() => subscribeOpenRooms(setOpenRooms), []);
@@ -82,44 +92,20 @@ export function CreateJoinScreen({ navigation }: Props) {
 
         {mode === 'create' ? (
           <>
+            {/* The code used to be printed here, before anything existed.
+                It was a code for a table nobody had made yet, and it was
+                regenerated behind the scenes anyway, so sharing it early could
+                hand out a code that was no longer yours. It now appears in the
+                lobby, once there is a real room for it to open. */}
             <WiiPanel padding={20}>
-              <Text style={styles.label}>Invite code</Text>
-              <View style={styles.codeBox}><Text style={styles.code}>{roomCode}</Text></View>
-              <WiiButton label="Share invite" variant="blue" size="md" fullWidth onPress={share} />
-              <Text style={styles.note}>Share this code, then open the lobby. Real friends join here, no bots are added to friends games.</Text>
+              <Text style={styles.label}>Play with friends</Text>
+              <Text style={styles.note}>
+                Choose the blinds and stacks, and your table opens with a code to share.
+                Real friends join here, no bots are added to friends games.
+              </Text>
             </WiiPanel>
             <WiiButton label="Set up table →" variant="green" size="lg" fullWidth onPress={startCreate} />
 
-            <WiiPanel padding={16}>
-              <Text style={styles.suggestTitle}>Invite friends</Text>
-              {onlineFriends.length === 0 ? (
-                <Text style={styles.note}>
-                  {friends.length === 0
-                    ? 'Add friends first, then invite them here when they’re online.'
-                    : 'No friends online right now. Share the code above to invite anyone.'}
-                </Text>
-              ) : (
-                onlineFriends.map((f) => (
-                  <View key={f.id} style={styles.friendRow}>
-                    <AnimatedPal config={palFromSeed(f.palSeed || f.id)} size={36} alive />
-                    <View style={{ flex: 1, marginLeft: spacing.md }}>
-                      <Text style={styles.friendName} numberOfLines={1}>{f.name}</Text>
-                      <View style={styles.onlineRow}>
-                        <View style={styles.onlineDot} />
-                        <Text style={styles.onlineText}>Online</Text>
-                      </View>
-                    </View>
-                    <WiiButton
-                      label={invited[f.id] ? 'Invited' : 'Invite'}
-                      variant={invited[f.id] ? 'white' : 'blue'}
-                      size="sm"
-                      disabled={invited[f.id]}
-                      onPress={() => inviteFriend(f.id, f.name)}
-                    />
-                  </View>
-                ))
-              )}
-            </WiiPanel>
           </>
         ) : (
           <>
@@ -233,6 +219,7 @@ const styles = StyleSheet.create({
   friendRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.panelAlt },
   friendName: { fontFamily: fonts.semibold, fontSize: 15, color: colors.ink },
   onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  offlineDot: { backgroundColor: colors.offline },
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.online },
   onlineText: { fontFamily: fonts.medium, fontSize: 12, color: colors.online },
 });
