@@ -209,6 +209,98 @@ function logOk(message) {
     }));
     logOk('host can create room and own userRooms index in one multi-path write');
 
+    // The bug this pins: `publicRooms` and `roomInvites` both prove ownership
+    // with `root.../rooms/$code/hostId === auth.uid`, and `root` is the state
+    // *before* the write. Bundling them with the room's own creation therefore
+    // fails, and because multi-path updates are atomic it took the room down
+    // with it. Every "play with friends" table hit this.
+    await assertFails(update(ref(hostDb), {
+      'localpoker/rooms/ATOMIC': {
+        code: 'ATOMIC', hostId: 'host', status: 'lobby', createdAt: 10,
+        settingsJson: '{}', actionSeq: 0, visibility: 'public',
+        players: { host: { id: 'host', name: 'Host', seatIndex: 0, chips: 100, connected: true, isHost: true } },
+      },
+      'localpoker/publicRooms/ATOMIC': {
+        code: 'ATOMIC', hostUid: 'host', hostName: 'Host',
+        visibility: 'public', status: 'lobby', updatedAt: 10,
+      },
+    }));
+    logOk('room plus publicRooms in one atomic write is refused, which was the bug');
+
+    // The fix: the room lands first, so the rule can see it on the second write.
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PUB1': {
+        code: 'PUB1', hostId: 'host', status: 'lobby', createdAt: 10,
+        settingsJson: '{}', actionSeq: 0, visibility: 'public',
+        players: { host: { id: 'host', name: 'Host', seatIndex: 0, chips: 100, connected: true, isHost: true } },
+      },
+    }));
+    await assertSucceeds(set(ref(hostDb, 'localpoker/publicRooms/PUB1'), {
+      code: 'PUB1', hostUid: 'host', hostName: 'Host',
+      visibility: 'public', status: 'lobby', updatedAt: 10,
+    }));
+    logOk('host can list a public room once the room itself exists');
+
+    // Inviting requires the recipient to already count the host as a friend,
+    // so seed that edge directly rather than replaying the whole request flow.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/friends/player/host'), {
+        uid: 'host', handle: users.host.handle, displayName: users.host.displayName, createdAt: 5,
+      });
+    });
+
+    await assertSucceeds(set(ref(hostDb, 'localpoker/roomInvites/player/PUB1'), {
+      code: 'PUB1', hostUid: 'host', hostName: 'Host',
+      visibility: 'public', status: 'lobby', updatedAt: 10,
+    }));
+    logOk('host can invite an accepted friend to an existing room');
+
+    await assertSucceeds(get(ref(playerDb, 'localpoker/roomInvites/player')));
+    logOk('invited friend can read their own invites');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/publicRooms/PUB1'), {
+      code: 'PUB1', hostUid: 'stranger', hostName: 'Ghost',
+      visibility: 'public', status: 'lobby', updatedAt: 11,
+    }));
+    logOk('a non-host cannot list someone else\'s room');
+
+    await assertFails(set(ref(hostDb, 'localpoker/roomInvites/stranger/PUB1'), {
+      code: 'PUB1', hostUid: 'host', hostName: 'Host',
+      visibility: 'public', status: 'lobby', updatedAt: 10,
+    }));
+    logOk('a non-friend cannot be sent a room invite');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/roomInvites/player')));
+    logOk('invites cannot be read by anyone else');
+
+    // Presence: anyone signed in may see whether a friend is reachable, but
+    // only the owner may claim it, or you could mark someone else offline.
+    await assertSucceeds(set(ref(hostDb, 'localpoker/presence/host'), { online: true, lastSeen: 20 }));
+    logOk('a user can publish their own presence');
+
+    await assertSucceeds(get(ref(playerDb, 'localpoker/presence/host')));
+    logOk('a signed-in user can read a friend presence');
+
+    await assertFails(set(ref(playerDb, 'localpoker/presence/host'), { online: false, lastSeen: 21 }));
+    logOk('a user cannot rewrite someone else presence');
+
+    await assertFails(set(ref(hostDb, 'localpoker/presence/host'), { online: 'yes', lastSeen: 20 }));
+    logOk('presence rejects a malformed record');
+
+    // Pal: published so a redesign reaches friends, bounded so the directory
+    // cannot be used as free storage.
+    await assertSucceeds(set(ref(hostDb, 'localpoker/users/host'), {
+      handle: users.host.handle, displayName: users.host.displayName, updatedAt: 22,
+      palJson: JSON.stringify({ version: 1, skinTone: 3 }),
+    }));
+    logOk('a user can publish their own Pal');
+
+    await assertFails(set(ref(hostDb, 'localpoker/users/host'), {
+      handle: users.host.handle, displayName: users.host.displayName, updatedAt: 23,
+      palJson: 'x'.repeat(601),
+    }));
+    logOk('an oversized Pal is refused');
+
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {
         code: 'BADHOST',

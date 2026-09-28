@@ -143,9 +143,10 @@ export function FriendsScreen({ navigation }: Props) {
   };
 
   const openSafetyMenu = (friend: Friend) => {
-    Alert.alert(friend.name, 'Choose a safety action.', [
+    Alert.alert(friend.name, 'Choose an action.', [
       { text: 'Report offensive content', onPress: () => handleReportFriend(friend) },
       { text: 'Block player', style: 'destructive', onPress: () => confirmBlockFriend(friend) },
+      { text: 'Remove friend', style: 'destructive', onPress: () => confirmRemoveFriend(friend) },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
@@ -275,7 +276,6 @@ export function FriendsScreen({ navigation }: Props) {
               friends={onlineFriends}
               startDelay={140}
               onInvite={inviteFriend}
-              onRemove={confirmRemoveFriend}
               onSafety={openSafetyMenu}
               onAccept={handleAcceptFriend}
               onDecline={handleDeclineFriend}
@@ -285,7 +285,6 @@ export function FriendsScreen({ navigation }: Props) {
               friends={offlineFriends}
               startDelay={140 + onlineFriends.length * 58}
               onInvite={inviteFriend}
-              onRemove={confirmRemoveFriend}
               onSafety={openSafetyMenu}
               onAccept={handleAcceptFriend}
               onDecline={handleDeclineFriend}
@@ -308,7 +307,6 @@ function FriendSection({
   friends,
   startDelay,
   onInvite,
-  onRemove,
   onSafety,
   onAccept,
   onDecline,
@@ -317,7 +315,6 @@ function FriendSection({
   friends: Friend[];
   startDelay: number;
   onInvite: (friend: Friend) => void;
-  onRemove: (friend: Friend) => void;
   onSafety: (friend: Friend) => void;
   onAccept: (friend: Friend) => void;
   onDecline: (friend: Friend) => void;
@@ -338,7 +335,6 @@ function FriendSection({
           <FriendRow
             friend={friend}
             onInvite={() => onInvite(friend)}
-            onRemove={() => onRemove(friend)}
             onSafety={() => onSafety(friend)}
             onAccept={() => onAccept(friend)}
             onDecline={() => onDecline(friend)}
@@ -352,14 +348,12 @@ function FriendSection({
 function FriendRow({
   friend,
   onInvite,
-  onRemove,
   onSafety,
   onAccept,
   onDecline,
 }: {
   friend: Friend;
   onInvite: () => void;
-  onRemove: () => void;
   onSafety: () => void;
   onAccept: () => void;
   onDecline: () => void;
@@ -372,7 +366,7 @@ function FriendRow({
     <WiiPanel padding={0} style={styles.friendCard}>
       <View style={styles.friendRow}>
         <View style={styles.avatarSpot}>
-          <AnimatedPal config={palFromSeed(friend.palSeed)} size={44} alive={friend.online} />
+          <AnimatedPal config={friend.pal ?? palFromSeed(friend.palSeed)} size={44} alive={friend.online} />
         </View>
         <View style={styles.friendInfo}>
           <Text style={styles.friendName} numberOfLines={1}>
@@ -395,8 +389,7 @@ function FriendRow({
           ) : (
             <>
               <WiiButton label={pending ? 'Pending' : 'Invite'} variant={pending ? 'white' : 'green'} size="sm" disabled={pending} onPress={onInvite} />
-              <WiiButton label="Safety" variant="white" size="sm" onPress={onSafety} />
-              <WiiButton label="✕" variant="white" size="sm" round onPress={onRemove} />
+              <WiiButton label="⋯" variant="white" size="sm" round onPress={onSafety} />
             </>
           )}
         </View>
@@ -641,7 +634,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: spacing.xs,
-    maxWidth: 190,
+    maxWidth: 132,
+    flexShrink: 0,
   },
   emptyState: {
     alignItems: 'center',

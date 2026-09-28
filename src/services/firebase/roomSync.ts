@@ -349,21 +349,50 @@ export const createRoom = async (
       actionSeq: 0,
     };
 
-    const writes: Record<string, unknown> = {
+    // The room has to land before its discovery entries, and this cannot be one
+    // atomic write.
+    //
+    // The rules on `publicRooms/$code` and `roomInvites/$uid/$code` both check
+    // `root.../rooms/$code/hostId === auth.uid` to prove the writer hosts the
+    // room. `root` is the database *before* the write, so during creation that
+    // lookup sees nothing and the check fails. Because a multi-path update is
+    // atomic, that rejected the entire write: no room, no invites, no listing,
+    // just PERMISSION_DENIED. It only bit when the write actually included
+    // those paths, which is to say whenever the host had friends or ticked
+    // public, which is every real "play with friends" table.
+    //
+    // Rules cannot see a sibling path's `newData`, so the cross-reference
+    // cannot simply be rewritten to look at the pending room. Writing in two
+    // steps lets the existing strict rule stand. Losing atomicity is benign:
+    // discovery entries are hints, and a room without them is merely harder to
+    // find, not broken.
+    await update(ref(db), {
       [roomPath(roomCode)]: room,
       [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
-    };
+    });
+
     const summary = roomSummaryOf(room, settingsJson, hostId, host.name, visibility);
+    const discovery: Record<string, unknown> = {};
     if (visibility === 'public') {
-      writes[publicRoomPath(roomCode)] = summary;
+      discovery[publicRoomPath(roomCode)] = summary;
     }
     // Friends get told about the table either way: a private room is private
     // from strangers, not from the people it is for.
     for (const friendUid of options.friendUids ?? []) {
-      if (friendUid && friendUid !== hostId) writes[roomInvitePath(friendUid, roomCode)] = summary;
+      if (friendUid && friendUid !== hostId) discovery[roomInvitePath(friendUid, roomCode)] = summary;
     }
 
-    await update(ref(db), writes);
+    if (Object.keys(discovery).length > 0) {
+      try {
+        await update(ref(db), discovery);
+      } catch (error) {
+        // The table itself exists and is playable, so a failed invite must not
+        // read as a failed table. Report it and carry on.
+        reportFirebaseError('create-room-discovery', error);
+        console.warn('Room created but could not publish invites.', error);
+      }
+    }
+
     await registerDisconnect(db, roomCode, hostId, true);
     return { ok: true };
   } catch (error) {

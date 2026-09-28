@@ -46,6 +46,7 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [status, setStatus] = useState<string>(online ? 'Connecting…' : 'Offline');
+  const [connected, setConnected] = useState(false);
   const navigatedRef = useRef(false);
 
   /**
@@ -95,6 +96,7 @@ export function LobbyScreen({ navigation, route }: Props) {
         setStatus(res.reason || 'Could not connect to the room.');
         return;
       }
+      setConnected(true);
       setStatus('Waiting for players…');
       await setPlayerConnected(roomCode, me.id, true);
       if (cancelled) return;
@@ -123,10 +125,14 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   const players: RoomPlayer[] = useMemo(() => {
     if (room?.players) return Object.values(room.players).filter((p) => p.connected);
-    return [me]; // at minimum, show yourself
-  }, [room, me]);
+    // Only stand in for the roster once the room genuinely exists. Showing
+    // yourself regardless meant a refused write still rendered a seated host
+    // and a green dot directly above its own error, which read as a working
+    // table that simply had nobody else in it.
+    return connected ? [me] : [];
+  }, [room, me, connected]);
 
-  const canStart = host && players.length >= 2;
+  const canStart = host && connected && players.length >= 2;
 
   const share = async () => {
     try { await Share.share({ message: `Join my LocalPoker table! Room code: ${roomCode}` }); } catch {}

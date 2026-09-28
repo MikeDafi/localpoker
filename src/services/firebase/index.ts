@@ -1,4 +1,6 @@
 export { getDb, isFirebaseConfigured } from './config';
+export { startPresence, subscribeFriendLive } from './presence';
+export type { PresenceRecord, FriendLive } from './presence';
 export { deleteCurrentAuthUser, ensureSignedIn, getAuthUid, authReady, signOutFirebase } from './auth';
 export {
   GOOGLE_ANDROID_CLIENT_ID,

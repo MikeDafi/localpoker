@@ -21,6 +21,8 @@ import {
   reportUser as reportFirebaseUser,
   sendFriendRequest,
   signOutFirebase,
+  startPresence,
+  subscribeFriendLive,
   subscribeSocialGraph,
   type BlockRecord,
   type FriendEdgeRecord,
@@ -44,6 +46,17 @@ export interface Profile {
   coins: number;
   xp: number;
 }
+
+/** A published Pal, or undefined when absent or unparseable. */
+const parsePalJson = (palJson?: string): PalConfig | undefined => {
+  if (!palJson) return undefined;
+  try {
+    return normalizePal(JSON.parse(palJson) as Partial<PalConfig>);
+  } catch {
+    // A corrupt record should show the old seeded avatar, not crash the list.
+    return undefined;
+  }
+};
 
 const profileHandleFallback = (profile: Profile): string => friendCodeFor(profile.id).toLowerCase();
 
@@ -112,6 +125,12 @@ export interface Friend {
   handle?: string;
   name: string;
   palSeed: string;
+  /**
+   * The friend's actual Pal, once they have published one. Absent for
+   * friendships predating that, which keep falling back to the seeded avatar
+   * derived from their handle.
+   */
+  pal?: PalConfig;
   online: boolean;
   status?: string;
   friendshipStatus?: 'accepted' | 'pending_outgoing' | 'incoming' | 'local';
@@ -328,13 +347,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     const desiredHandle = handleForDirectory(nextAuth, nextProfile);
-    let result = await publishUserDirectory(desiredHandle, desiredHandle);
+    const palJson = JSON.stringify(nextProfile.pal);
+    let result = await publishUserDirectory(desiredHandle, desiredHandle, palJson);
     // Only fall back to a generated name when there is no name to keep. Doing
     // it after a rejected rename would rename the player to a friend code just
     // because the name they asked for was taken.
     if (!result.ok && !result.nameTaken && desiredHandle !== profileHandleFallback(nextProfile)) {
       const fallback = profileHandleFallback(nextProfile);
-      result = await publishUserDirectory(fallback, fallback);
+      result = await publishUserDirectory(fallback, fallback, palJson);
     }
     // The server is the authority on which name you actually hold, so the
     // confirmed one is written back to both places the app reads it from.
@@ -484,7 +504,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const identity = `${activeAccount.current}|${auth.handle ?? ''}|${profile.name}`;
+    const identity = [
+      activeAccount.current,
+      auth.handle ?? '',
+      profile.name,
+      // Redesigning a Pal has to republish, or friends keep seeing the old one.
+      JSON.stringify(profile.pal),
+    ].join('|');
     if (publishedIdentity.current === identity) {
       return;
     }
@@ -514,6 +540,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // The subscription belongs to one account, so it has to be torn down and
     // rebuilt when the account changes, not only when login state flips.
   }, [auth.handle, auth.loggedIn, persist, ready]);
+
+  // Publish our own presence for as long as someone is signed in, so friends
+  // can see a live dot rather than the permanent gray one they had before.
+  useEffect(() => {
+    if (!ready || !auth.loggedIn || !isFirebaseConfigured()) return undefined;
+    return startPresence();
+  }, [auth.loggedIn, ready]);
+
+  /**
+   * Friends' presence, merged into the friend list on read.
+   *
+   * Keyed on the uid *set* rather than the friend objects: the objects are
+   * replaced whenever anything about a friend changes, and re-subscribing on
+   * each of those would tear down and rebuild every listener for nothing.
+   */
+  const [live, setLive] = useState<Record<string, import('../services/firebase').FriendLive>>({});
+  const friendUidKey = useMemo(
+    () => friends.map((f) => f.uid ?? f.id).filter(Boolean).sort().join(','),
+    [friends],
+  );
+
+  useEffect(() => {
+    if (!ready || !auth.loggedIn || !isFirebaseConfigured() || !friendUidKey) {
+      setLive({});
+      return undefined;
+    }
+    return subscribeFriendLive(friendUidKey.split(','), setLive);
+  }, [auth.loggedIn, friendUidKey, ready]);
+
+  /**
+   * The friend list as it is right now, rather than as it was when the edge
+   * was written. A friend can rename themselves or redesign their Pal at any
+   * time, and neither reaches into our copy of the edge, so the live directory
+   * values win where they exist.
+   */
+  const friendsWithPresence = useMemo(
+    () => friends.map((f) => {
+      const it = live[f.uid ?? f.id];
+      if (!it) return { ...f, online: false };
+      return {
+        ...f,
+        online: it.online,
+        name: it.displayName || f.name,
+        pal: parsePalJson(it.palJson),
+      };
+    }),
+    [friends, live],
+  );
 
   const verifyAge = useCallback((birthYear: number): { ok: boolean; reason?: string } => {
     const year = Number(birthYear);
@@ -775,9 +849,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers, textScaleTick,
+    ready, auth, ageVerified, verifyAge, profile, stats, friends: friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick,
     login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friends, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame]);
+  }), [ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

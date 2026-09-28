@@ -33,6 +33,19 @@ export type DirectoryUser = {
   handle: string;
   displayName: string;
   updatedAt: number;
+  /**
+   * The owner's Pal, serialised.
+   *
+   * Stored as a string for the same reason room settings are: validating
+   * nineteen individual avatar fields in database rules would be long and
+   * brittle, while a length-capped string is trivial to bound and
+   * `normalizePal` already merges unknown or missing fields over defaults.
+   *
+   * Optional, because friendships made before this existed have no Pal on
+   * record and should keep rendering their old seeded avatar rather than
+   * turning blank.
+   */
+  palJson?: string;
 };
 
 export type FriendRequestRecord = {
@@ -93,6 +106,9 @@ const reportFirebaseError = (operation: string, error: unknown): void => {
   captureError(error, { tags: { area: 'firebase-friends', operation } });
 };
 
+/** Generous for the current Pal, tight enough to bound the directory. */
+export const MAX_PAL_JSON = 600;
+
 const cleanDisplayName = (name: string): string => name.trim().replace(/\s+/g, ' ').slice(0, 24);
 
 export const normalizeHandle = (input: string): string | null => {
@@ -135,6 +151,7 @@ const notSignedInResult = (): { ok: false; reason: string } => ({
 export const publishUserDirectory = async (
   handleInput: string,
   displayNameInput: string,
+  palJson?: string,
 ): Promise<FirebaseFriendResult<{ uid: string; handle: string }>> => {
   const db = getConfiguredDb();
   if (!db) {
@@ -188,13 +205,15 @@ export const publishUserDirectory = async (
 
     // The claim has to exist before this write: `users/$uid` is validated
     // against `handles/<name>` already pointing at this uid.
-    await update(ref(db), {
-      [usersPath(uid)]: {
-        handle: wanted,
-        displayName,
-        updatedAt: Date.now(),
-      } satisfies DirectoryUser,
-    });
+    const record: DirectoryUser = {
+      handle: wanted,
+      displayName,
+      updatedAt: Date.now(),
+    };
+    // Only include it when there is one, since the rules reject an empty or
+    // oversized value and an absent Pal is a legitimate state.
+    if (palJson && palJson.length <= MAX_PAL_JSON) record.palJson = palJson;
+    await update(ref(db), { [usersPath(uid)]: record });
 
     // Release the old name last, so a failure part way through leaves the
     // account reachable under one of the two rather than neither.
