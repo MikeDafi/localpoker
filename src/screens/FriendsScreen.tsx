@@ -379,7 +379,7 @@ function FriendRow({
             </Text>
           </View>
         </View>
-        <View style={styles.actions}>
+        <View style={[styles.actions, incoming && styles.actionsIncoming]}>
           {incoming ? (
             <>
               <WiiButton label="Accept" variant="green" size="sm" onPress={onAccept} />
@@ -628,14 +628,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkMuted,
   },
+  /*
+   * One line, always.
+   *
+   * These used to wrap because the row was capped at 132pt while "Invite"
+   * plus the round menu needs about 135, and "Pending" more still, so the
+   * menu button dropped onto a second line and the card grew a ragged step.
+   * Sizing to content and letting the name column take what is left keeps
+   * them together, which is also why friendInfo carries minWidth: 0: without
+   * it a flex child refuses to shrink below its text and pushes the buttons
+   * off instead of ellipsising.
+   */
   actions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: spacing.xs,
-    maxWidth: 132,
     flexShrink: 0,
+  },
+  /* An incoming request shows three buttons, which genuinely need two rows. */
+  actionsIncoming: {
+    flexWrap: 'wrap',
+    maxWidth: 186,
   },
   emptyState: {
     alignItems: 'center',
