@@ -6,7 +6,9 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 ## 1. Submission status
 
-**1.0.0 was submitted to App Review on 2026-09-27 and is `WAITING_FOR_REVIEW`,** carrying build 13.
+**1.0.0 is `WAITING_FOR_REVIEW`, carrying build 16.**
+
+Build 13 was pulled and replaced on 2026-09-27. It predated the fix for rooms failing to create whenever the host had friends or ticked public, so "play with friends" (the app's headline feature, and its name) failed outright with `PERMISSION_DENIED`. A reviewer exercising it would have hit that, so replacing the build most likely avoided a 2.1 rejection rather than merely costing queue time. Build 16 also carries four-character room codes, friend presence, Pal propagation and notifications.
 
 Submitting locks the build: shipping a different one means removing the version from review first. The review notes point Apple at "Play as Guest", so no credentials are needed on their end.
 
@@ -52,13 +54,13 @@ Audited against the live App Store Connect record, not just the code. Several fi
 
     **The obligation, now discharged:** a build that ships the DSN collects Crash Data, so App Privacy has to declare **Diagnostics > Crash Data**. That is now declared and published: used for App Functionality, **not** linked to identity, because `sendDefaultPii` is false and nothing calls `Sentry.setUser`. Performance Data and Other Diagnostic Data stay undeclared, since `tracesSampleRate` is 0.
 
-    Sentry also cannot reach build 13, which is the one under review. The first build that reports anything will be 1.0.1 or later.
+    Build 16 is the first build that ships the DSN, so it is the first that can report anything.
 
 16. **Push notifications carry the same kind of obligation, for 1.0.1.** Friend requests and room invites now notify the recipient, sent peer to peer via the Expo push service because the Spark plan has no Cloud Functions.
 
     **The obligation, now discharged:** an Expo push token is a per-install device identifier stored at `pushTokens/$uid`, so it is **linked**. **Identifiers > Device ID, linked, App Functionality, not used for tracking** is now declared and published. Being opt-in and defaulting to off does not exempt it: the label describes what the binary is capable of, not what a given player enabled.
 
-    Both declarations were published while 1.0.0 was still Waiting for Review, which leaves the label very slightly ahead of the binary under review, since build 13 has neither Sentry nor notifications. That is deliberate. Over-declaring costs nothing at review, under-declaring risks rejection or removal, and the step that actually gets forgotten is the one at submission time. Publishing App Privacy did not disturb the in-flight submission, which was re-checked afterwards and still read Waiting for Review.
+    Both declarations were published before build 16 was submitted, so the label and the binary now agree exactly: build 16 is the first to carry Sentry and notifications, and the first whose label declares Crash Data and Device ID. They were published while build 13 was still in review, which was briefly an over-declaration, and deliberately so: over-declaring costs nothing at review, under-declaring risks rejection or removal.
 
     **Read scope is the security question, not the privacy one.** A push token is a capability: whoever reads it can notify that person. `database.rules.json` permits a read only by an accepted friend or by someone whose friend request to that user is still pending, writes are owner only, tokens must match Expo's format, and `push.ts` rate-limits to one send per recipient per kind per minute. Six rules assertions in `scripts/rules-unit-check.cjs` hold that line.
 

@@ -220,8 +220,9 @@ scripted through the App Store Connect API the same way tester management is:
 Beta App Review is separate from, and lighter than, App Store review, but it is
 still a review: the link does not accept installs until the build leaves
 `WAITING_FOR_BETA_REVIEW`. The current link is
-<https://testflight.apple.com/join/etf57Rhk>, carrying build 13, and it admits
-up to 10,000 testers once approved.
+<https://testflight.apple.com/join/etf57Rhk>, and it admits
+up to 10,000 testers once approved. It served build 13; build 16 supersedes it
+and needs its own beta review before testers receive it.
 
 Worth knowing: submitting a build for beta review does not disturb an App Store
 submission that is already in flight. Both were in review at the same time here.
@@ -329,6 +330,71 @@ If you must use a local JSON key path instead, keep the key outside git and make
 ```json
 "android": { "track": "internal", "serviceAccountKeyPath": "./secrets/google-play-service-account.json" }
 ```
+
+## Adding a native capability invalidates the provisioning profile
+
+Adding `expo-notifications` made two consecutive local builds fail with:
+
+```
+Provisioning profile "...AppStore 2026-09-24..." doesn't include the
+Push Notifications capability
+... doesn't include the aps-environment entitlement
+```
+
+This is not a signing misconfiguration and re-running does not fix it. An
+entitlement only reaches a profile once the **bundle ID declares the matching
+capability**, and EAS reuses the profile it already has rather than noticing
+that the app's entitlements changed. Supplying `EXPO_ASC_*` credentials does
+not help on its own, because nothing triggers a resync.
+
+The fix is to enable the capability on the bundle ID, which makes Apple mark
+every profile containing that bundle ID `INVALID`, after which EAS has no
+choice but to generate a new one:
+
+```python
+# POST /v1/bundleIdCapabilities
+{"data": {"type": "bundleIdCapabilities",
+          "attributes": {"capabilityType": "PUSH_NOTIFICATIONS"},
+          "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": "<id>"}}}}}
+```
+
+Find the id with `GET /v1/bundleIds?filter[identifier]=com.mike0264.localpoker`.
+Then rebuild with the `EXPO_ASC_API_KEY_PATH`, `EXPO_ASC_KEY_ID`,
+`EXPO_ASC_ISSUER_ID`, `EXPO_APPLE_TEAM_ID` and `EXPO_APPLE_TEAM_TYPE`
+variables set, exactly as `ci.yml` does, so EAS can mint the replacement
+without an interactive Apple login. Confirm it worked by reading the
+entitlement straight out of the IPA rather than trusting the build log:
+
+```python
+# Payload/*.app/embedded.mobileprovision -> Entitlements['aps-environment']
+```
+
+It should read `production`. The issuer id is shown in App Store Connect under
+Users and Access > Integrations > App Store Connect API; it is not a secret on
+its own, but it lives in repository secrets rather than in this file because
+naming it alongside the key id tells an attacker exactly what to phish for.
+
+## Swapping the build on a version that is already in review
+
+App Store Connect will not let a new build attach to a version that is
+`WAITING_FOR_REVIEW`: "To submit a new build, you must remove this version
+from review." Over the API that is three steps, not one.
+
+```
+PATCH /v1/reviewSubmissions/<id>            {"attributes": {"canceled": true}}
+PATCH /v1/appStoreVersions/<id>/relationships/build   {"data": {"type": "builds", "id": "<build>"}}
+POST  /v1/reviewSubmissions                 then POST /v1/reviewSubmissionItems
+PATCH /v1/reviewSubmissions/<new>           {"attributes": {"submitted": true}}
+```
+
+Cancelling is asynchronous: the submission reports `CANCELING` first and the
+version only becomes editable once it reaches `DEVELOPER_REJECTED`, so poll
+before attaching rather than assuming the `200` means it is done.
+
+The cost is queue position, which is worth paying whenever the build in review
+has a defect a reviewer would plausibly hit. Build 13 could not create a room
+for anyone who had friends, which is the app's headline feature, so replacing
+it most likely avoided a rejection rather than merely delaying the release.
 
 ## Build sanity notes
 
