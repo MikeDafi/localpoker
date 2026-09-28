@@ -59,6 +59,8 @@ import {
   publishHostGameState,
   pushAction,
   subscribeActions,
+  sendEmoteToRoom,
+  subscribeEmotes,
   subscribePrivateView,
   subscribeRoom,
   type RoomPrivateView,
@@ -358,7 +360,23 @@ export function TableScreen({ navigation, route }: Props) {
     sound.play('tap');
     Haptics.selectionAsync().catch(() => {});
     showEmote(localPlayerId, emote);
-  }, [localPlayerId, showEmote]);
+    // Reactions used to stop here, so the bubble appeared over your own seat
+    // and the person it was aimed at never saw a thing. Voided rather than
+    // awaited: a reaction that fails to send must not interrupt a hand.
+    if (roomCode && firebaseOnline) void sendEmoteToRoom(roomCode, emote);
+  }, [localPlayerId, showEmote, roomCode, firebaseOnline]);
+
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline) return undefined;
+    return subscribeEmotes(roomCode, (playerId, raw) => {
+      if (playerId === localPlayerId) return;
+      showEmote(playerId, {
+        type: raw.type as Emote['type'],
+        value: raw.value,
+        ...(raw.anim ? { anim: raw.anim as Emote['anim'] } : {}),
+      });
+    });
+  }, [roomCode, firebaseOnline, localPlayerId, showEmote]);
 
   useEffect(() => () => {
     Object.values(emoteTimers.current).forEach(clearTimeout);

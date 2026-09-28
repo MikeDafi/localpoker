@@ -184,6 +184,29 @@
               }
             }
           },
+          /*
+           * Reactions. One node per sender, overwritten rather than appended,
+           * so the table cannot be used as an unbounded message log. The value
+           * is length-capped because it carries a Giphy id for GIF reactions
+           * and nothing here should become a place to stash arbitrary text.
+           */
+          "emotes": {
+            "$playerId": {
+              ".write": "auth != null && auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
+              ".validate": "!newData.exists() || (newData.hasChildren(['type','value','ts']) && newData.child('type').isString() && (newData.child('type').val() === 'emoji' || newData.child('type').val() === 'text' || newData.child('type').val() === 'sticker' || newData.child('type').val() === 'gif') && newData.child('value').isString() && newData.child('value').val().length <= 64 && newData.child('ts').isNumber() && (!newData.child('anim').exists() || (newData.child('anim').isString() && newData.child('anim').val().length <= 12)))",
+              /*
+               * Each field needs its own rule, not just a mention in the
+               * validate string above. "$other": false rejects every named
+               * child that is not separately declared, which silently refused
+               * perfectly valid reactions until each of these existed.
+               */
+              "type": { ".validate": "newData.isString()" },
+              "value": { ".validate": "newData.isString() && newData.val().length <= 64" },
+              "anim": { ".validate": "newData.isString() && newData.val().length <= 12" },
+              "ts": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
+          },
           "actions": {
             "$id": {
               ".write": "auth != null && newData.child('playerId').val() === auth.uid",

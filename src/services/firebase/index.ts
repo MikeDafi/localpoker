@@ -48,6 +48,8 @@ export {
   pushAction,
   setPlayerConnected,
   subscribeActions,
+  sendEmoteToRoom,
+  subscribeEmotes,
   subscribePrivateView,
   isRoomCodeTaken,
   subscribeRoom,

@@ -226,8 +226,6 @@ function PeekCardInner({
       ),
       emblem: pathFromPoly(clipToFlat(circlePoly(back.emblem.cx, back.emblem.cy, back.emblem.r), c)),
       shade0: pathFromPoly(foldShadow(size, h, c, size * 0.3)),
-      shade1: pathFromPoly(foldShadow(size, h, c, size * 0.18)),
-      shade2: pathFromPoly(foldShadow(size, h, c, size * 0.08)),
       creaseX1: seg ? seg[0].x : 0,
       creaseY1: seg ? seg[0].y : 0,
       creaseX2: seg ? seg[1].x : 0,
@@ -292,8 +290,6 @@ function PeekCardInner({
   const panelProps = useAnimatedProps(() => ({ d: frame.value.panel }));
   const emblemProps = useAnimatedProps(() => ({ d: frame.value.emblem }));
   const shade0 = useAnimatedProps(() => ({ d: frame.value.shade0 }));
-  const shade1 = useAnimatedProps(() => ({ d: frame.value.shade1 }));
-  const shade2 = useAnimatedProps(() => ({ d: frame.value.shade2 }));
   const creaseProps = useAnimatedProps(() => ({
     x1: frame.value.creaseX1,
     y1: frame.value.creaseY1,
@@ -320,6 +316,7 @@ function PeekCardInner({
     frame.value.lifted ? { matrix: frame.value.mirror } : {},
   );
   const clipProps = useAnimatedProps(() => ({ d: frame.value.flap }));
+  const flatClipProps = useAnimatedProps(() => ({ d: frame.value.flat }));
 
   return (
     <Animated.View style={[{ width: size, height: h }, throwStyle, flipStyle]}>
@@ -381,21 +378,35 @@ function PeekCardInner({
               <ClipPath id={`${gradId}-flap`}>
                 <AnimatedPath animatedProps={clipProps} />
               </ClipPath>
+              {/* The paper still lying on the table. The stock underneath has
+                  to be clipped to this, or it paints the whole card rectangle
+                  and a lifted corner shows white board where the felt should
+                  be, which read as the card sitting on a paper mat. */}
+              <ClipPath id={`${gradId}-flat`}>
+                <AnimatedPath animatedProps={flatClipProps} />
+              </ClipPath>
             </Defs>
 
             {/* The white board the design is printed on. Without it a
                 face-down card ran its colour to the edge and did not read as
-                the same object as the same card turned face up. */}
-            <Rect
-              x={0.5}
-              y={0.5}
-              width={size - 1}
-              height={h - 1}
-              rx={back.radius}
-              fill={colors.cardFace}
-              stroke="#E2E8EE"
-              strokeWidth={1}
-            />
+                the same object as the same card turned face up.
+
+                Clipped to the paper that is still flat: unclipped it filled
+                the card's whole rectangle, so peeling a corner revealed a
+                white slab where the table should show through, and the lifted
+                piece appeared to be sitting on a second card. */}
+            <G clipPath={`url(#${gradId}-flat)`}>
+              <Rect
+                x={0.5}
+                y={0.5}
+                width={size - 1}
+                height={h - 1}
+                rx={back.radius}
+                fill={colors.cardFace}
+                stroke="#E2E8EE"
+                strokeWidth={1}
+              />
+            </G>
             <G clipPath={`url(#${gradId}-card)`}>
             {/* The part still lying flat, with the back's printing cut by the
                 same crease that cuts the card. */}
@@ -430,10 +441,13 @@ function PeekCardInner({
               {backTheme.glyph}
             </AnimatedSvgText>
 
-            {/* Shadow on the table, where the card no longer is. */}
-            <AnimatedPath animatedProps={shade0} fill="#000000" fillOpacity={0.1} />
-            <AnimatedPath animatedProps={shade1} fill="#000000" fillOpacity={0.1} />
-            <AnimatedPath animatedProps={shade2} fill="#000000" fillOpacity={0.1} />
+            {/* Shadow on the table, where the card no longer is.
+
+                One soft shape rather than three stacked translucent copies:
+                each copy ended at a hard edge, so the "gradient" was really
+                three visible steps and read as printed lines across the card
+                rather than as a shadow. */}
+            <AnimatedPath animatedProps={shade0} fill="#000000" fillOpacity={0.14} />
 
             {/* The lifted piece, turned over. */}
             <AnimatedPath animatedProps={flapProps} fill={`url(#${gradId}-face)`} />

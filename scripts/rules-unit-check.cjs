@@ -412,6 +412,31 @@ function logOk(message) {
     }));
     logOk('and nobody can act on another player behalf');
 
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'emoji', value: '\u{1F525}', ts: 60,
+    }));
+    logOk('a seated player can send a reaction');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/host'), {
+      type: 'emoji', value: '\u{1F621}', ts: 61,
+    }));
+    logOk('but not one attributed to somebody else');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/emotes/stranger'), {
+      type: 'emoji', value: '\u{1F44B}', ts: 62,
+    }));
+    logOk('and someone not at the table cannot react at all');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'emoji', value: 'x'.repeat(200), ts: 63,
+    }));
+    logOk('an oversized reaction is refused, so this cannot become a chat log');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'essay', value: 'hello', ts: 64,
+    }));
+    logOk('and an unknown reaction kind is refused');
+
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {
         code: 'BADHOST',

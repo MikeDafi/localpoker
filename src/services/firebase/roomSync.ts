@@ -57,6 +57,7 @@ const playerConnectedPath = (code: string, playerId: string): string =>
 const actionsPath = (code: string): string => `${roomPath(code)}/actions`;
 const actionSeqPath = (code: string): string => `${roomPath(code)}/actionSeq`;
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
+const emotePath = (code: string, playerId: string): string => `${roomPath(code)}/emotes/${playerId}`;
 const userRoomPath = (playerId: string, code: string): string => `localpoker/userRooms/${playerId}/${code}`;
 /**
  * Where a room advertises itself.
@@ -903,6 +904,77 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
     reportFirebaseError('end-room', error);
     console.warn('Unable to end Firebase room.', error);
     return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+/**
+ * A reaction, sent to the rest of the table.
+ *
+ * Emotes were local-only: tapping one showed a bubble over your own seat and
+ * nothing left the device, so the feature looked like it worked while being
+ * invisible to the person it was aimed at.
+ *
+ * Written under the sender's own uid and overwritten each time rather than
+ * appended, so the node cannot be used as an unbounded log, and never throws:
+ * a reaction that fails to send must not interrupt a hand.
+ */
+export const sendEmoteToRoom = async (
+  code: string,
+  emote: { type: string; value: string; anim?: string },
+): Promise<boolean> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return false;
+  try {
+    const playerId = await authedPlayerId();
+    if (!playerId) return false;
+    await set(ref(db, emotePath(roomCode, playerId)), {
+      type: emote.type,
+      value: emote.value,
+      ...(emote.anim ? { anim: emote.anim } : {}),
+      ts: Date.now(),
+    });
+    return true;
+  } catch (error) {
+    reportFirebaseError('send-emote', error);
+    return false;
+  }
+};
+
+/** Reactions from everyone else at the table. */
+export const subscribeEmotes = (
+  code: string,
+  cb: (playerId: string, emote: { type: string; value: string; anim?: string; ts: number }) => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return noop;
+
+  // Only fire for reactions newer than the moment we subscribed, or joining a
+  // table would replay whatever the last person happened to send.
+  const joinedAt = Date.now();
+  const lastSeen = new Map<string, number>();
+  try {
+    return onValue(ref(db, `${roomPath(roomCode)}/emotes`), (snapshot) => {
+      const value = snapshot.val() as Record<string, { type?: unknown; value?: unknown; anim?: unknown; ts?: unknown }> | null;
+      if (!value) return;
+      for (const [playerId, raw] of Object.entries(value)) {
+        const ts = typeof raw?.ts === 'number' ? raw.ts : 0;
+        if (ts <= joinedAt) continue;
+        if ((lastSeen.get(playerId) ?? 0) >= ts) continue;
+        lastSeen.set(playerId, ts);
+        if (typeof raw?.type !== 'string' || typeof raw?.value !== 'string') continue;
+        cb(playerId, {
+          type: raw.type,
+          value: raw.value,
+          ...(typeof raw.anim === 'string' ? { anim: raw.anim } : {}),
+          ts,
+        });
+      }
+    });
+  } catch (error) {
+    reportFirebaseError('subscribe-emotes', error);
+    return noop;
   }
 };
 
