@@ -222,6 +222,16 @@
           ".validate": "!newData.exists() || (newData.hasChildren(['handle','displayName','updatedAt']) && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('handle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && root.child('localpoker').child('handles').child(newData.child('handle').val()).val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && !(newData.child('displayName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('displayName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('displayName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('displayName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('displayName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('updatedAt').isNumber() && (!newData.child('palJson').exists() || (newData.child('palJson').isString() && newData.child('palJson').val().length <= 600)))"
         }
       },
+      "pushTokens": {
+        "$uid": {
+          ".read": "auth != null && (auth.uid === $uid || root.child('localpoker').child('friends').child($uid).child(auth.uid).exists() || root.child('localpoker').child('friendRequests').child($uid).child(auth.uid).child('status').val() === 'pending')",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "!newData.exists() || newData.hasChildren(['token','updatedAt'])",
+          "token": { ".validate": "newData.isString() && newData.val().length <= 200 && newData.val().beginsWith('ExponentPushToken[')" },
+          "updatedAt": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      },
       "presence": {
         "$uid": {
           ".read": "auth != null",

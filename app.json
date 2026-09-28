@@ -56,7 +56,14 @@
         }
       ],
       "expo-asset",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#E9F1F6"
+        }
+      ]
     ],
     "extra": {
       "eas": {

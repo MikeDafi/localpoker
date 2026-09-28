@@ -17,6 +17,7 @@ import {
 
 import { getDb, isFirebaseConfigured } from './config';
 import { deleteCurrentAuthUser, ensureSignedIn } from './auth';
+import { sendPush } from './push';
 import { captureError } from '../telemetry';
 import { maskedPublicName, publicNameIssue } from '../../moderation/contentFilter';
 
@@ -419,6 +420,10 @@ export const sendFriendRequest = async (
         status: 'pending',
       } satisfies FriendRequestRecord,
     });
+
+    // Deliberately not awaited into the result: the request itself already
+    // succeeded, and a push that fails must not turn that into an error.
+    void sendPush(target.uid, 'friend-request', ownHandle);
 
     return { ok: true, toUid: target.uid, handle: target.handle, displayName: target.displayName };
   } catch (error) {

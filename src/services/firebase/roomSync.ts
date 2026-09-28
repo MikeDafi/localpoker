@@ -12,6 +12,7 @@ import {
 
 import { getDb, isFirebaseConfigured } from './config';
 import { ensureSignedIn } from './auth';
+import { sendPush } from './push';
 import type { RoomAction, RoomPlayer, RoomPrivateView, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
@@ -385,6 +386,12 @@ export const createRoom = async (
     if (Object.keys(discovery).length > 0) {
       try {
         await update(ref(db), discovery);
+        // Tell the friends who were invited, once the invite actually exists.
+        for (const friendUid of options.friendUids ?? []) {
+          if (friendUid && friendUid !== hostId) {
+            void sendPush(friendUid, 'room-invite', host.name, roomCode);
+          }
+        }
       } catch (error) {
         // The table itself exists and is playable, so a failed invite must not
         // read as a failed table. Report it and carry on.

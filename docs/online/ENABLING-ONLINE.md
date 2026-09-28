@@ -131,6 +131,28 @@ This starts the local Realtime Database emulator against `database.rules.json` a
 
 The rules suite is separate from `npx vitest run`. It needs Java for the Realtime Database emulator. If Java or `firebase-tools` is missing, the wrapper prints a clear skip message so the normal app test suite is not affected.
 
+## 3b. Republish rules after changing them
+
+`database.rules.json` is the source of truth, but the database runs whatever was
+last published. The two drift silently: the app keeps working for everything the
+old rules already allowed, and fails with `PERMISSION_DENIED` only on whatever
+the new rules were meant to permit.
+
+```sh
+npx firebase-tools database:set /.settings/rules database.rules.json \
+  --project localpoker --instance localpoker-default-rtdb --force
+```
+
+Then read them back and compare against the file, because a successful publish
+and a correct publish are not the same thing.
+
+**Outstanding:** `presence/$uid` and the `palJson` field on `users/$uid` were
+added for live friend status and Pal propagation, and are **not yet published**.
+Until they are, friends stay gray and Pal edits do not travel, both failing with
+permission denied. Nothing else regresses: the room creation fix deliberately
+needs no rules change, because it reorders writes to satisfy the rules that are
+already live.
+
 ## 4. Friend identity model
 
 Online friends use a small Firebase directory:

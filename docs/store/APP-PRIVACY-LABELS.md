@@ -14,6 +14,7 @@ Reviewed evidence:
 - Telemetry: `src/services/telemetry.ts`, `App.tsx`, `src/components/ErrorBoundary.tsx`, `src/services/sound.ts`.
 - GIF CDN usage: `src/services/gifs.ts`, `src/components/EmoteBar.tsx`, `src/components/Seat.tsx`.
 - Ads placeholder: `src/components/AdBanner.tsx`.
+- Push notifications: `src/services/pushSetup.ts`, `src/services/firebase/push.ts`, `src/state/AppContext.tsx`, `src/game/settings.ts`.
 - Store config: `app.json`, `eas.json`, `package.json`.
 
 Key current-state findings:
@@ -24,6 +25,7 @@ Key current-state findings:
 - The old auth-ID mismatch is fixed. `roomSync.ts` resolves `auth.uid` internally for create, join, actions, presence, host game state, and private views. `LobbyScreen.tsx` still builds a local `profile.id` for offline display, but Firebase writes are rewritten to `auth.uid` before reaching the database.
 - Online gameplay sync is now partially wired into `TableScreen.tsx`: hosts publish redacted public game state and private hole-card views, and players push action records. Emote messages and GIF reactions are local only today.
 - Giphy GIFs load from public CDN URLs. The app does not use a Giphy API key and does not send search terms to Giphy.
+- Push notifications are **off by default** and collect nothing until the player turns them on. The `pushNotifications` setting defaults to false, and only turning it on prompts for permission and publishes an Expo push token to `pushTokens/$uid`. Build 13, the submitted 1.0.0 binary, has no notification code at all.
 
 ## Apple App Privacy, recommended current 1.0 answers
 
@@ -36,7 +38,7 @@ Recommended **Tracking** answer: **No**. The current 1.0 path has no IDFA access
 | Contact Info, Email Address | **Yes, when a player signs in with Google** | **Yes** | No | App Functionality, account management | `LoginScreen.tsx` runs the Google OAuth flow and `googleAuth.ts` exchanges the id token via `signInWithCredential`. Firebase Authentication stores the Google account's email address against the `uid`. The app itself only derives a handle suggestion from the local part; it never writes the address to the database. Guests are unaffected: anonymous auth has no email. |
 | Contact Info, Name | **No, if display names are treated as screen names** | N/A | No | N/A | The app uses nicknames/display names, not legal first or last names. Disclose screen names under User ID and Gameplay Content. If counsel treats nicknames as Name, change this to Yes, linked, App Functionality. |
 | Identifiers, User ID | **Yes, when Firebase is enabled** | **Yes** | No | App Functionality, security | Firebase `auth.uid`, anonymous for guests and tied to the Google account after sign-in; room `hostId`; `players/$uid`; action `playerId`; private view `playerId`; display name as a screen name. |
-| Identifiers, Device ID | **No for current no-ads, no-Sentry binary** | No | No | N/A | No advertising ID access, no AdMob SDK, no ATT prompt. Re-evaluate if Sentry vendor guidance or another SDK requires Device ID disclosure. |
+| Identifiers, Device ID | **No for current no-ads, no-Sentry, no-notifications binary** | No | No | N/A | No advertising ID access, no AdMob SDK, no ATT prompt. An Expo push token is a per-install device identifier, so **the first build that ships notifications must revisit this row**, see the notifications section below. Re-evaluate if Sentry vendor guidance or another SDK requires Device ID disclosure. |
 | User Content, Gameplay Content | **Yes, when Firebase rooms are used** | **Yes** | No | App Functionality | Room code, settings JSON, room status, players, connected state, chip counts, public game state, redacted player metadata, action records, and private hole-card views. |
 | User Content, Other User Content | **Yes, when the friends features are used** | **Yes** | No | App Functionality | Friend requests (sender UID, handle, display name), friends list edges, block list entries, and abuse reports (reporter UID, reported UID and display name, context, category, room code). Emotes and GIF choices remain local table UI and are not sent. |
 | Contacts | **No** | No | No | N/A | The friends graph is built from handles typed in the app. LocalPoker never requests the device address book. |
@@ -53,6 +55,7 @@ Recommended **Tracking** answer: **No**. The current 1.0 path has no IDFA access
 - Do not answer Yes to tracking, IDFA, or advertising data for the current placeholder-ad build.
 - Do disclose Firebase user IDs and gameplay content if online rooms are enabled.
 - If Sentry is enabled with a real DSN, add diagnostics before submission.
+- If the binary ships push notifications, add Identifiers > Device ID before submission. See the notifications section below.
 - If Firebase is not configured for production, either narrow the privacy label or do not advertise online rooms.
 
 ## Apple App Privacy, if Sentry is enabled
@@ -66,6 +69,36 @@ If you set `EXPO_PUBLIC_SENTRY_DSN` for the submitted build, update the label be
 | Identifiers, Device ID | **Verify with Sentry vendor guidance** | Verify | No | App Functionality | Do not guess. Use Sentry's current SDK privacy manifest for the exact answer. |
 
 The code sets `sendDefaultPii: false` and `tracesSampleRate: 0`, so it is not configured for product analytics or performance tracing today.
+
+## Apple App Privacy, if push notifications ship
+
+Notifications are opt-in and default to off, but the label describes what the
+**binary can do**, not what a given player turned on, so a build containing this
+code must answer for it.
+
+| Apple data type | Collected after notifications ship? | Linked to user? | Used for tracking? | Purpose | Notes |
+|---|---:|---:|---:|---|---|
+| Identifiers, Device ID | **Yes** | **Yes** | No | App Functionality | An Expo push token identifies one app install on one device. It is stored at `pushTokens/$uid`, which links it to the Firebase uid by construction. |
+| Identifiers, User ID | Already Yes | Yes | No | App Functionality | No change, the uid is already disclosed. |
+
+### Notification notes
+
+- **The token is a capability, not just an identifier.** Anyone who can read it
+  can send that person a notification, so the rules only permit a read by an
+  accepted friend or by someone with a pending friend request outstanding, and
+  `push.ts` rate-limits sends to one per recipient per kind per minute.
+- **Sends are peer-to-peer.** The Spark plan has no Cloud Functions, so the
+  acting device posts to the Expo push service directly. Expo, and then APNs,
+  receive the token and the message body. Treat Expo as a service provider in
+  the same way Firebase is treated above.
+- **Nothing is collected until consent.** No token exists until the player turns
+  the setting on and accepts the iOS prompt. Denying the prompt switches the
+  setting back off rather than retrying.
+- Notification content includes a sender's display name, which is a screen name
+  already disclosed under User Content, not new data.
+- Turning the setting off, or signing out, deletes the stored token.
+
+---
 
 ## Apple App Privacy, after real ads ship
 
@@ -114,7 +147,8 @@ Recommended high-level answers:
 | Financial info, Purchases | **No** | No | N/A | N/A | No IAP, no real-money gambling, virtual coins only. |
 | Photos/Videos, Audio, Files, Contacts, Calendar, Health/Fitness, Web browsing | **No** | No | N/A | N/A | No code paths or permissions. |
 
-## Google Play Data Safety, after Sentry or ads ship
+## Google Play Data Safety, after Sentry, notifications, or ads ship
 
 - If Sentry is enabled, add diagnostics according to Sentry's current Google Play Data Safety guidance.
+- If push notifications ship, add **Device or other IDs**, collected and linked, required only for players who opt in, purpose App functionality. Disclose Expo's push service as a third party the token is shared with.
 - If real ads ship, mark **Contains ads** Yes and add data categories required by the ad SDK, commonly Device or other IDs, App activity, Advertising ID or device IDs, Approximate location, diagnostics, sharing with Google/advertising partners, and Advertising/marketing purpose.

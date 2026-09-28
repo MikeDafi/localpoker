@@ -69,15 +69,34 @@ node -e '
   console.log("Injected " + Object.keys(env).length + " EXPO_PUBLIC_ values into eas.json.");
 '
 
-# Sentry changes what the app discloses, not just what it reports. A build that
-# ships a DSN collects Crash Data, and Apple's privacy label has to say so
-# before that build goes out, or the published label is wrong. The label on
-# record today says no diagnostics, which is correct for every build made
-# before the DSN existed.
+# Some features change what the app *discloses*, not just what it does. A build
+# carrying one of them makes the published privacy label wrong until the label
+# is updated, and the label is published per version, so the moment to catch it
+# is here, before the binary exists.
+privacy_pending=()
+
+# Sentry: a build that ships a DSN collects Crash Data. The label on record
+# today says no diagnostics, which is correct for every build made before the
+# DSN existed.
 if grep -qE '^EXPO_PUBLIC_SENTRY_DSN=.+' .env; then
+  privacy_pending+=("Sentry -> Diagnostics > Crash Data")
+fi
+
+# Notifications: an Expo push token is a per-install device identifier, stored
+# against the uid, so it is Device ID and it is linked. Opt-in and defaulting
+# to off does not exempt it, because the label describes what the binary can
+# do. Detected from source rather than from .env, since nothing configures it.
+if [ -f src/services/pushSetup.ts ]; then
+  privacy_pending+=("Push notifications -> Identifiers > Device ID, linked")
+fi
+
+if [ ${#privacy_pending[@]} -gt 0 ]; then
   echo
-  echo "NOTE: this build will include Sentry."
-  echo "      App Privacy must declare Diagnostics > Crash Data before it ships."
+  echo "NOTE: this build changes what App Privacy must declare:"
+  for item in "${privacy_pending[@]}"; do
+    echo "      - $item"
+  done
+  echo "      Update the label in App Store Connect before submitting this build."
   echo "      See docs/store/APP-PRIVACY-LABELS.md."
   echo
 fi

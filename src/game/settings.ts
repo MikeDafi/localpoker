@@ -69,6 +69,12 @@ export interface GameSettings {
 
   // Social & chat
   roomVisibility: 'public' | 'private';
+  /**
+   * Whether to notify about friend requests and table invites. Off until the
+   * player turns it on, because enabling it publishes a push token that lets
+   * friends reach this device.
+   */
+  pushNotifications: boolean;
 
   // Advanced
   autoMuck: boolean;
@@ -109,6 +115,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   largeText: false,
 
   roomVisibility: 'private',
+  pushNotifications: false,
 
   autoMuck: true,
   confirmFoldWhenCheckAvailable: true,
@@ -143,6 +150,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       { key: 'showLiveStats', label: 'Live Stats Overlay', type: 'toggle', help: 'Show VPIP / PFR / win rate during play.' },
       { key: 'autoMuck', label: 'Auto Muck Losers', type: 'toggle' },
       { key: 'confirmFoldWhenCheckAvailable', label: 'Confirm Fold (can check)', type: 'toggle' },
+    ],
+  },
+  {
+    id: 'social', title: 'Friends', icon: '👥',
+    fields: [
+      { key: 'pushNotifications', label: 'Notify me', type: 'toggle', help: 'Get a notification when a friend adds you or opens a table. Turning this on lets your friends\u2019 devices reach yours; turning it off stops that immediately.' },
     ],
   },
   {
@@ -183,6 +196,23 @@ export function normalizeSettings(s?: Partial<GameSettings> | null): GameSetting
   merged.numOpponents = Math.max(1, Math.min(8, merged.numOpponents));
   merged.maxPlayers = Math.max(merged.numOpponents + 1, merged.maxPlayers);
   return merged;
+}
+
+/**
+ * Preferences that describe this device, not the game being played.
+ *
+ * `GameSettings` doubles as the app's whole settings model and as the payload
+ * published to a room, so anything in it is readable by everyone at the table.
+ * These keys have no bearing on how a hand plays, so they are stripped before
+ * the settings travel.
+ */
+const DEVICE_ONLY_SETTINGS = ['pushNotifications'] as const;
+
+/** The settings payload a room publishes, minus anything device-local. */
+export function roomSettingsJson(settings: GameSettings): string {
+  const shared: Partial<GameSettings> = { ...settings };
+  for (const key of DEVICE_ONLY_SETTINGS) delete shared[key];
+  return JSON.stringify(shared);
 }
 
 export function countSettings(): number {

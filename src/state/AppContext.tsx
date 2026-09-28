@@ -31,6 +31,7 @@ import {
   type SocialSnapshot,
 } from '../services/firebase';
 import { publicNameIssue } from '../moderation/contentFilter';
+import { enablePushNotifications, disablePushNotifications } from '../services/pushSetup';
 import {
   GUEST_ACCOUNT,
   accountBundleKey,
@@ -589,6 +590,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [friends, live],
   );
 
+  /**
+   * Keep the push token in step with the toggle.
+   *
+   * The token is the capability, so turning the setting off has to remove it,
+   * not merely stop reading it. A permission the player declined at the system
+   * level also switches the setting back off, so the UI never claims to be
+   * notifying when it cannot.
+   */
+  useEffect(() => {
+    if (!ready || !auth.loggedIn) return;
+    let active = true;
+    if (settings.pushNotifications) {
+      enablePushNotifications().then((result) => {
+        if (!active || result.ok) return;
+        if (result.reason === 'denied' || result.reason === 'unsupported') {
+          setSettings((prev) => {
+            if (!prev.pushNotifications) return prev;
+            const next = { ...prev, pushNotifications: false };
+            persist(SETTINGS_KEY, next);
+            return next;
+          });
+        }
+      });
+    } else {
+      void disablePushNotifications();
+    }
+    return () => { active = false; };
+  }, [auth.loggedIn, persist, ready, settings.pushNotifications]);
+
   const verifyAge = useCallback((birthYear: number): { ok: boolean; reason?: string } => {
     const year = Number(birthYear);
     const now = new Date().getFullYear();
@@ -608,6 +638,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     // Drop the Firebase session too. Leaving it signed in would keep the next
     // "Play as Guest" writing to the account that just signed out.
+    void disablePushNotifications();
     signOutFirebase().catch((error) => {
       captureError(error, { tags: { area: 'firebase-auth', operation: 'logout-sign-out' } });
     });

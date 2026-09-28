@@ -244,8 +244,15 @@ function logOk(message) {
     // Inviting requires the recipient to already count the host as a friend,
     // so seed that edge directly rather than replaying the whole request flow.
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      // A real accepted friendship writes both directions, and the rules read
+      // each side for different things: the invite rule asks whether the
+      // invitee counts the host as a friend, the push-token rule asks whether
+      // the token owner counts the reader as one.
       await set(ref(ctx.database(), 'localpoker/friends/player/host'), {
         uid: 'host', handle: users.host.handle, displayName: users.host.displayName, createdAt: 5,
+      });
+      await set(ref(ctx.database(), 'localpoker/friends/host/player'), {
+        uid: 'player', handle: users.player.handle, displayName: users.player.displayName, createdAt: 5,
       });
     });
 
@@ -300,6 +307,39 @@ function logOk(message) {
       palJson: 'x'.repeat(601),
     }));
     logOk('an oversized Pal is refused');
+
+    // A push token is a capability: whoever reads it can notify that person.
+    // Read scope is therefore the whole security question for notifications.
+    await assertSucceeds(set(ref(hostDb, 'localpoker/pushTokens/host'), {
+      token: 'ExponentPushToken[abc123]', updatedAt: 30,
+    }));
+    logOk('a user can publish their own push token');
+
+    await assertFails(set(ref(playerDb, 'localpoker/pushTokens/host'), {
+      token: 'ExponentPushToken[evil]', updatedAt: 31,
+    }));
+    logOk('a user cannot overwrite someone else push token');
+
+    await assertFails(set(ref(hostDb, 'localpoker/pushTokens/host'), {
+      token: 'not-an-expo-token', updatedAt: 32,
+    }));
+    logOk('a push token that Expo could not have issued is refused');
+
+    // player already counts host as a friend from the invite fixture above.
+    await assertSucceeds(get(ref(playerDb, 'localpoker/pushTokens/host')));
+    logOk('an accepted friend can read a token, which is how invites notify');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/pushTokens/host')));
+    logOk('a stranger cannot read a push token');
+
+    // A pending request is the one other way in, so a friend request can
+    // notify before the friendship exists. It ends when the request does.
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/friendRequests/host/stranger'), {
+      fromUid: 'stranger', fromHandle: users.stranger.handle, fromName: users.stranger.displayName,
+      createdAt: 33, status: 'pending',
+    }));
+    await assertSucceeds(get(ref(strangerDb, 'localpoker/pushTokens/host')));
+    logOk('a pending requester can read a token, and only while pending');
 
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {

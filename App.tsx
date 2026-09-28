@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -20,6 +20,7 @@ import { colors } from './src/theme/theme';
 import { sound } from './src/services/sound';
 import { ensureSignedIn } from './src/services/firebase';
 import { captureError, initTelemetry } from './src/services/telemetry';
+import { configureNotificationHandler, useNotificationTaps } from './src/services/pushSetup';
 import { RootStackParamList } from './src/navigation/types';
 
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -38,11 +39,20 @@ import { AgeGateScreen } from './src/screens/AgeGateScreen';
 
 initTelemetry();
 
+// Without this a notification arriving while the app is open is delivered
+// silently, so the one moment it matters most, a friend inviting you while
+// you are already looking at the app, shows nothing at all.
+configureNotificationHandler();
+
 SplashScreen.preventAutoHideAsync().catch((error) => {
   captureError(error, { tags: { area: 'startup', operation: 'splash-prevent-auto-hide' } });
 });
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Tapping a notification has to navigate from outside React, so the ref is
+// how the tap handler reaches the navigator.
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 // Hiding the splash used to hang off NavigationContainer's onReady, which is
 // only fired once a navigator mounts inside it. RootNavigator renders a plain
@@ -85,6 +95,10 @@ const navTheme = {
 
 function RootNavigator() {
   const { auth, ready, ageVerified } = useApp();
+  // Only route a tap once the navigator can actually accept one, and only for
+  // a signed-in player: a notification for someone who just signed out should
+  // open the app, not jump to a room they can no longer join.
+  useNotificationTaps(navigationRef, ready && ageVerified && auth.loggedIn);
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   if (!ageVerified) return <AgeGateScreen />;
   return (
@@ -139,7 +153,7 @@ export default function App() {
         <SafeAreaProvider>
           <AppProvider>
             <SplashGate fontsLoaded={fontsLoaded} />
-            <NavigationContainer theme={navTheme}>
+            <NavigationContainer theme={navTheme} ref={navigationRef}>
               <StatusBar style="dark" />
               <RootNavigator />
             </NavigationContainer>

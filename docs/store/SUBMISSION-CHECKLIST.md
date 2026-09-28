@@ -54,6 +54,14 @@ Audited against the live App Store Connect record, not just the code. Several fi
 
     Sentry also cannot reach build 13, which is the one under review. The first build that reports anything will be 1.0.1 or later.
 
+16. **Push notifications carry the same kind of obligation, for 1.0.1.** Friend requests and room invites now notify the recipient, sent peer to peer via the Expo push service because the Spark plan has no Cloud Functions.
+
+    **The obligation:** an Expo push token is a per-install device identifier, and it is stored at `pushTokens/$uid`, so it is **linked**. App Privacy must declare **Identifiers > Device ID, linked to the user, App Functionality** before a build containing this code ships. Being opt-in and defaulting to off does not exempt it: the label describes what the binary is capable of, not what a given player enabled.
+
+    The reminder in `scripts/build-ios-local.sh` now covers both this and Sentry, listing whichever apply. Build 13 contains no notification code, so the published label remains correct for the version under review.
+
+    **Read scope is the security question, not the privacy one.** A push token is a capability: whoever reads it can notify that person. `database.rules.json` permits a read only by an accepted friend or by someone whose friend request to that user is still pending, writes are owner only, tokens must match Expo's format, and `push.ts` rate-limits to one send per recipient per kind per minute. Six rules assertions in `scripts/rules-unit-check.cjs` hold that line.
+
 **Checked and already compliant:**
 
 - **5.1.1(v) account deletion.** In-app at Settings > Delete account; removes the Firebase user, the directory entry, the handle claim and room presence.

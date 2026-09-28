@@ -17,7 +17,7 @@ import {
   type RoomState, type RoomPlayer,
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
-import { DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
+import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
@@ -84,7 +84,7 @@ export function LobbyScreen({ navigation, route }: Props) {
     let cancelled = false;
     (async () => {
       const res = host
-        ? await createRoom(roomCode, me, JSON.stringify(hostSettings ?? DEFAULT_GAME_SETTINGS), {
+        ? await createRoom(roomCode, me, roomSettingsJson(hostSettings ?? DEFAULT_GAME_SETTINGS), {
             visibility: (hostSettings ?? DEFAULT_GAME_SETTINGS).roomVisibility,
             // Friends are told about the table whether it is public or private;
             // private means hidden from strangers, not from them.
