@@ -106,31 +106,16 @@ export function CreateJoinScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
         <View style={styles.switch}>
           {(['create', 'join'] as const).map((m) => (
-            <Pressable key={m} onPress={() => { Haptics.selectionAsync(); setMode(m); }} style={[styles.switchBtn, mode === m && styles.switchActive]}>
+            /* Create Room goes straight to the setup screen. It used to open
+               a page whose only job was to hold a green button that opened
+               the setup screen, which is a tap and a screen to say nothing. */
+            <Pressable key={m} onPress={() => { Haptics.selectionAsync(); if (m === 'create') startCreate(); else setMode(m); }} style={[styles.switchBtn, mode === m && styles.switchActive]}>
               <Text style={[styles.switchText, mode === m && styles.switchTextActive]}>{m === 'create' ? 'Create Room' : 'Join Room'}</Text>
             </Pressable>
           ))}
         </View>
 
-        {mode === 'create' ? (
-          <>
-            {/* The code used to be printed here, before anything existed.
-                It was a code for a table nobody had made yet, and it was
-                regenerated behind the scenes anyway, so sharing it early could
-                hand out a code that was no longer yours. It now appears in the
-                lobby, once there is a real room for it to open. */}
-            <WiiPanel padding={20}>
-              <Text style={styles.label}>Play with friends</Text>
-              <Text style={styles.note}>
-                Choose the blinds and stacks, and your table opens with a code to share.
-                Real friends join here, no bots are added to friends games.
-              </Text>
-            </WiiPanel>
-            <WiiButton label="Set up table →" variant="green" size="lg" fullWidth onPress={startCreate} />
-
-          </>
-        ) : (
-          <>
+        <>
           <WiiPanel padding={20}>
             <Text style={styles.label}>Enter room code</Text>
             <TextInput value={joinCode} onChangeText={(t) => setJoinCode(filterToCodeAlphabet(t))} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="AB24" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
@@ -161,7 +146,6 @@ export function CreateJoinScreen({ navigation }: Props) {
               emptyText="No public tables open right now."
             />
           </>
-        )}
         <AdBanner />
       </ScrollView>
     </ScreenBackground>

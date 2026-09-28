@@ -361,22 +361,21 @@ const publishDiscovery = async (
     await update(ref(db), discovery);
 
     /*
-     * Withdraw the advert automatically if the host's connection drops.
+     * Deliberately no onDisconnect teardown of these entries.
      *
-     * Ending the room on disconnect was already handled, but the entries that
-     * advertise it were not, so a table whose host had long gone kept
-     * appearing under Join Room and simply refused anyone who tapped it.
-     * Firebase runs these server-side, which is the only way to clean up
-     * after a client that is no longer there and the closest thing to a
-     * scheduled job available without Cloud Functions.
+     * Removing them when the host's connection dropped seemed like the tidy
+     * way to clean up after a client that had gone for good. It is not: iOS
+     * closes the socket within seconds of the app being backgrounded, so the
+     * host switching apps to send someone the code deleted the very invite
+     * they were about to talk about, and the friend opened the app to find
+     * nothing there.
+     *
+     * A dropped connection is not an intent to withdraw anything, which is
+     * the same reason it no longer ends the room. Invites are withdrawn
+     * explicitly when the table starts or ends, the invitee deletes one that
+     * turns out to lead nowhere, and an abandoned room is swept after ten
+     * minutes.
      */
-    for (const path of Object.keys(discovery)) {
-      try {
-        await onDisconnect(ref(db, path)).remove();
-      } catch (error) {
-        reportFirebaseError('register-discovery-disconnect', error);
-      }
-    }
 
     /*
      * Notify the friends who are not already looking at the app.
@@ -404,6 +403,36 @@ const publishDiscovery = async (
   } catch (error) {
     reportFirebaseError('create-room-discovery', error);
     console.warn('Room created but could not publish invites.', error);
+  }
+};
+
+/**
+ * How many tables one person may have open at once.
+ *
+ * Without a cap a host accumulates rooms every time they set one up and walk
+ * away, each one advertising itself to their friends until it is swept, so
+ * the Join Room list fills with tables belonging to one person who is not at
+ * any of them.
+ */
+export const MAX_ROOMS_PER_HOST = 3;
+
+/**
+ * The codes this player still hosts, oldest first.
+ *
+ * Counted from `userRooms`, which is the player's own index and readable only
+ * by them, rather than by scanning every room in the database.
+ */
+export const hostedRoomCodes = async (db: Database, hostId: string): Promise<string[]> => {
+  try {
+    const snapshot = await get(ref(db, `localpoker/userRooms/${hostId}`));
+    const entries = Object.values((snapshot.val() as Record<string, { code?: string; role?: string; updatedAt?: number }> | null) ?? {});
+    return entries
+      .filter((e) => e?.role === 'host' && typeof e.code === 'string')
+      .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
+      .map((e) => e.code as string);
+  } catch (error) {
+    reportFirebaseError('count-hosted-rooms', error);
+    return [];
   }
 };
 
@@ -461,6 +490,34 @@ export const createRoom = async (
       }
       if (!isReclaimableEndedRoom(existingRoom)) {
         return { ok: false, reason: 'Room already exists.' };
+      }
+    }
+
+    /*
+     * Tidy up first, then refuse only if they genuinely have three live ones.
+     *
+     * A host who set up tables and wandered off would otherwise hit the cap
+     * against rooms that no longer exist, so the stale entries are cleared
+     * before the count is taken rather than counting ghosts against them.
+     */
+    const hosted = await hostedRoomCodes(db, hostId);
+    const others = hosted.filter((c) => c !== roomCode);
+    if (others.length >= MAX_ROOMS_PER_HOST) {
+      const live: string[] = [];
+      for (const other of others) {
+        const snap = await get(ref(db, roomPath(other)));
+        const room = snap.val() as Partial<RoomState> | null;
+        if (!snap.exists() || room?.status === 'ended' || isAbandonedRoom(room)) {
+          await set(ref(db, userRoomPath(hostId, other)), null);
+          continue;
+        }
+        live.push(other);
+      }
+      if (live.length >= MAX_ROOMS_PER_HOST) {
+        return {
+          ok: false,
+          reason: `You already have ${MAX_ROOMS_PER_HOST} tables open. Close one before starting another.`,
+        };
       }
     }
 
@@ -782,9 +839,16 @@ const gameConfigFromSettings = (settings: GameSettings, playerCount: number): Ga
   turnTimerSec: settings.turnTimerSec,
 });
 
+/*
+ * Everyone seated, not only everyone whose socket happens to be up.
+ *
+ * Filtering on `connected` meant a player who had backgrounded the app for a
+ * few seconds was simply not dealt in, which is a harsh reading of "away" now
+ * that a dropped connection is explicitly tolerated for ten minutes. If they
+ * really have gone, the turn timer folds them and the hand carries on.
+ */
 const sortedRoomPlayers = (room: Pick<RoomState, 'hostId' | 'players'>): RoomPlayer[] =>
   Object.values(room.players ?? {})
-    .filter((player) => player.connected)
     .sort((a, b) => {
       if (a.id === room.hostId) return -1;
       if (b.id === room.hostId) return 1;

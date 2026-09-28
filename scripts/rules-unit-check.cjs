@@ -429,6 +429,52 @@ function logOk(message) {
     }));
     logOk('and simply taking the next number is accepted');
 
+    /*
+     * The whole create-then-join handshake, written exactly as the app writes
+     * it, because the pieces all passing individually has twice now not meant
+     * the sequence works. Host creates, friend joins, each must then see the
+     * other in the roster.
+     */
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/FLOW1': {
+        code: 'FLOW1', hostId: 'host', status: 'lobby', createdAt: 80,
+        settingsJson: '{"smallBlind":10,"bigBlind":20}',
+        visibility: 'private', hostName: 'Host', actionSeq: 0,
+        invited: { player: true },
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: true } },
+      },
+      'localpoker/userRooms/host/FLOW1': { code: 'FLOW1', role: 'host', updatedAt: 80 },
+    }));
+    logOk('the host can create a room that records who it invited');
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/roomInvites/player/FLOW1': {
+        code: 'FLOW1', hostUid: 'host', hostName: 'Host',
+        visibility: 'private', status: 'lobby', updatedAt: 80,
+      },
+    }));
+    logOk('and then advertise it to that friend');
+
+    const invite = await get(ref(playerDb, 'localpoker/roomInvites/player/FLOW1'));
+    if (!invite.exists()) throw new Error('the invited friend cannot see the invite');
+    logOk('the friend can see the invite');
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/rooms/FLOW1/players/player': { id: 'player', name: 'Player', isHost: false, connected: true },
+      'localpoker/userRooms/player/FLOW1': { code: 'FLOW1', role: 'player', updatedAt: 81 },
+    }));
+    logOk('the friend can take a seat');
+
+    const seenByGuest = await get(ref(playerDb, 'localpoker/rooms/FLOW1'));
+    const guestSees = Object.keys(seenByGuest.val()?.players ?? {});
+    if (!guestSees.includes('host')) throw new Error(`guest cannot see the host, saw: ${guestSees}`);
+    logOk('and the guest can see the host in the roster');
+
+    const seenByHost = await get(ref(hostDb, 'localpoker/rooms/FLOW1'));
+    const hostSees = Object.keys(seenByHost.val()?.players ?? {});
+    if (!hostSees.includes('player')) throw new Error(`host cannot see the guest, saw: ${hostSees}`);
+    logOk('and the host can see the guest');
+
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
       type: 'emoji', value: '\u{1F525}', ts: 60,
     }));

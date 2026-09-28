@@ -134,7 +134,17 @@ export function LobbyScreen({ navigation, route }: Props) {
   }, [online, host, roomCode, me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const players: RoomPlayer[] = useMemo(() => {
-    if (room?.players) return Object.values(room.players).filter((p) => p.connected);
+    /*
+     * Everyone seated, whether or not their socket is up this second.
+     *
+     * This filtered on `connected`, and iOS closes the socket within seconds
+     * of an app being backgrounded, so a host who switched apps to send
+     * someone the code vanished from the lobby: the person who just joined
+     * opened it to an empty table and no idea anyone was there. Taking a call
+     * is not leaving. The dot beside each name already shows who is actually
+     * attentive, and a table nobody returns to is swept after ten minutes.
+     */
+    if (room?.players) return Object.values(room.players);
     // Only stand in for the roster once the room genuinely exists. Showing
     // yourself regardless meant a refused write still rendered a seated host
     // and a green dot directly above its own error, which read as a working
@@ -223,10 +233,17 @@ export function LobbyScreen({ navigation, route }: Props) {
           <Text style={styles.waitHost}>Waiting for the host to start…</Text>
         )}
 
-        <WiiPanel padding={20}>
-          <Text style={styles.label}>Room code</Text>
-          <View style={styles.codeBox}><Text style={styles.code}>{roomCode}</Text></View>
-          <WiiButton label="Share invite" variant="blue" size="md" fullWidth onPress={share} />
+        {/* The code used to be a full panel with 34pt type across the screen,
+            which is a lot of room for four characters you read once and then
+            never look at again. It sits inline with Share now, leaving the
+            space for the roster and the table rules, which are what you are
+            actually waiting on. */}
+        <WiiPanel padding={14}>
+          <View style={styles.codeRow}>
+            <View style={styles.codeChip}><Text style={styles.code}>{roomCode}</Text></View>
+            <View style={{ flex: 1 }} />
+            <WiiButton label="Share invite" variant="blue" size="sm" onPress={share} />
+          </View>
         </WiiPanel>
 
         <WiiPanel padding={16}>
@@ -323,8 +340,9 @@ const styles = StyleSheet.create({
   settingsKey: { fontFamily: fonts.medium, fontSize: 14, color: colors.inkSoft, flexShrink: 1, marginRight: spacing.md },
   settingsValue: { fontFamily: fonts.semibold, fontSize: 15, color: colors.ink },
   settingsHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.inkMuted, marginTop: 10 },
-  codeBox: { backgroundColor: colors.panelAlt, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 16, alignItems: 'center', marginBottom: spacing.md },
-  code: { fontFamily: fonts.bold, fontSize: 34, letterSpacing: 6, color: colors.blueDeep },
+  codeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  codeChip: { backgroundColor: colors.panelAlt, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, paddingVertical: 8, paddingHorizontal: 16 },
+  code: { fontFamily: fonts.bold, fontSize: 20, letterSpacing: 3, color: colors.blueDeep },
   playersHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   section: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink },
   count: { fontFamily: fonts.semibold, fontSize: 13, color: colors.inkMuted },
