@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
+import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
+import type { ObservedCounters } from '../game/observedStats';
 import {
   Stats, HandResult, DEFAULT_STATS, applyHandResult, derivedStats as computeDerived, mergeStats,
 } from '../game/stats';
@@ -154,6 +156,7 @@ const SETTINGS_KEY = '@pokerpals/settings';
 const SAVED_GAME_KEY = '@pokerpals/savedgame';
 const AGE_KEY = '@pokerpals/ageVerified';
 const BLOCKS_KEY = '@pokerpals/blocks';
+const OPPONENT_HISTORY_KEY = '@pokerpals/opponentHistory';
 
 /**
  * Which account the keys above currently hold. See `accountBundle.ts` for why
@@ -252,6 +255,10 @@ interface AppContextValue {
   reportUser: (uid: string, name: string, context: ReportContext, roomCode?: string) => Promise<ActionResult>;
   deleteAccount: () => Promise<ActionResult>;
   isBlocked: (uid: string) => boolean;
+  /** What opponents have done at tables before this one. */
+  opponentHistory: OpponentHistory;
+  /** Fold a finished table's observations into that long view. */
+  absorbObservedTable: (tableCounters: Record<string, ObservedCounters>) => void;
   updateSettings: (patch: Partial<GameSettings>) => void;
   resetStats: () => void;
   saveGame: (g: SavedGame) => void;
@@ -275,12 +282,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [p, s, a, f, st, g, av, b, acct] = await Promise.all([
+        const [p, s, a, f, st, g, av, b, acct, oh] = await Promise.all([
           AsyncStorage.getItem(PROFILE_KEY), AsyncStorage.getItem(STATS_KEY),
           AsyncStorage.getItem(AUTH_KEY), AsyncStorage.getItem(FRIENDS_KEY),
           AsyncStorage.getItem(SETTINGS_KEY), AsyncStorage.getItem(SAVED_GAME_KEY),
           AsyncStorage.getItem(AGE_KEY), AsyncStorage.getItem(BLOCKS_KEY),
-          AsyncStorage.getItem(ACTIVE_ACCOUNT_KEY),
+          AsyncStorage.getItem(ACTIVE_ACCOUNT_KEY), AsyncStorage.getItem(OPPONENT_HISTORY_KEY),
         ]);
         activeAccount.current = acct || GUEST_ACCOUNT;
         if (p) { const parsed = JSON.parse(p); setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
@@ -302,6 +309,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (g) setSavedGame(JSON.parse(g));
         if (av === 'true') setAgeVerified(true);
         if (b) setBlockedUsers(JSON.parse(b));
+        if (oh) setOpponentHistory(JSON.parse(oh));
       } catch (error) {
         captureError(error, { tags: { area: 'async-storage', operation: 'hydrate-app-state' } });
       }
@@ -879,10 +887,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /**
+   * What opponents have done at previous tables.
+   *
+   * Kept beside the live observations rather than inside them: the live ones
+   * describe the table in front of you and reset with it, which is the point
+   * of them, so the long view needs somewhere of its own to live.
+   */
+  const [opponentHistory, setOpponentHistory] = useState<OpponentHistory>({});
+
+  const absorbObservedTable = useCallback((tableCounters: Record<string, ObservedCounters>) => {
+    setOpponentHistory((prev) => {
+      const next = pruneHistory(absorbTable(prev, tableCounters));
+      if (next === prev) return prev;
+      persist(OPPONENT_HISTORY_KEY, next);
+      return next;
+    });
+  }, [persist]);
+
   const value = useMemo(() => ({
-    ready, auth, ageVerified, verifyAge, profile, stats, friends: friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick,
-    login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame]);
+    ready, auth, ageVerified, verifyAge, profile, stats, friends: friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, opponentHistory,
+    login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, absorbObservedTable,
+  }), [ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, opponentHistory, absorbObservedTable]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

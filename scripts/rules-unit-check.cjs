@@ -374,6 +374,44 @@ function logOk(message) {
     await assertSucceeds(get(ref(strangerDb, 'localpoker/rooms/NOSUCH')));
     logOk('a room that does not exist still reads as empty rather than denied');
 
+    // A guest acting on their turn. pushAction writes the action and the
+    // room's action counter in one update, so both paths have to pass or the
+    // player's call silently never lands and the table sits on their turn
+    // forever.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/PLAY1'), {
+        code: 'PLAY1', hostId: 'host', status: 'playing', createdAt: 50, actionSeq: 0,
+        players: {
+          host: { id: 'host', name: 'Host', isHost: true, connected: true },
+          player: { id: 'player', name: 'Player', isHost: false, connected: true },
+        },
+      });
+    });
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/a1': { playerId: 'player', type: 'call', seq: 1, ts: 51 },
+      'localpoker/rooms/PLAY1/actionSeq': 1,
+    }));
+    logOk('a seated guest can push an action and advance the counter');
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PLAY1/actions/a2': { playerId: 'host', type: 'check', seq: 2, ts: 52 },
+      'localpoker/rooms/PLAY1/actionSeq': 2,
+    }));
+    logOk('and so can the host');
+
+    await assertFails(update(ref(strangerDb), {
+      'localpoker/rooms/PLAY1/actions/a3': { playerId: 'stranger', type: 'fold', seq: 3, ts: 53 },
+      'localpoker/rooms/PLAY1/actionSeq': 3,
+    }));
+    logOk('someone not seated cannot act at the table');
+
+    await assertFails(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/a4': { playerId: 'host', type: 'fold', seq: 3, ts: 54 },
+      'localpoker/rooms/PLAY1/actionSeq': 3,
+    }));
+    logOk('and nobody can act on another player behalf');
+
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {
         code: 'BADHOST',

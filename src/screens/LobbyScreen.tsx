@@ -14,6 +14,7 @@ import { RootStackParamList } from '../navigation/types';
 import {
   isFirebaseConfigured, createRoom, joinRoom, leaveRoom, subscribeRoom, setPlayerConnected, getAuthUid,
   startRoomGame,
+  getCachedHostGame,
   type RoomState, type RoomPlayer,
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
@@ -105,7 +106,15 @@ export function LobbyScreen({ navigation, route }: Props) {
         if (cancelled) return;
         setRoom(r);
         if (r?.status === 'playing' && r.publicState) {
-          goToTable(r);
+          // The host must not leave for the table until their own
+          // authoritative game exists. startRoomGame caches it only after its
+          // write lands, and that same write is what fires this listener, so
+          // the listener otherwise wins the race: the table mounts with no
+          // host game, the host never subscribes to actions, and every call a
+          // guest makes is written to the database and read by nobody. The
+          // table then sits on the guest's turn forever. Guests have no such
+          // state and can go straight through.
+          if (!host || getCachedHostGame(roomCode)) goToTable(r);
         } else if (r?.status === 'ended') {
           setStatus('Room ended because the host disconnected or left.');
         }

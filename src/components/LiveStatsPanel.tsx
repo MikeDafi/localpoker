@@ -5,7 +5,7 @@ import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings 
 import { useApp, derivedStats } from '../state/AppContext';
 import { InfoDot, InfoNote } from './InfoDot';
 import { LIVE_STAT_KEYS, OPPONENT_STAT_KEYS, STAT_HELP, statHelpText, type StatKey } from '../game/statHelp';
-import { observedStats, playerRead, type ObservedTable } from '../game/observedStats';
+import { observedStats, emptyCounters, type ObservedTable, type ObservedCounters } from '../game/observedStats';
 
 export interface LiveStatsOpponent {
   id: string;
@@ -20,11 +20,18 @@ export interface LiveStatsPanelProps {
   winProbability?: number | null;
   /** Everyone else at the table, in seat order. */
   opponents?: LiveStatsOpponent[];
-  /** What this table has been seen to do, for the opponent read. */
+  /** What this table has been seen to do. */
   observed?: ObservedTable;
+  /** What these players did at previous tables, keyed the same way. */
+  history?: Record<string, ObservedCounters>;
+  /** Open straight onto this player, set by tapping their seat. */
+  focusPlayerId?: string | null;
 }
 
-type Tab = 'you' | 'opponents';
+/** 'you', or an opponent id. One tab per person, rather than one shared list. */
+type Tab = string;
+/** Within an opponent, this table or everything before it. */
+type Span = 'current' | 'previous';
 
 /**
  * The in-game stats sheet.
@@ -42,10 +49,21 @@ export function LiveStatsPanel({
   winProbability,
   opponents = [],
   observed,
+  history = {},
+  focusPlayerId = null,
 }: LiveStatsPanelProps) {
   const { stats } = useApp();
   const d = derivedStats(stats);
   const [tab, setTab] = useState<Tab>('you');
+  const [span, setSpan] = useState<Span>('current');
+
+  /*
+   * Tapping a seat should land on that player, not on a list to pick them from
+   * again. The panel is unmounted while hidden, so following the focus on each
+   * open is enough and no effect is needed.
+   */
+  const wantedTab = focusPlayerId && opponents.some((o) => o.id === focusPlayerId) ? focusPlayerId : null;
+  const activeTab = wantedTab && tab === 'you' ? wantedTab : tab;
   // Only one explanation is open at a time: several at once turns a compact
   // list of numbers into a wall of prose.
   const [openHelp, setOpenHelp] = useState<string | null>(null);
@@ -80,24 +98,29 @@ export function LiveStatsPanel({
         <Text style={styles.title}>Live Stats</Text>
 
         {opponents.length > 0 && (
-          <View style={styles.tabs}>
-            {(['you', 'opponents'] as Tab[]).map((t) => (
+          /* One tab per person. A single shared "Opponents" list meant reading
+             three players' numbers stacked together and working out which
+             column belonged to whom, which is exactly the comparison a HUD is
+             supposed to do for you. Scrolls, because a full table does not
+             fit across the sheet. */
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+            {[{ id: 'you', name: 'You' }, ...opponents].map((t) => (
               <Pressable
-                key={t}
-                onPress={() => { setTab(t); setOpenHelp(null); }}
+                key={t.id}
+                onPress={() => { setTab(t.id); setOpenHelp(null); }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: tab === t }}
-                style={[styles.tab, tab === t && styles.tabActive]}
+                accessibilityState={{ selected: activeTab === t.id }}
+                style={[styles.tab, activeTab === t.id && styles.tabActive]}
               >
-                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                  {t === 'you' ? 'You' : 'Opponents'}
+                <Text numberOfLines={1} style={[styles.tabText, activeTab === t.id && styles.tabTextActive]}>
+                  {t.name}
                 </Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
         )}
 
-        {tab === 'you' && winProbability != null && (
+        {activeTab === 'you' && winProbability != null && (
           <>
             <View style={styles.hintRow}>
               <View style={[styles.hintPill, { backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder }]}>
@@ -111,10 +134,10 @@ export function LiveStatsPanel({
             {openHelp === 'winChance' && <InfoNote>{statHelpText('winChance')}</InfoNote>}
           </>
         )}
-        {tab === 'you' && handHint ? <Text style={styles.blurb}>{handHint}</Text> : null}
+        {activeTab === 'you' && handHint ? <Text style={styles.blurb}>{handHint}</Text> : null}
 
         <ScrollView style={{ maxHeight: 340 }}>
-          {tab === 'you' ? (
+          {activeTab === 'you' ? (
             LIVE_STAT_KEYS.map((key) => {
               const { value, color } = valueFor(key);
               return (
@@ -131,65 +154,77 @@ export function LiveStatsPanel({
               );
             })
           ) : (
-            <>
-              <Text style={styles.blurb}>
-                Read from what each player has actually done at this table rather than from their profile, so it
-                describes this game, covers the bots, and cannot be faked.
-              </Text>
-              {opponents.map((o) => {
-                const s = observedStats(observed?.counters[o.id]);
-                const read = playerRead(s);
-                return (
-                  <View key={o.id} style={styles.oppCard}>
-                    <View style={styles.oppHead}>
-                      <Text style={styles.oppName}>{o.name}</Text>
-                      {read && <Text style={styles.oppRead}>{read}</Text>}
-                    </View>
-                    <Text style={styles.oppHands}>
-                      {s.handsSeen === 0
-                        ? 'No hands seen yet'
-                        : `${s.handsSeen} hand${s.handsSeen === 1 ? '' : 's'} seen${s.handsSeen < 20 ? ', still a small sample' : ''}`}
-                    </Text>
-                    <View style={styles.oppGrid}>
-                      {OPPONENT_STAT_KEYS.map((key) => {
-                        const value =
-                          key === 'vpip' ? fmt(s.vpip)
-                          : key === 'pfr' ? fmt(s.pfr)
-                          : key === 'af' ? fmt(s.af, '')
-                          : key === 'winRate' ? fmt(s.winRate)
-                          : key === 'showdownWin' ? fmt(s.showdownWinRate)
-                          : `${s.handsSeen}`;
-                        const helpId = `opp:${key}`;
-                        return (
-                          <Pressable
-                            key={key}
-                            onPress={() => toggle(helpId)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${STAT_HELP[key].label}: ${value}. Tap for what this means.`}
-                            style={styles.oppCell}
-                          >
-                            <Text style={styles.oppValue}>{value}</Text>
-                            <View style={styles.oppCellLabel}>
-                              <Text style={styles.oppLabel}>
-                                {key === 'handsLifetime' ? 'Hands' : STAT_HELP[key].label}
-                              </Text>
-                              <InfoDot
-                                label={STAT_HELP[key].label}
-                                open={openHelp === helpId}
-                                onPress={() => toggle(helpId)}
-                              />
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                    {OPPONENT_STAT_KEYS.filter((k) => openHelp === `opp:${k}`).map((k) => (
-                      <InfoNote key={k}>{statHelpText(k)}</InfoNote>
+            (() => {
+              const who = opponents.find((o) => o.id === activeTab);
+              if (!who) return null;
+              const live = observed?.counters[who.id] ?? emptyCounters();
+              const past: ObservedCounters = history[who.id] ?? emptyCounters();
+              const s = observedStats(span === 'current' ? live : past);
+              return (
+                <View style={styles.oppCard}>
+                  {/* This table or every table before it. Both are earned by
+                      watching, so neither can be faked, but they answer
+                      different questions: whether someone has changed gear
+                      tonight, and what they are like generally. */}
+                  <View style={styles.spanTabs}>
+                    {(['current', 'previous'] as Span[]).map((sp) => (
+                      <Pressable
+                        key={sp}
+                        onPress={() => { setSpan(sp); setOpenHelp(null); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: span === sp }}
+                        style={[styles.spanTab, span === sp && styles.spanTabActive]}
+                      >
+                        <Text style={[styles.spanText, span === sp && styles.spanTextActive]}>
+                          {sp === 'current' ? 'This game' : 'Previous'}
+                        </Text>
+                      </Pressable>
                     ))}
                   </View>
-                );
-              })}
-            </>
+                  <Text style={styles.oppHands}>
+                    {s.handsSeen === 0
+                      ? span === 'current' ? 'No hands seen yet' : 'You have not played them before'
+                      : `${s.handsSeen} hand${s.handsSeen === 1 ? '' : 's'} seen${s.handsSeen < 20 ? ', still a small sample' : ''}`}
+                  </Text>
+                  <View style={styles.oppGrid}>
+                    {OPPONENT_STAT_KEYS.map((key) => {
+                      const value =
+                        key === 'vpip' ? fmt(s.vpip)
+                        : key === 'pfr' ? fmt(s.pfr)
+                        : key === 'af' ? fmt(s.af, '')
+                        : key === 'winRate' ? fmt(s.winRate)
+                        : key === 'showdownWin' ? fmt(s.showdownWinRate)
+                        : `${s.handsSeen}`;
+                      const helpId = `opp:${key}`;
+                      return (
+                        <Pressable
+                          key={key}
+                          onPress={() => toggle(helpId)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${STAT_HELP[key].label}: ${value}. Tap for what this means.`}
+                          style={styles.oppCell}
+                        >
+                          <Text style={styles.oppValue}>{value}</Text>
+                          <View style={styles.oppCellLabel}>
+                            <Text style={styles.oppLabel}>
+                              {key === 'handsLifetime' ? 'Hands' : STAT_HELP[key].label}
+                            </Text>
+                            <InfoDot
+                              label={STAT_HELP[key].label}
+                              open={openHelp === helpId}
+                              onPress={() => toggle(helpId)}
+                            />
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {OPPONENT_STAT_KEYS.filter((k) => openHelp === `opp:${k}`).map((k) => (
+                    <InfoNote key={k}>{statHelpText(k)}</InfoNote>
+                  ))}
+                </View>
+              );
+            })()
           )}
         </ScrollView>
         <Pressable style={styles.closeBtn} onPress={onClose}>
@@ -205,8 +240,13 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: colors.surface, borderTopWidth: 1, borderColor: colors.surfaceBorder, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: spacing.lg, paddingBottom: spacing.xl },
   handle: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: colors.surfaceBorderStrong, marginBottom: spacing.md },
   title: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, marginBottom: spacing.md },
-  tabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radii.pill, alignItems: 'center', backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder },
+  tabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, paddingRight: spacing.sm },
+  spanTabs: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
+  spanTab: { flex: 1, paddingVertical: 6, borderRadius: radii.pill, alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder },
+  spanTabActive: { backgroundColor: colors.surfaceBorderStrong, borderColor: colors.blueLight },
+  spanText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDarkSoft },
+  spanTextActive: { color: colors.onDark },
+  tab: { minWidth: 92, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.pill, alignItems: 'center', backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder },
   tabActive: { backgroundColor: colors.blue, borderColor: colors.blueLight },
   tabText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onDarkSoft },
   tabTextActive: { color: colors.onBlue },

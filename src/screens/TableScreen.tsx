@@ -86,7 +86,7 @@ interface RenderedChipFlight {
 
 export function TableScreen({ navigation, route }: Props) {
   const app = useApp();
-  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked } = app;
+  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked, opponentHistory, absorbObservedTable } = app;
   const { width, height: winH } = useWindowDimensions();
 
   /**
@@ -225,7 +225,12 @@ export function TableScreen({ navigation, route }: Props) {
   }, [firebaseOnline, isOnlineHost, privateView, room?.publicState, roomCode]);
 
   useEffect(() => {
-    if (!roomCode || !firebaseOnline || !isOnlineHost || !getCachedHostGame(roomCode)) {
+    // Deliberately not gated on the cached host game. That read is not
+    // reactive and was not in the dependency list, so a single early run with
+    // no cache meant the host never subscribed at all and never retried. The
+    // callback below already falls back to the live state, and the lobby now
+    // holds the host back until its game exists, so subscribing here is safe.
+    if (!roomCode || !firebaseOnline || !isOnlineHost) {
       return undefined;
     }
 
@@ -279,6 +284,8 @@ export function TableScreen({ navigation, route }: Props) {
   const [earned, setEarned] = useState(0);
   const [sessionHands, setSessionHands] = useState(0);
   const [statsOpen, setStatsOpen] = useState(false);
+  /** Which player the stats panel opens on, set by tapping their seat. */
+  const [statsFocus, setStatsFocus] = useState<string | null>(null);
   // The result panel is bottom-anchored and its height depends on how many
   // winners there are, so the hole cards are lifted clear of whatever it
   // actually measures rather than of a guess.
@@ -293,6 +300,20 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const [observed, setObserved] = useState(() => emptyObservedTable());
   const observedFrom = useRef<typeof state | null>(null);
+
+  /*
+   * Fold this table's observations into the long view when the table is done.
+   *
+   * Once on unmount rather than continuously, so that while you are still
+   * sitting there "Previous" means strictly before this game and the two tabs
+   * cannot quietly converge into the same numbers. Bots and your own seat are
+   * filtered out by the store, since a bot id is regenerated per table.
+   */
+  const observedRef = useRef(observed);
+  observedRef.current = observed;
+  useEffect(() => () => {
+    absorbObservedTable(observedRef.current.counters);
+  }, [absorbObservedTable]);
   useEffect(() => {
     // React runs effects twice in development; skipping a state we have already
     // folded in keeps every count honest.
@@ -559,6 +580,21 @@ export function TableScreen({ navigation, route }: Props) {
     step(action, amount, human.id);
   };
 
+  /*
+   * The banner only earns its space when it has something to say.
+   *
+   * A working online table said "Room DP8E, live synced table" directly under
+   * a header already showing #DP8E, which is the room code twice and a fact
+   * the player can see for themselves from the table moving. Everything else
+   * here is a real state worth interrupting for.
+   */
+  const tableNotice = useMemo(() => {
+    if (!firebaseOnline) return `Room ${roomCode} · practice vs bots, live friend play needs Firebase setup`;
+    if (room?.status === 'ended') return `Room ${roomCode} ended, host disconnected or left`;
+    if (!onlineSyncActive) return 'Connecting to the live table…';
+    return null;
+  }, [firebaseOnline, onlineSyncActive, room?.status, roomCode]);
+
   const onTimerExpire = useCallback(() => {
     if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
@@ -571,8 +607,31 @@ export function TableScreen({ navigation, route }: Props) {
       // Safety net: force a stalled opponent to act so no turn hangs.
       const decision = decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
       step(decision.action, decision.amount, actor.id);
+    } else if (isOnlineHost && roomCode) {
+      /*
+       * A remote player who has run out of time.
+       *
+       * Nobody was handling this: the branch above covers the local human and
+       * bots, and a real opponent fell through to nothing, so the clock hit
+       * zero and the table simply stopped. The host has to act for them,
+       * because it owns the authoritative game and is the only participant
+       * that can move a hand on without that player's cooperation.
+       *
+       * It cannot be pushed as an action: pushAction signs as the sender, and
+       * the rules quite rightly refuse one player acting as another. So it is
+       * applied directly and published, exactly as an arriving intent is.
+       */
+      const options = legalActions(state, actor.id);
+      const type = options.actions.includes('check') ? 'check' : 'fold';
+      const result = applyHostIntent(state, actor.id, { type });
+      if (!result.ok) return;
+      stateRef.current = result.state;
+      setState(result.state);
+      publishHostGameState(roomCode, result.state).catch((error) => {
+        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-timeout' } });
+      });
     }
-  }, [handOver, state, legal, botDiff, settings.difficulty, step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [handOver, state, legal, botDiff, settings.difficulty, step, isOnlineHost, roomCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentActorName = current?.id === human.id
     ? 'You'
@@ -840,7 +899,6 @@ export function TableScreen({ navigation, route }: Props) {
   };
 
   const opponents = felt.players.filter((p) => p.id !== human.id);
-  const reportablePlayers = opponents.filter((p) => !p.isBot && p.id !== HUMAN_ID);
   const dealerId = state.players[state.dealerIndex]?.id;
   const cardSize = width < 380 ? 46 : 52;
   const lowChips = human.chips < settings.bigBlind * 5;
@@ -859,38 +917,52 @@ export function TableScreen({ navigation, route }: Props) {
   };
 
   const confirmBlockTablePlayer = (player: GameState['players'][number]) => {
-    Alert.alert('Block player?', `${player.name} will not be able to send you friend requests. Their name and reactions will be hidden from you.`, [
+    Alert.alert('Block player?', `${player.name} will not be able to send you friend requests, and you will leave this table.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Block',
         style: 'destructive',
         onPress: async () => {
           const result = await blockUser(player.id, player.name);
-          Alert.alert(result.ok ? 'Player blocked' : 'Could not block', result.reason || `${player.name} was blocked.`);
+          if (!result.ok) {
+            Alert.alert('Could not block', result.reason || 'Try again in a moment.');
+            return;
+          }
+          // Blocking someone and then being left sitting at their table is not
+          // a block in any sense the player would recognise, so leaving is
+          // part of the action rather than a suggestion afterwards.
+          if (roomCode && firebaseOnline) {
+            const away = isOnlineHost
+              ? endRoom(roomCode, 'Host left the table.')
+              : leaveRoom(roomCode, human.id).then(() => ({ ok: true }));
+            away
+              .catch((error) => {
+                captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-after-block' } });
+              })
+              .finally(() => navigation.replace('Home'));
+          } else {
+            navigation.replace('Home');
+          }
         },
       },
     ]);
   };
 
   const openPlayerSafety = (player: GameState['players'][number]) => {
-    Alert.alert(player.name, 'Choose a safety action.', [
-      { text: 'Report offensive content', onPress: () => reportTablePlayer(player) },
-      { text: 'Block player', style: 'destructive', onPress: () => confirmBlockTablePlayer(player) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const openTableSafety = () => {
-    if (reportablePlayers.length === 0) {
-      Alert.alert('Table safety', 'No online players at this table can be reported.');
+    const human_ = player.id === human.id;
+    if (human_ || player.isBot) {
+      setStatsFocus(player.id);
+      setStatsOpen(true);
       return;
     }
-    Alert.alert('Table safety', 'Choose a player.', [
-      ...reportablePlayers.map((player) => ({
-        text: isBlocked(player.id) ? 'Blocked player' : player.name,
-        onPress: () => openPlayerSafety(player),
-      })),
-      { text: 'Cancel', style: 'cancel' as const },
+    Alert.alert(isBlocked(player.id) ? 'Blocked player' : player.name, undefined, [
+      {
+        text: 'View stats',
+        onPress: () => { setStatsFocus(player.id); setStatsOpen(true); },
+      },
+      { text: 'Report offensive content', onPress: () => reportTablePlayer(player) },
+      { text: 'Block and leave table', style: 'destructive', onPress: () => confirmBlockTablePlayer(player) },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
@@ -1129,37 +1201,23 @@ export function TableScreen({ navigation, route }: Props) {
             <Text style={styles.roomText}>{`#${roomCode}`}</Text>
           </View>
         ) : null}
+        {/* The red "!" that used to sit here asked the player to pick someone
+            from a list before it could do anything, which is the wrong way
+            round: you already know who you mean, you are looking at them.
+            Safety now lives behind tapping the player, where the intent
+            starts. */}
         <View style={styles.topRight}>
-          {reportablePlayers.length > 0 ? (
-            <Pressable
-              onPress={openTableSafety}
-              style={[styles.safetyBtn, shadows.soft]}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Open table safety actions"
-            >
-              <Text style={styles.safetyBtnText}>!</Text>
-            </Pressable>
-          ) : null}
           {settings.showLiveStats && (
-            <Pressable onPress={() => { sound.play('tap'); setStatsOpen(true); }} style={[styles.iconBtn, shadows.soft]} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open live stats">
+            <Pressable onPress={() => { sound.play('tap'); setStatsFocus(null); setStatsOpen(true); }} style={[styles.iconBtn, shadows.soft]} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open live stats">
               <StatsIcon size={22} color={colors.blueLight} />
             </Pressable>
           )}
         </View>
       </View>
 
-      {isFriends && (
+      {isFriends && tableNotice && (
         <View style={styles.friendsBanner}>
-          <Text style={styles.friendsBannerText}>
-            {firebaseOnline
-              ? room?.status === 'ended'
-                ? `Room ${roomCode} ended, host disconnected or left`
-                : onlineSyncActive
-                  ? `Room ${roomCode} · live synced table`
-                  : `Room ${roomCode} · connecting to live table…`
-              : `Room ${roomCode} · practice vs bots, live friend play needs Firebase setup`}
-          </Text>
+          <Text style={styles.friendsBannerText}>{tableNotice}</Text>
         </View>
       )}
 
@@ -1275,7 +1333,14 @@ export function TableScreen({ navigation, route }: Props) {
           const pos = seatPos(idx, opponents.length);
           const visible = visiblePlayer(p);
           return (
-            <View key={p.id} style={[styles.seatAbs, { left: pos.left, top: pos.top, width: SEAT_W }]} onLayout={idx === 0 ? (e) => growPod(e.nativeEvent.layout.height) : undefined}>
+            <Pressable
+              key={p.id}
+              style={[styles.seatAbs, { left: pos.left, top: pos.top, width: SEAT_W }]}
+              onLayout={idx === 0 ? (e) => growPod(e.nativeEvent.layout.height) : undefined}
+              onPress={() => { sound.play('tap'); openPlayerSafety(p); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${visible.name}, open player options`}
+            >
               <Seat
                 player={visible}
                 pal={pals[p.id] ?? palFromSeed(p.id)}
@@ -1299,7 +1364,7 @@ export function TableScreen({ navigation, route }: Props) {
                 dealStep={state.players.length * DEAL_STEP}
                 dealFrom={{ x: dealOrigin.x - (pos.left + SEAT_W / 2), y: dealOrigin.y - pos.top }}
               />
-            </View>
+            </Pressable>
           );
         })}
 
@@ -1514,10 +1579,12 @@ export function TableScreen({ navigation, route }: Props) {
       <LiveStatsPanel
         visible={statsOpen}
         onClose={() => setStatsOpen(false)}
+        focusPlayerId={statsFocus}
         sessionHands={sessionHands}
         handHint={handHint}
         opponents={opponents.map((p) => ({ id: p.id, name: visiblePlayer(p).name }))}
         observed={observed}
+        history={opponentHistory}
       />
     </ScreenBackground>
   );
