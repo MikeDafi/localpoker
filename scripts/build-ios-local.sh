@@ -92,12 +92,14 @@ fi
 
 if [ ${#privacy_pending[@]} -gt 0 ]; then
   echo
-  echo "NOTE: this build changes what App Privacy must declare:"
+  echo "NOTE: this build carries features that App Privacy has to cover:"
   for item in "${privacy_pending[@]}"; do
     echo "      - $item"
   done
-  echo "      Update the label in App Store Connect before submitting this build."
-  echo "      See docs/store/APP-PRIVACY-LABELS.md."
+  echo "      Both are already declared and published, so there is nothing to do"
+  echo "      unless you have added another SDK. This stays as a tripwire: if a"
+  echo "      declaration is ever removed, the label silently stops matching the"
+  echo "      binary. See docs/store/APP-PRIVACY-LABELS.md."
   echo
 fi
 
