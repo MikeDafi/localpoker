@@ -90,6 +90,12 @@ type Navigator = {
 };
 
 /**
+ * A cold launch from a notification is a once-per-process event, so it is
+ * tracked outside the hook: re-running the effect must not replay it.
+ */
+let launchTapHandled = false;
+
+/**
  * Route taps while `enabled`, including the tap that launched the app.
  *
  * A cold launch from a notification delivers the response before any listener
@@ -126,7 +132,3 @@ export const useNotificationTaps = (navigator: Navigator, enabled: boolean): voi
   }, [enabled, navigator]);
 };
 
-let launchTapHandled = false;
-
-/** Test seam: the launch tap is a once-per-process event, not per-render. */
-export const resetLaunchTapForTests = (): void => { launchTapHandled = false; };
