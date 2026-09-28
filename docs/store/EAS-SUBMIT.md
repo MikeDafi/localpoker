@@ -401,6 +401,19 @@ comparable across builds.** Build 13 issued ten-character codes and 16 onwards
 issue four, so a host and a joiner on different builds can never resolve the
 same code no matter what else is correct.
 
+## Do not poll /v1/apps/<id>/builds for a build you just uploaded
+
+That endpoint does not return builds newest first, so a freshly uploaded
+build is frequently absent from the first page and a poll waiting for it
+concludes the build never processed. Build 19 was `VALID` for twenty minutes
+while a script insisted it was not.
+
+Query the builds collection directly and sort:
+
+```
+GET /v1/builds?filter[app]=<appId>&sort=-uploadedDate&limit=6
+```
+
 ## Half-built review submissions block the next one
 
 Creating a `reviewSubmission` and then failing to attach its
