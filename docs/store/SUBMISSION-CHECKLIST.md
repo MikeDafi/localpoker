@@ -6,7 +6,7 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 ## 1. Submission status
 
-**1.0.0 is `WAITING_FOR_REVIEW`, carrying build 22.**
+**1.0.0 is `WAITING_FOR_REVIEW`, carrying build 23.**
 
 Build 13 was pulled and replaced on 2026-09-27. It predated the fix for rooms failing to create whenever the host had friends or ticked public, so "play with friends" (the app's headline feature, and its name) failed outright with `PERMISSION_DENIED`. A reviewer exercising it would have hit that, so replacing the build most likely avoided a 2.1 rejection rather than merely costing queue time. Build 16 also carries four-character room codes, friend presence, Pal propagation and notifications.
 
