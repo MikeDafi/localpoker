@@ -1138,26 +1138,101 @@ export const sendEmoteToRoom = async (
  * anyone signed in, which is what makes this possible without a second write
  * path and without trusting a count the host last touched at creation.
  */
-export const getRoomSeats = async (
-  code: string,
-  limit = 3,
-): Promise<{ id: string; name: string; palSeed?: string }[]> => {
+/**
+ * Delete the tables you host and are no longer at.
+ *
+ * The rules were changed to permit clearing an abandoned room, but nothing
+ * ever did it, so a table survived its host indefinitely: one left over from
+ * an older build sat in Public tables refusing everyone who tapped it. Only
+ * the host can reliably tidy up, since only they may delete the room and its
+ * adverts, so they do it on the way past.
+ *
+ * Deliberately called from the menu rather than from a table: reaching the
+ * menu means you are not sitting at one of these. A room is spared unless it
+ * has ended, or has gone untouched for longer than the grace period, so
+ * stepping out to answer a message does not bin your own game.
+ */
+export const sweepMyStaleRooms = async (): Promise<number> => {
+  const db = getConfiguredDb();
+  if (!db) return 0;
+  const uid = await authedPlayerId();
+  if (!uid) return 0;
+
+  let removed = 0;
+  try {
+    for (const code of await hostedRoomCodes(db, uid)) {
+      const snapshot = await get(ref(db, roomPath(code)));
+      const room = snapshot.val() as Partial<RoomState> | null;
+
+      if (!snapshot.exists() || !room) {
+        await update(ref(db), { [userRoomPath(uid, code)]: null, [publicRoomPath(code)]: null });
+        removed += 1;
+        continue;
+      }
+      if (room.hostId !== uid) continue;
+
+      const ended = room.status === 'ended';
+      // createdAt covers rooms from before hostAwayAt existed, which is
+      // exactly the case that produced the one that would not go away.
+      const stamp = typeof (room as { hostAwayAt?: number }).hostAwayAt === 'number'
+        ? (room as { hostAwayAt?: number }).hostAwayAt as number
+        : typeof room.createdAt === 'number' ? room.createdAt : null;
+      const stale = stamp !== null && Date.now() - stamp > ABANDONED_AFTER_MS;
+      if (!ended && !stale) continue;
+
+      const teardown: Record<string, unknown> = {
+        [roomPath(code)]: null,
+        [userRoomPath(uid, code)]: null,
+        ...discoveryTeardown(room, code),
+      };
+      await update(ref(db), teardown);
+      removed += 1;
+    }
+  } catch (error) {
+    reportFirebaseError('sweep-stale-rooms', error);
+  }
+  return removed;
+};
+
+export type RoomListingInfo = {
+  seats: { id: string; name: string; palSeed?: string; palJson?: string }[];
+  /** False when the advert outlived the table it points at. */
+  joinable: boolean;
+};
+
+/**
+ * What a listed table actually looks like right now.
+ *
+ * The advert is written by the host and then never touched, so on its own it
+ * cannot say whether the room still exists, has already dealt, or was
+ * abandoned hours ago. A table whose host walked away kept being offered, and
+ * refused everyone who tapped it. Reading the room settles all three, and is
+ * possible because a lobby is readable by anyone signed in.
+ */
+export const getRoomListingInfo = async (code: string, limit = 3): Promise<RoomListingInfo> => {
   const db = getConfiguredDb();
   const roomCode = cleanKey(code);
-  if (!db || !roomCode) return [];
+  if (!db || !roomCode) return { seats: [], joinable: true };
   try {
-    const snapshot = await get(ref(db, playersPath(roomCode)));
-    const players = (snapshot.val() as Record<string, RoomPlayer> | null) ?? {};
-    return Object.values(players)
+    const snapshot = await get(ref(db, roomPath(roomCode)));
+    const room = snapshot.val() as Partial<RoomState> | null;
+    if (!snapshot.exists() || !room) return { seats: [], joinable: false };
+    if (room.status !== 'lobby' || isAbandonedRoom(room)) return { seats: [], joinable: false };
+    return { seats: seatsOf(room, limit), joinable: true };
+  } catch {
+    // A table we cannot read is left alone rather than hidden on a guess.
+    return { seats: [], joinable: true };
+  }
+};
+
+const seatsOf = (room: Partial<RoomState>, limit: number) => {
+  const players = (room.players as Record<string, RoomPlayer> | undefined) ?? {};
+  return Object.values(players)
       // The host first, then everyone else, so the row always leads with the
       // person whose table it is.
-      .sort((a, b) => Number(!!b.isHost) - Number(!!a.isHost) || (a.seatIndex ?? 0) - (b.seatIndex ?? 0))
-      .slice(0, limit)
-      .map((p) => ({ id: p.id, name: p.name, palSeed: p.palSeed }));
-  } catch {
-    // A table we cannot read is simply drawn without faces.
-    return [];
-  }
+    .sort((a, b) => Number(!!b.isHost) - Number(!!a.isHost) || (a.seatIndex ?? 0) - (b.seatIndex ?? 0))
+    .slice(0, limit)
+    .map((p) => ({ id: p.id, name: p.name, palSeed: p.palSeed, palJson: p.palJson }));
 };
 
 /** Reactions from everyone else at the table. */

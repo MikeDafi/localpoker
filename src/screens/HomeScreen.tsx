@@ -10,6 +10,7 @@ import { FriendsIcon, BotIcon, StatsIcon, ProfileIcon, CartIcon , SettingsIcon, 
 import { colors, fonts, radii, shadows, spacing, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { isResumable } from '../game/savedGame';
+import { sweepMyStaleRooms } from '../services/firebase';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -23,6 +24,18 @@ export function HomeScreen({ navigation }: Props) {
   React.useEffect(() => {
     if (savedGame && !isResumable(savedGame)) clearSavedGame();
   }, [savedGame, clearSavedGame]);
+
+  /*
+   * Clear up tables this player hosted and walked away from.
+   *
+   * Done here because reaching the menu means they are not sitting at one,
+   * and because only a host may delete their own room and its adverts, so
+   * nobody else can do it for them. Fire and forget: a failed tidy-up is not
+   * something to interrupt the menu for.
+   */
+  React.useEffect(() => {
+    void sweepMyStaleRooms();
+  }, []);
   const canResume = isResumable(savedGame);
 
   const gap = spacing.md;

@@ -414,6 +414,14 @@ export function TableScreen({ navigation, route }: Props) {
   const current = felt.players[felt.currentPlayerIndex];
   const isAwaitingOnlineState = !!roomCode && firebaseOnline && !onlineSyncActive;
   const isHumanTurn = current?.id === human?.id && !handOver && !isAwaitingOnlineState;
+  /*
+   * Nobody is on the clock when the player to act cannot act.
+   *
+   * An all-in player has no decision left, so running a countdown over them
+   * made the hand appear to be waiting on a choice that did not exist, and
+   * the board only moved once the clock expired.
+   */
+  const actorCanAct = !!current && current.chips > 0 && !current.allIn && !current.folded;
   // Presentational: true only once the run-out has finished and the result has
   // been held back for its beat.
   const isShowdown = handOver && resultsOpen;
@@ -677,7 +685,14 @@ export function TableScreen({ navigation, route }: Props) {
        * the rules quite rightly refuse one player acting as another. So it is
        * applied directly and published, exactly as an arriving intent is.
        */
+      /*
+       * An all-in player has nothing left to decide, so there is no action to
+       * force and no reason for a clock to be running over them. Bailing out
+       * without publishing anything would leave the table waiting on somebody
+       * who cannot act, which is the stall this is meant to prevent.
+       */
       const options = legalActions(state, actor.id);
+      if (options.actions.length === 0) return;
       const type = options.actions.includes('check') ? 'check' : 'fold';
       const result = applyHostIntent(state, actor.id, { type });
       if (!result.ok) return;
@@ -1632,7 +1647,7 @@ export function TableScreen({ navigation, route }: Props) {
           </View>
         ) : (
           <View style={styles.waiting}>
-            {current && !isShowdown ? (
+            {current && !isShowdown && actorCanAct ? (
               <TurnTimer
                 seconds={settings.turnTimerSec}
                 active

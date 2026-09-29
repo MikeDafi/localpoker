@@ -11,7 +11,7 @@ import { AdBanner } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { palFromSeed } from '../avatar/palConfig';
 import { useApp } from '../state/AppContext';
-import { isRoomCodeTaken, subscribeOpenRooms, getRoomSeats } from '../services/firebase/roomSync';
+import { isRoomCodeTaken, subscribeOpenRooms, getRoomListingInfo } from '../services/firebase/roomSync';
 import { CODE_LENGTH, filterToCodeAlphabet, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
 import type { RoomSummary } from '../services/firebase/types';
 import { colors, fonts, radii, spacing } from '../theme/theme';
@@ -58,7 +58,15 @@ export function CreateJoinScreen({ navigation }: Props) {
    * was fixed at creation. Re-read whenever the set of listed codes changes,
    * which is also when someone joins or leaves one of them.
    */
-  const [seats, setSeats] = useState<Record<string, { id: string; name: string; palSeed?: string }[]>>({});
+  const [seats, setSeats] = useState<Record<string, { id: string; name: string; palSeed?: string; palJson?: string }[]>>({});
+  /*
+   * Adverts whose table is gone, started, or abandoned.
+   *
+   * The advert is written once by the host and never revisited, so it happily
+   * outlives the room. One left over from an older build sat in Public tables
+   * refusing everyone who tapped it, which is worse than not listing it.
+   */
+  const [dead, setDead] = useState<Record<string, true>>({});
   const listedCodes = useMemo(
     () => [...openRooms.friends, ...openRooms.public].map((r) => r.code).join(','),
     [openRooms],
@@ -66,11 +74,20 @@ export function CreateJoinScreen({ navigation }: Props) {
   useEffect(() => {
     let active = true;
     const codes = listedCodes ? listedCodes.split(',') : [];
-    Promise.all(codes.map(async (code) => [code, await getRoomSeats(code)] as const))
-      .then((pairs) => { if (active) setSeats(Object.fromEntries(pairs)); })
+    Promise.all(codes.map(async (code) => [code, await getRoomListingInfo(code)] as const))
+      .then((pairs) => {
+        if (!active) return;
+        setSeats(Object.fromEntries(pairs.map(([code, info]) => [code, info.seats])));
+        setDead(Object.fromEntries(pairs.filter(([, i]) => !i.joinable).map(([code]) => [code, true as const])));
+      })
       .catch(() => {});
     return () => { active = false; };
   }, [listedCodes]);
+
+  const liveRooms = useMemo(() => ({
+    friends: openRooms.friends.filter((r) => !dead[r.code]),
+    public: openRooms.public.filter((r) => !dead[r.code]),
+  }), [openRooms, dead]);
 
   const joinListed = (summary: RoomSummary) => {
     Haptics.selectionAsync();
@@ -130,7 +147,7 @@ export function CreateJoinScreen({ navigation }: Props) {
             <RoomList
               title="Friends' tables"
               hint="Private tables your friends opened."
-              rooms={openRooms.friends}
+              rooms={liveRooms.friends}
               seats={seats}
               tone="friends"
               onJoin={joinListed}
@@ -139,7 +156,7 @@ export function CreateJoinScreen({ navigation }: Props) {
             <RoomList
               title="Public tables"
               hint="Open to anyone."
-              rooms={openRooms.public}
+              rooms={liveRooms.public}
               seats={seats}
               tone="public"
               onJoin={joinListed}
@@ -167,7 +184,7 @@ function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats }: {
   tone: 'friends' | 'public';
   onJoin: (room: RoomSummary) => void;
   emptyText: string;
-  seats: Record<string, { id: string; name: string; palSeed?: string }[]>;
+  seats: Record<string, { id: string; name: string; palSeed?: string; palJson?: string }[]>;
 }) {
   const accent = tone === 'friends' ? colors.blue : colors.felt;
   return (
