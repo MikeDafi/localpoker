@@ -250,9 +250,12 @@ export function TableScreen({ navigation, route }: Props) {
           return prev;
         }
 
-        publishHostGameState(roomCode, result.state).catch((error) => {
-          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-intent' } });
-        });
+        publishHostGameState(roomCode, result.state)
+          .then((r) => noteSync(r.ok))
+          .catch((error) => {
+            noteSync(false);
+            captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-intent' } });
+          });
         stateRef.current = result.state;
         return result.state;
       });
@@ -634,12 +637,21 @@ export function TableScreen({ navigation, route }: Props) {
    * the player can see for themselves from the table moving. Everything else
    * here is a real state worth interrupting for.
    */
+  /*
+   * A failed publish used to be swallowed into telemetry, so the table simply
+   * stopped syncing and the two devices drifted apart with nothing on screen
+   * to say so. If the host cannot publish, say so on the host's own screen.
+   */
+  const [syncFailed, setSyncFailed] = useState(false);
+  const noteSync = useCallback((ok: boolean) => setSyncFailed(!ok), []);
+
   const tableNotice = useMemo(() => {
+    if (syncFailed) return 'The table could not be published. Other players may be seeing an older hand.';
     if (!firebaseOnline) return `Room ${roomCode} · practice vs bots, live friend play needs Firebase setup`;
     if (room?.status === 'ended') return `Room ${roomCode} ended, host disconnected or left`;
     if (!onlineSyncActive) return 'Connecting to the live table…';
     return null;
-  }, [firebaseOnline, onlineSyncActive, room?.status, roomCode]);
+  }, [firebaseOnline, onlineSyncActive, room?.status, roomCode, syncFailed]);
 
   /*
    * Leave the felt when the table is genuinely over.
@@ -698,9 +710,12 @@ export function TableScreen({ navigation, route }: Props) {
       if (!result.ok) return;
       stateRef.current = result.state;
       setState(result.state);
-      publishHostGameState(roomCode, result.state).catch((error) => {
-        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-timeout' } });
-      });
+      publishHostGameState(roomCode, result.state)
+        .then((r) => noteSync(r.ok))
+        .catch((error) => {
+          noteSync(false);
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-timeout' } });
+        });
     }
   }, [handOver, state, legal, botDiff, settings.difficulty, step, isOnlineHost, roomCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -948,9 +963,12 @@ export function TableScreen({ navigation, route }: Props) {
     setState((prev) => {
       const next = startHand(prev);
       if (roomCode && firebaseOnline && isOnlineHost) {
-        publishHostGameState(roomCode, next).catch((error) => {
-          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-next-hand' } });
-        });
+        publishHostGameState(roomCode, next)
+          .then((r) => noteSync(r.ok))
+          .catch((error) => {
+            noteSync(false);
+            captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-next-hand' } });
+          });
       }
       return next;
     });

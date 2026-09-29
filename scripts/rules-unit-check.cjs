@@ -487,6 +487,27 @@ function logOk(message) {
     }));
     logOk('but not an oversized one');
 
+    /*
+     * The desync. A busted or sitting-out player holds no cards, and a view
+     * carrying an empty hand is refused. Because the whole snapshot is
+     * published as one multi-path write, that single refusal failed the
+     * entire update and the table silently stopped syncing for everyone.
+     */
+    const card = (rank, suit) => ({ rank, suit });
+    await assertSucceeds(set(ref(hostDb, 'localpoker/views/FLOW1/player'), {
+      version: 1, playerId: 'player', handNumber: 2,
+      holeCards: [card(10, 'h'), card(11, 's')],
+    }));
+    logOk('a view with two cards is accepted');
+
+    await assertFails(set(ref(hostDb, 'localpoker/views/FLOW1/player'), {
+      version: 1, playerId: 'player', handNumber: 3, holeCards: [],
+    }));
+    logOk('a view with an empty hand is refused, which is what broke syncing');
+
+    await assertSucceeds(set(ref(hostDb, 'localpoker/views/FLOW1/player'), null));
+    logOk('so a player who was not dealt in has their view cleared instead');
+
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
       type: 'emoji', value: '\u{1F525}', ts: 60,
     }));

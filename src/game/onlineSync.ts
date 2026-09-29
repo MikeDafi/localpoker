@@ -157,14 +157,28 @@ export function redactGameState(
     }
 
     players[player.id] = publicPlayer;
-    privateViews[player.id] = {
-      version: 1,
-      ...(options.code ? { code: options.code } : {}),
-      playerId: player.id,
-      handNumber: state.handNumber,
-      holeCards: cloneCards(player.holeCards),
-      ...(typeof options.updatedAt === 'number' ? { updatedAt: options.updatedAt } : {}),
-    };
+    /*
+     * Only somebody holding cards gets a private view.
+     *
+     * A player who is busted, sitting out, or joined after the deal has no
+     * hole cards, and a view carrying an empty hand is refused by the rules,
+     * which require exactly two. That matters far more than it sounds: the
+     * whole snapshot is published as one multi-path write, so one unpublishable
+     * view failed the entire update. The table stopped syncing from that
+     * moment, silently, and the two devices drifted into different games, one
+     * waiting on a turn that had passed and the other stuck on a finished
+     * hand.
+     */
+    if (player.holeCards.length === 2) {
+      privateViews[player.id] = {
+        version: 1,
+        ...(options.code ? { code: options.code } : {}),
+        playerId: player.id,
+        handNumber: state.handNumber,
+        holeCards: cloneCards(player.holeCards),
+        ...(typeof options.updatedAt === 'number' ? { updatedAt: options.updatedAt } : {}),
+      };
+    }
   }
 
   const legal: Record<string, LegalActions> = {};

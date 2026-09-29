@@ -922,10 +922,12 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       [`${roomPath(roomCode)}/status`]: 'playing',
     };
 
-    for (const [playerId, view] of Object.entries(privateViews)) {
-      if (room.players?.[playerId]) {
-        updates[viewPath(roomCode, playerId)] = view;
-      }
+    /*
+     * Clear the view of anyone not holding cards this hand, rather than
+     * leaving last hand's behind for them to look at.
+     */
+    for (const playerId of Object.keys(room.players ?? {})) {
+      updates[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
     }
 
     await update(ref(db), updates);
@@ -986,8 +988,11 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
       [`${roomPath(roomCode)}/actionSeq`]: 0,
     };
 
-    for (const [playerId, view] of Object.entries(privateViews)) {
-      updates[viewPath(roomCode, playerId)] = view;
+    // Same rule as every other publish: a view only exists for someone who
+    // was dealt in, because one carrying an empty hand is refused and would
+    // take the whole multi-path write down with it.
+    for (const playerId of Object.keys(room.players ?? {})) {
+      updates[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
     }
 
     await update(ref(db), updates);
