@@ -193,14 +193,10 @@ export function TableScreen({ navigation, route }: Props) {
       return undefined;
     }
 
-    const unsubRoom = subscribeRoom(roomCode, (nextRoom) => {
-      setRoom(nextRoom);
-      if (nextRoom?.status === 'ended') {
-        Alert.alert('Room ended', nextRoom.endedReason || 'The host disconnected or ended the room.', [
-          { text: 'Back to menu', onPress: () => navigation.replace('Home') },
-        ]);
-      }
-    });
+    // Just the state. Reacting to an ended room lives in one effect below,
+    // so a guest is not told twice and the host is not told about its own
+    // decision.
+    const unsubRoom = subscribeRoom(roomCode, setRoom);
     const unsubView = subscribePrivateView(roomCode, (view) => {
       setPrivateView(view);
       if (view?.playerId) {
@@ -879,15 +875,17 @@ export function TableScreen({ navigation, route }: Props) {
 
   const nextHand = () => {
     /*
-     * Gated on being in a room, not on Firebase reporting itself connected.
+     * Gated on being in a room, rather than on `firebaseOnline`.
      *
-     * firebaseOnline goes false for a moment after the app returns from the
-     * background, and during that window a guest fell straight past this
-     * check into the local table-over test below, against a state that had
-     * not rehydrated yet and so contained only themselves. The result was a
-     * modal announcing "You cleaned up" over a hand that had just been won
-     * normally, while the other player sat waiting for a host who had been
-     * told the table was finished.
+     * `firebaseOnline` is a configuration check, not a connection state, so
+     * this reads the same either way today; being in a room is simply the
+     * thing that actually matters, and it cannot be confused for one.
+     *
+     * The bogus "Table over" was never this condition. It came from a
+     * disconnected player being marked sittingOut, which took them out of
+     * every future hand and left the table with one live player. That is
+     * fixed in applyConnectionStatusToGameState; the guard below is the
+     * second line of defence.
      */
     if (roomCode && !isOnlineHost) {
       // The button is hidden for guests, so reaching here means a stray tap.
@@ -1608,10 +1606,9 @@ export function TableScreen({ navigation, route }: Props) {
               </View>
             )}
             <View style={{ height: spacing.sm }} />
-            {/* Keyed off being in a room rather than off Firebase reporting
-                itself connected, which flickers false when the app returns
-                from the background and briefly offered a guest a button that
-                dealt a hand locally. */}
+            {/* Keyed off being in a room rather than on `firebaseOnline`,
+                which is a configuration check rather than a connection
+                state and so cannot answer the question being asked here. */}
             <WiiButton
               label={roomCode && !isOnlineHost ? 'Waiting for host…' : 'Next Hand'}
               variant="green"

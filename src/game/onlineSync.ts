@@ -361,10 +361,6 @@ export function applyConnectionStatusToGameState(
         break;
       }
       next = result.state;
-      const folded = next.players.find((player) => player.id === current.id);
-      if (folded && !folded.sittingOut) {
-        folded.sittingOut = true;
-      }
       changed = true;
     }
   }
@@ -382,10 +378,20 @@ export function applyConnectionStatusToGameState(
         player.hasActed = true;
         changed = true;
       }
-      if (!player.sittingOut) {
-        player.sittingOut = true;
-        changed = true;
-      }
+      /*
+       * Folded out of this hand, but not sat out of the game.
+       *
+       * Marking a disconnected player sittingOut removed them from every
+       * future hand, so the moment someone locked their phone the table had
+       * one live player left and announced itself finished: "You cleaned up"
+       * over a hand that had just been played normally. It is also why the
+       * next hand could not be dealt afterwards.
+       *
+       * The current hand genuinely cannot wait for them, so folding stands.
+       * Whether they are gone for good is a question about the room, and the
+       * room already answers it by sweeping a table nobody returns to after
+       * ten minutes.
+       */
     } else if (player.sittingOut) {
       player.sittingOut = false;
       changed = true;

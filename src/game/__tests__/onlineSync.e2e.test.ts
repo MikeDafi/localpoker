@@ -267,9 +267,22 @@ describe('online sync end to end', () => {
     });
 
     expect(result.changed).toBe(true);
+    /*
+     * Folded out of the hand, but still in the game.
+     *
+     * This asserted sittingOut: true until that turned out to end tables.
+     * Sitting a player out removes them from every future hand, so one person
+     * locking their phone left a single live player and the table declared
+     * itself finished, announcing "You cleaned up" over a hand that had just
+     * been played normally, and then refused to deal another.
+     *
+     * The current hand cannot wait for them, so the fold stands. Whether they
+     * have gone for good is a question about the room, and the room answers it
+     * by sweeping a table nobody returns to after ten minutes.
+     */
     expect(result.state.players.find((player) => player.id === 'client-a')).toMatchObject({
       folded: true,
-      sittingOut: true,
+      sittingOut: false,
     });
     expect(currentPlayerId(result.state)).toBe('client-b');
   });
