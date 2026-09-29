@@ -16,6 +16,7 @@ import {
 
 import { AppProvider, useApp } from './src/state/AppContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { InviteBanner } from './src/components/InviteBanner';
 import { colors } from './src/theme/theme';
 import { sound } from './src/services/sound';
 import { ensureSignedIn } from './src/services/firebase';
@@ -102,6 +103,14 @@ function RootNavigator() {
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   if (!ageVerified) return <AgeGateScreen />;
   return (
+    <>
+    {/* Above every screen, because an invite is worth seeing wherever you
+        happen to be, and nowhere else in the app is watching for one. Not
+        shown at a table: you are already playing. */}
+    <InviteBanner
+      enabled={ready && ageVerified && auth.loggedIn}
+      onJoin={(code) => navigationRef.navigate('Lobby', { roomCode: code, host: false })}
+    />
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
@@ -127,6 +136,7 @@ function RootNavigator() {
         </>
       )}
     </Stack.Navigator>
+    </>
   );
 }
 

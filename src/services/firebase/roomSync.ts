@@ -89,6 +89,7 @@ const toDbPlayer = (player: RoomPlayer, overrides: Partial<RoomPlayer> = {}): Ro
     id: merged.id,
     name: maskedPublicName(merged.name.trim().replace(/\s+/g, ' ').slice(0, 24) || 'Player'),
     ...(merged.palSeed ? { palSeed: merged.palSeed } : {}),
+    ...(merged.palJson ? { palJson: merged.palJson.slice(0, 600) } : {}),
     seatIndex: merged.seatIndex,
     chips: merged.chips,
     connected: merged.connected,

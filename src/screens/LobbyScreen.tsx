@@ -9,7 +9,7 @@ import { AnimatedPal } from '../components/AnimatedPal';
 import { AdBanner } from '../components/AdBanner';
 import { colors, fonts, radii, spacing } from '../theme/theme';
 import { useApp } from '../state/AppContext';
-import { palFromSeed } from '../avatar/palConfig';
+import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
 import {
   isFirebaseConfigured, createRoom, joinRoom, leaveRoom, subscribeRoom, setPlayerConnected, getAuthUid,
@@ -23,6 +23,16 @@ import type { GameSettings } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
+/** A Pal carried on a room player, or nothing if it is missing or malformed. */
+const parseRoomPal = (palJson?: string): PalConfig | undefined => {
+  if (!palJson) return undefined;
+  try {
+    return normalizePal(JSON.parse(palJson) as Partial<PalConfig>);
+  } catch {
+    return undefined;
+  }
+};
+
 export function LobbyScreen({ navigation, route }: Props) {
   const { roomCode, host, settings: hostSettings } = route.params;
   const { profile, friends } = useApp();
@@ -32,11 +42,14 @@ export function LobbyScreen({ navigation, route }: Props) {
     id: profile.id,
     name: profile.name,
     palSeed: profile.id,
+    // Carried into the room so everyone at the table draws the Pal this
+    // player actually designed, rather than a doodle derived from their id.
+    palJson: JSON.stringify(profile.pal),
     seatIndex: 0,
     chips: DEFAULT_GAME_SETTINGS.startingStack,
     connected: true,
     isHost: host,
-  }), [profile.id, profile.name, host]);
+  }), [profile.id, profile.name, profile.pal, host]);
 
   /**
    * Players are stored under their Firebase `auth.uid`, because that is what the
@@ -183,10 +196,15 @@ export function LobbyScreen({ navigation, route }: Props) {
    * which the code opens a table that exists. Everyone is listed, whoever is
    * online first: an absent friend is the normal case and gets a notification.
    */
-  const invitableFriends = useMemo(
-    () => [...friends].sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name)),
-    [friends],
-  );
+  const invitableFriends = useMemo(() => {
+    // Someone already at the table is not someone to invite to it. They were
+    // listed anyway, so the host appeared twice: once in the roster and once
+    // as a person to ask along.
+    const seated = new Set(Object.keys(room?.players ?? {}));
+    return friends
+      .filter((f) => !(f.uid && seated.has(f.uid)))
+      .sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name));
+  }, [friends, room?.players]);
 
   const inviteFriend = async (id: string, name: string) => {
     setInvited((prev) => ({ ...prev, [id]: true }));
@@ -277,7 +295,7 @@ export function LobbyScreen({ navigation, route }: Props) {
           </View>
           {players.map((p) => (
             <View key={p.id} style={styles.playerRow}>
-              <AnimatedPal config={p.id === myRoomId ? profile.pal : palFromSeed(p.palSeed || p.id)} size={40} alive={p.connected} />
+              <AnimatedPal config={p.id === myRoomId ? profile.pal : (parseRoomPal(p.palJson) ?? palFromSeed(p.palSeed || p.id))} size={40} alive={p.connected} />
               <View style={{ flex: 1, marginLeft: spacing.md }}>
                 <Text style={styles.playerName}>{p.name}{p.id === myRoomId ? ' (you)' : ''}</Text>
                 <Text style={styles.playerMeta}>{p.isHost ? 'Host' : 'Player'} · {p.connected ? 'online' : 'away'}</Text>

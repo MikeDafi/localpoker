@@ -475,6 +475,18 @@ function logOk(message) {
     if (!hostSees.includes('player')) throw new Error(`host cannot see the guest, saw: ${hostSees}`);
     logOk('and the host can see the guest');
 
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/FLOW1/players/player'), {
+      id: 'player', name: 'Player', isHost: false, connected: true,
+      palJson: JSON.stringify({ skin: 2, hair: 3 }),
+    }));
+    logOk('a player can bring their own Pal to the table');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/FLOW1/players/player'), {
+      id: 'player', name: 'Player', isHost: false, connected: true,
+      palJson: 'x'.repeat(900),
+    }));
+    logOk('but not an oversized one');
+
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
       type: 'emoji', value: '\u{1F525}', ts: 60,
     }));

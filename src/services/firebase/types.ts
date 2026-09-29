@@ -5,6 +5,15 @@ export type RoomPlayer = {
   id: string;
   name: string;
   palSeed?: string;
+  /**
+   * The player's actual Pal, as JSON.
+   *
+   * Without it a room could only draw `palFromSeed(palSeed)`, a doodle derived
+   * from an id, so the same person appeared with one face in the friends list
+   * and a different one at the table they were sitting at. Carried on the
+   * player rather than looked up, so it works for someone you have not added.
+   */
+  palJson?: string;
   seatIndex: number;
   chips: number;
   connected: boolean;

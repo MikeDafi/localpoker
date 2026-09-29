@@ -24,7 +24,7 @@ import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings 
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { captureError } from '../services/telemetry';
-import { palFromSeed, type PalConfig } from '../avatar/palConfig';
+import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
@@ -131,7 +131,13 @@ export function TableScreen({ navigation, route }: Props) {
     for (let i = 0; i < settings.numOpponents; i++) map[`bot-${i}`] = palFromSeed(`bot-${i}-${seed}`);
     Object.values(room?.players ?? {}).forEach((player) => {
       if (player.id !== localPlayerId) {
-        map[player.id] = palFromSeed(player.palSeed || player.id);
+        // Their own Pal if the room carries it, so the face at the table
+        // matches the one in the friends list rather than a doodle from an id.
+        let pal: PalConfig | undefined;
+        if (player.palJson) {
+          try { pal = normalizePal(JSON.parse(player.palJson) as Partial<PalConfig>); } catch { pal = undefined; }
+        }
+        map[player.id] = pal ?? palFromSeed(player.palSeed || player.id);
       }
     });
     return map;
@@ -631,6 +637,24 @@ export function TableScreen({ navigation, route }: Props) {
     return null;
   }, [firebaseOnline, onlineSyncActive, room?.status, roomCode]);
 
+  /*
+   * Leave the felt when the table is genuinely over.
+   *
+   * A guest used to be left sitting at a dead room with "waiting for host"
+   * under it, because the only thing that noticed the room had ended was a
+   * banner. Nothing was going to happen: the host had gone. Told once, then
+   * taken back rather than stranded.
+   */
+  const evicted = useRef(false);
+  useEffect(() => {
+    if (!roomCode || isOnlineHost || room?.status !== 'ended' || evicted.current) return;
+    evicted.current = true;
+    clearSavedGame();
+    Alert.alert('Table closed', room?.endedReason || 'The host ended this table.', [
+      { text: 'Back to menu', onPress: () => navigation.replace('Home') },
+    ]);
+  }, [room?.status, room?.endedReason, roomCode, isOnlineHost]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const onTimerExpire = useCallback(() => {
     if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
@@ -854,13 +878,30 @@ export function TableScreen({ navigation, route }: Props) {
   }, [isShowdown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nextHand = () => {
-    if (roomCode && firebaseOnline && !isOnlineHost) {
-      Alert.alert('Waiting for host', 'The host will deal the next hand.');
+    /*
+     * Gated on being in a room, not on Firebase reporting itself connected.
+     *
+     * firebaseOnline goes false for a moment after the app returns from the
+     * background, and during that window a guest fell straight past this
+     * check into the local table-over test below, against a state that had
+     * not rehydrated yet and so contained only themselves. The result was a
+     * modal announcing "You cleaned up" over a hand that had just been won
+     * normally, while the other player sat waiting for a host who had been
+     * told the table was finished.
+     */
+    if (roomCode && !isOnlineHost) {
+      // The button is hidden for guests, so reaching here means a stray tap.
       return;
     }
 
+    /*
+     * Only the local, offline game can decide a table is finished from its own
+     * player list. In a room the roster is authoritative and someone being
+     * briefly absent is not the same as being out.
+     */
     const active = state.players.filter((p) => p.chips > 0 && !p.sittingOut);
-    if (active.length < 2) {
+    const roomSeated = Object.keys(room?.players ?? {}).length;
+    if (active.length < 2 && (!roomCode || roomSeated < 2)) {
       Alert.alert('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'Everyone else is out.', [
         {
           text: 'Back to menu',
@@ -1567,12 +1608,16 @@ export function TableScreen({ navigation, route }: Props) {
               </View>
             )}
             <View style={{ height: spacing.sm }} />
+            {/* Keyed off being in a room rather than off Firebase reporting
+                itself connected, which flickers false when the app returns
+                from the background and briefly offered a guest a button that
+                dealt a hand locally. */}
             <WiiButton
-              label={roomCode && firebaseOnline && !isOnlineHost ? 'Waiting for host…' : 'Next Hand'}
+              label={roomCode && !isOnlineHost ? 'Waiting for host…' : 'Next Hand'}
               variant="green"
               size="lg"
               fullWidth
-              disabled={!!roomCode && firebaseOnline && !isOnlineHost}
+              disabled={!!roomCode && !isOnlineHost}
               onPress={nextHand}
             />
           </Animated.View>
