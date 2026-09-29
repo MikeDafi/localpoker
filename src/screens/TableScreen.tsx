@@ -117,7 +117,16 @@ export function TableScreen({ navigation, route }: Props) {
   const authRoomId = onlinePlayerId ?? getAuthUid();
   const isOnlineHost = !!firebaseOnline && !!room && !!authRoomId && room.hostId === authRoomId;
   const hasOnlinePublicState = !!firebaseOnline && !!room?.publicState;
-  const onlineSyncActive = hasOnlinePublicState && (!!privateView || isOnlineHost);
+  /*
+   * Synced means the table has arrived, not that you personally hold cards.
+   *
+   * Requiring a private view treated anyone not dealt into the current hand,
+   * someone busted, sitting out, or who joined after the deal, as still
+   * connecting: they were shown "Connecting to the live table" over a table
+   * that was in fact arriving perfectly well, and their turn handling was
+   * suspended with it.
+   */
+  const onlineSyncActive = hasOnlinePublicState;
   const localPlayerId = firebaseOnline && authRoomId && (onlineSyncActive || !!getCachedHostGame(roomCode ?? ''))
     ? authRoomId
     : HUMAN_ID;
@@ -223,9 +232,16 @@ export function TableScreen({ navigation, route }: Props) {
       }
     }
 
-    if (privateView) {
-      setState(hydrateGameState(room.publicState, privateView));
-    }
+    /*
+     * Hydrate whether or not there is a private view.
+     *
+     * Gating on one meant anybody holding no cards this hand, someone busted,
+     * sitting out, or who joined after the deal, never took another update and
+     * sat frozen watching a hand that had finished. hydrateGameState already
+     * copes with an absent view by giving that player no hole cards, which is
+     * exactly right: they are watching, not playing.
+     */
+    setState(hydrateGameState(room.publicState, privateView));
   }, [firebaseOnline, isOnlineHost, privateView, room?.publicState, roomCode]);
 
   useEffect(() => {

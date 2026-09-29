@@ -917,21 +917,36 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       playerMeta: playerMetaFromRoom(room),
       updatedAt: Date.now(),
     });
-    const updates: Record<string, unknown> = {
+    /*
+     * The table first, the hole cards second, as two writes.
+     *
+     * These used to go up together, so a single view the rules would not
+     * accept failed the public state along with it and the table stopped
+     * advancing for everyone. Whatever is wrong with one player's cards, the
+     * hand itself should still move: the public state is the part everybody
+     * depends on, and it is already redacted, so publishing it alone reveals
+     * nothing.
+     */
+    await update(ref(db), {
       [`${roomPath(roomCode)}/publicState`]: publicState,
       [`${roomPath(roomCode)}/status`]: 'playing',
-    };
-
-    /*
-     * Clear the view of anyone not holding cards this hand, rather than
-     * leaving last hand's behind for them to look at.
-     */
-    for (const playerId of Object.keys(room.players ?? {})) {
-      updates[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
-    }
-
-    await update(ref(db), updates);
+    });
     setCachedHostGame(roomCode, state);
+
+    // Clear the view of anyone not holding cards this hand, rather than
+    // leaving last hand's behind for them to look at.
+    const views: Record<string, unknown> = {};
+    for (const playerId of Object.keys(room.players ?? {})) {
+      views[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
+    }
+    try {
+      await update(ref(db), views);
+    } catch (error) {
+      // The hand is published and playable; someone may be missing their own
+      // cards. Worth reporting, not worth failing the publish over.
+      reportFirebaseError('publish-private-views', error);
+      console.warn('Published the table but could not publish every private view.', error);
+    }
     return { ok: true };
   } catch (error) {
     reportFirebaseError('publish-host-game-state', error);
