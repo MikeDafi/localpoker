@@ -6,7 +6,48 @@ Primary runbook: `docs/store/APP-STORE-CONNECT.md`.
 
 ## 1. Submission status
 
-**1.0.0 is `WAITING_FOR_REVIEW`, carrying build 26.**
+**1.0.0 was REJECTED on 2026-09-29 under 2.3.6 Accurate Metadata, carrying build 26.**
+
+This is not a defect and not a metadata mistake. Apple's message is automated
+and the review never started:
+
+> The current submission cannot be reviewed because the app's rating in App
+> Store Connect indicates it includes simulated gambling and the app has been
+> submitted by an individual developer.
+>
+> If the app does not include simulated gambling content, revise the app's
+> rating [...]. If the app does include simulated gambling, you must enroll as
+> an organization before resubmitting or transfer the app to a different
+> account that is enrolled as an organization.
+
+The rating on record is `gamblingSimulated: FREQUENT_OR_INTENSE`, set during
+the compliance pass. **It is accurate.** LocalPoker is Texas Hold'em: chips are
+wagered, blinds are posted, players go all in. That is simulated gambling under
+Apple's definition, and it is the whole app rather than an incidental feature,
+so the frequency answer is right too.
+
+That leaves exactly one dishonest route and two real ones.
+
+**Do not lower the rating.** It would be a false declaration to get past an
+automated gate, it is likely to be caught at human review anyway, and an app
+removed for misrepresenting its content is a far worse outcome than one that
+is not yet published. This is recorded here because it is the obvious
+temptation and the answer needs to be written down once.
+
+**Option 1, enrol as an organization.** This is what Apple is asking for. It
+needs a legal entity and a D-U-N-S number, and the Terms and Privacy Policy
+were deliberately written for an individual with no entity (see below), so
+they would need revisiting: a company name, a registered address, and possibly
+an EU representative.
+
+**Option 2, stay on TestFlight.** Beta review approved build 26 and external
+testing is unaffected by this rejection, so up to 10,000 testers can use the
+app via the public link today. That is a real distribution channel for a
+play-money game among friends, though builds expire after 90 days and it is
+not a substitute for the App Store.
+
+Nothing in the codebase needs to change for either option.
+
 
 Build 13 was pulled and replaced on 2026-09-27. It predated the fix for rooms failing to create whenever the host had friends or ticked public, so "play with friends" (the app's headline feature, and its name) failed outright with `PERMISSION_DENIED`. A reviewer exercising it would have hit that, so replacing the build most likely avoided a 2.1 rejection rather than merely costing queue time. Build 16 also carries four-character room codes, friend presence, Pal propagation and notifications.
 
