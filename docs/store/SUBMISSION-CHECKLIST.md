@@ -26,7 +26,19 @@ wagered, blinds are posted, players go all in. That is simulated gambling under
 Apple's definition, and it is the whole app rather than an incidental feature,
 so the frequency answer is right too.
 
-That leaves exactly one dishonest route and two real ones.
+That leaves one dishonest route and **three** real ones. An earlier version of
+this section listed only two, and missed the cheapest: replying to App Review.
+
+**Option 0, ask App Review, and do this first.** The rejection is automated and
+invites a reply. Worth knowing before accepting the premise: the phrase
+"simulated gambling" is an **age rating** term and appears **nowhere in the App
+Review Guidelines**. The guidelines regulate *real money* gaming under 5.3.4,
+which this app plainly is not, and services in *highly regulated fields* under
+5.1.1(ix), which is a poor fit for a free play-money card game with no
+purchases and nothing of value at stake. So it is reasonable to ask whether a
+check keyed on the rating value is doing what was intended here. It costs
+nothing, changes no declaration, and carries no risk. Draft in
+`APP-REVIEW-REPLY.md`.
 
 **Do not lower the rating.** It would be a false declaration to get past an
 automated gate, it is likely to be caught at human review anyway, and an app
