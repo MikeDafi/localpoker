@@ -31,12 +31,22 @@ the game does simulate wagering with virtual chips, and I would rather
 over-declare than under-declare. I still believe that answer is the honest one
 and I have not changed it.
 
-My question is whether that declaration is intended to trigger the
-organization requirement for a game of this kind. Guideline 5.3.4 addresses
-apps that offer real money gaming, which this app does not, and guideline
-5.1.1(ix) refers to apps providing services in highly regulated fields, which
-I do not believe describes a free play-money card game with no purchases and
-nothing of value at stake.
+I would also note one way this app differs from the social casino category
+generally. It contains **no in-app purchases of any kind**. There is no
+StoreKit integration in the binary. Chips cannot be bought at any price, in
+any quantity, ever; they are only earned by playing. To my knowledge every
+comparable poker title on the App Store sells chip packages, and several carry
+a Loot Boxes advisory. Where there is a consumer protection concern about
+simulated gambling, I understand it to be largely about selling virtual chips
+to people who are losing them. There is nothing to sell here and no way to
+spend money in this app.
+
+My question is whether the declaration is intended to trigger the organization
+requirement for a game of this kind. Guideline 5.3.4 addresses apps that offer
+real money gaming, which this app does not, and guideline 5.1.1(ix) refers to
+apps providing services in highly regulated fields, which I do not believe
+describes a free play-money card game with no purchases and nothing of value
+at stake.
 
 If the organization requirement does apply to play-money games that declare
 simulated gambling, I will accept that and withdraw the submission rather than
@@ -59,8 +69,17 @@ Thank you for your time.
 It costs nothing and changes nothing. It does not alter the rating, so it
 carries no risk of misrepresenting the app.
 
-The strongest point is that "simulated gambling" is an **age rating** term and
-appears nowhere in the App Review Guidelines. The guidelines regulate real
+The strongest points, in order:
+
+**No in-app purchases at all.** Verified against the source: there is no
+StoreKit dependency and no purchase path. Chips are earned only. Every one of
+the eleven comparable poker apps surveyed sells chips, and several carry a
+Loot Boxes advisory. If the rule exists to protect people from spending money
+chasing virtual chips, this app is outside the reason for it, because there is
+nothing to spend money on.
+
+**"Simulated gambling" is an age rating term** and appears nowhere in the App
+Review Guidelines. The guidelines regulate real
 money gaming under 5.3.4, and regulated services under 5.1.1(ix). Neither
 plainly describes this app, so it is reasonable to ask whether an automated
 check keyed on the rating value is doing what was intended here.
