@@ -58,6 +58,42 @@ This is recorded here because it is the obvious temptation, it has already been
 suggested once, and the answer needs to be written down rather than
 re-litigated.
 
+### What every other play-money poker app does
+
+Surveyed from live App Store listings rather than assumed. Seller name and the
+content advisory are both public on each app's page.
+
+| App | Seller | Advisory |
+|---|---|---|
+| Zynga Poker | Zynga Inc. | Frequent, Simulated Gambling |
+| WSOP | Playtika LTD | Frequent, Simulated Gambling |
+| Poker Heat | Playtika LTD | Frequent, Simulated Gambling |
+| MONOPOLY Poker | Playtika LTD | Frequent, Simulated Gambling |
+| Governor of Poker | Playtika LTD | Frequent, Simulated Gambling |
+| Pokerist | WISE WAVE CORPORATION LIMITED | Frequent, Simulated Gambling |
+| Mega Hit Poker | Wonder People Co., Ltd. | Frequent, Simulated Gambling |
+| Holdem or Foldem | HK DENGSHEN TECHNOLOGY CO., LI | Frequent, Simulated Gambling |
+| Pokerrrr 2 | Mondraw Limited | Frequent, Simulated Gambling |
+| Octro Poker | Octro Inc. | Frequent, Simulated Gambling |
+| Texas Hold'em Poker + Blackjack | Murka Games Limited | Frequent, Simulated Gambling |
+
+Eleven out of eleven, every one of them free play-money poker with no real
+money gaming, and every one of them:
+
+1. declares **exactly the rating LocalPoker declares**, Frequent Simulated
+   Gambling, and
+2. is an **incorporated company**: Inc., LTD, Co. Ltd, Limited.
+
+Nobody is getting past this by calling it something else. The declaration is
+simply what play-money poker is, and the way everyone ships it is as a
+company. That is worth knowing both because it confirms the rating is right,
+and because it means lowering ours would make LocalPoker the single poker app
+on the store claiming not to contain simulated gambling, which is not a
+quiet place to stand.
+
+Pokerrrr 2 is worth noting: a small, independent-feeling product, and still
+Mondraw Limited.
+
 **Option 1, enrol as an organization.** This is what Apple is asking for, and
 it is a bigger step than it sounds. Checked against Apple's enrolment page
 rather than assumed:
