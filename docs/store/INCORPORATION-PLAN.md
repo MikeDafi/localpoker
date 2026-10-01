@@ -49,6 +49,39 @@ for.
 
 ---
 
+## At a glance
+
+Steps 1 to 3 are yours and are mostly waiting. Steps 4 to 8 are mine and are
+mostly transcription, because the metadata is already written down in this
+folder.
+
+| # | Step | Cost | Time |
+|---|---|---|---|
+| 1 | Form the entity | CA: filing fee plus an annual minimum franchise tax. Verify current figures, they change | days to a couple of weeks |
+| 2 | D-U-N-S number | Free | **the gating item**, allow a couple of weeks |
+| 3 | Enrol the organization | Annual membership, separate from the individual one | days, once D-U-N-S clears |
+| 4-8 | Bundle ID, app record, metadata, legal pages, TestFlight | Nothing beyond the above | an afternoon |
+
+### The sequencing that actually bites
+
+Steps 1 to 3 are serial, and step 2 is where it stalls if the entity
+registration and the D-U-N-S record disagree about the address or the legal
+name. So:
+
+- register the entity with the address you intend to use everywhere, including
+  on the Privacy Policy, and
+- do not start the D-U-N-S request until the registration is genuinely filed
+  rather than merely submitted.
+
+Getting those two records to match on the first attempt is the difference
+between a fortnight and a month.
+
+### Two things to get right in step 1
+
+The entity name becomes the **public App Store seller name**, so it is a naming
+decision rather than a filing detail. And Apple will not accept a DBA or trade
+name, so the registered entity is what has to carry it.
+
 ## Sequence
 
 Steps 1 to 3 are yours. Step 4 onward I can do.
