@@ -43,14 +43,44 @@ nothing, changes no declaration, and carries no risk. Draft in
 **Do not lower the rating.** It would be a false declaration to get past an
 automated gate, it is likely to be caught at human review anyway, and an app
 removed for misrepresenting its content is a far worse outcome than one that
-is not yet published. This is recorded here because it is the obvious
-temptation and the answer needs to be written down once.
+is not yet published. Misrepresented metadata is assessed against the
+**account**, not just the app, so the downside is losing the ability to publish
+anything.
 
-**Option 1, enrol as an organization.** This is what Apple is asking for. It
-needs a legal entity and a D-U-N-S number, and the Terms and Privacy Policy
-were deliberately written for an individual with no entity (see below), so
-they would need revisiting: a company name, a registered address, and possibly
-an EU representative.
+Note also that there is no partial version of this that helps. Apple's wording
+is that the rating "indicates it includes simulated gambling", so anything
+other than `NONE` still trips the same check. The only setting that clears the
+gate is a claim that the app contains no simulated gambling at all, and the
+engine posts mandatory blinds, takes bets and raises, sets `allIn` when a stack
+reaches zero, and moves chips into a pot. That is wagering.
+
+This is recorded here because it is the obvious temptation, it has already been
+suggested once, and the answer needs to be written down rather than
+re-litigated.
+
+**Option 1, enrol as an organization.** This is what Apple is asking for, and
+it is a bigger step than it sounds. Checked against Apple's enrolment page
+rather than assumed:
+
+- Apple classes a **sole proprietor or single person business as an
+  *individual***, not an organization: "If you're an individual or sole
+  proprietor/single person business, you'll need an Apple Account...". So
+  trading as a sole trader does **not** satisfy this.
+- An organization "must be a legal entity that can enter into contracts with
+  Apple", and Apple "do not accept DBAs, fictitious business names, trade
+  names, or branches". That means an actual incorporated company, an LLC or
+  equivalent, not a name.
+- It needs a **D-U-N-S Number** for Apple to verify legal entity status.
+- The entity's name "will be displayed as the seller name of your apps", so it
+  becomes public.
+
+The Terms and Privacy Policy were deliberately written for an individual with
+no entity (see below), so they would need revisiting too: a company name, a
+registered address, and possibly an EU representative.
+
+In short, this route means incorporating a company. That may still be the right
+answer, but it is a real decision rather than paperwork, which is exactly why
+Option 0 is worth doing first.
 
 **Option 2, stay on TestFlight.** Beta review approved build 26 and external
 testing is unaffected by this rejection, so up to 10,000 testers can use the
