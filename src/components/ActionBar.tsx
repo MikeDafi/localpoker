@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useHoldRepeat } from './useHoldRepeat';
 import * as Haptics from 'expo-haptics';
 import { WiiButton } from './WiiButton';
 import { roundWager, WAGER_STEP } from '../game/wager';
@@ -67,11 +68,11 @@ export function ActionBar({ legal, potSize, step, onAction }: ActionBarProps) {
             ))}
           </View>
           <View style={styles.stepRow}>
-            <Stepper label="−" onPress={() => setAmount((a) => clamp(a - inc))} />
+            <Stepper label="−" onStep={(m) => setAmount((a) => clamp(a - inc * m))} />
             <View style={styles.amountBox}>
               <Text style={styles.amountText}>{clamp(amount).toLocaleString()}</Text>
             </View>
-            <Stepper label="+" onPress={() => setAmount((a) => clamp(a + inc))} />
+            <Stepper label="+" onStep={(m) => setAmount((a) => clamp(a + inc * m))} />
           </View>
         </View>
       )}
@@ -110,14 +111,27 @@ export function ActionBar({ legal, potSize, step, onAction }: ActionBarProps) {
   );
 }
 
-function Stepper({ label, onPress }: { label: string; onPress: () => void }) {
+/**
+ * A stepper that keeps going, and speeds up, while held.
+ *
+ * One tap per big blind is reasonable for a raise to 80 and hopeless for a
+ * stack of several thousand, which is the range this control has to cover.
+ * `onStep` receives a multiplier so the caller still owns clamping.
+ */
+function Stepper({ label, onStep }: { label: string; onStep: (multiplier: number) => void }) {
+  const hold = useHoldRepeat((multiplier) => {
+    // Haptics on every repeat at full speed is a buzz rather than feedback,
+    // so only the discrete moves get one.
+    if (multiplier === 1) Haptics.selectionAsync();
+    onStep(multiplier);
+  });
   return (
     <Pressable
-      onPress={() => {
-        Haptics.selectionAsync();
-        onPress();
-      }}
+      onPressIn={hold.onPressIn}
+      onPressOut={hold.onPressOut}
       style={styles.stepper}
+      accessibilityRole="button"
+      accessibilityLabel={label === '+' ? 'Increase amount' : 'Decrease amount'}
     >
       <Text style={styles.stepperText}>{label}</Text>
     </Pressable>

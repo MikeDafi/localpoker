@@ -225,3 +225,40 @@ describe('antes', () => {
     expect(() => createGame({ ...config, ante: -5 }, seats, 5)).toThrow();
   });
 });
+
+/**
+ * The precedence that hid a buy-in bug.
+ *
+ * A table set to a 5,000 stack dealt everyone 2,000, because the lobby writes
+ * a stack onto each room player as it seats them and the host then preferred
+ * that value over the table's own configuration. The engine's behaviour here
+ * is reasonable on its own, which is exactly why it was easy to miss: the
+ * caller has to decide, and for a fresh hand the table's setting is the
+ * authority.
+ */
+describe('explicit chips versus the configured starting stack', () => {
+  const cfg = {
+    smallBlind: 10,
+    bigBlind: 20,
+    ante: 0,
+    startingStack: 5000,
+    maxPlayers: 6,
+    turnTimerSec: 30,
+  };
+
+  it('seats a player on the configured stack when none is given', () => {
+    const game = createGame(cfg, [
+      { id: 'a', name: 'A', seatIndex: 0 },
+      { id: 'b', name: 'B', seatIndex: 1 },
+    ]);
+    expect(game.players.map((p) => p.chips)).toEqual([5000, 5000]);
+  });
+
+  it('lets an explicit stack win, which is what a caller must not pass through stale', () => {
+    const game = createGame(cfg, [
+      { id: 'a', name: 'A', seatIndex: 0, chips: 2000 },
+      { id: 'b', name: 'B', seatIndex: 1, chips: 2000 },
+    ]);
+    expect(game.players.map((p) => p.chips)).toEqual([2000, 2000]);
+  });
+});

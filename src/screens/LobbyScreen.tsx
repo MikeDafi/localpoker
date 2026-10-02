@@ -46,10 +46,12 @@ export function LobbyScreen({ navigation, route }: Props) {
     // player actually designed, rather than a doodle derived from their id.
     palJson: JSON.stringify(profile.pal),
     seatIndex: 0,
-    chips: DEFAULT_GAME_SETTINGS.startingStack,
+    // The table's buy-in, not the app default. Hardcoding the default meant
+    // the lobby advertised one stack and the host dealt another.
+    chips: (hostSettings ?? DEFAULT_GAME_SETTINGS).startingStack,
     connected: true,
     isHost: host,
-  }), [profile.id, profile.name, profile.pal, host]);
+  }), [profile.id, profile.name, profile.pal, host, hostSettings]);
 
   /**
    * Players are stored under their Firebase `auth.uid`, because that is what the

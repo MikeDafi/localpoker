@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -17,6 +17,7 @@ import {
 } from '../game/settings';
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
+import { useHoldRepeat } from '../components/useHoldRepeat';
 import { useApp } from '../state/AppContext';
 import { colors, fonts, radii, shadows, spacing, type, numeric } from '../theme/theme';
 
@@ -368,22 +369,70 @@ function FieldControl({
     );
   }
 
-  const numberValue = typeof value === 'number' ? value : 0;
+  return (
+    <NumberStepper
+      field={field}
+      value={typeof value === 'number' ? value : 0}
+      onNumberChange={onNumberChange}
+    />
+  );
+}
+
+/**
+ * A number setting, adjustable by tapping or by holding.
+ *
+ * Starting stack runs to five figures in steps of 100, so tap-only would mean
+ * well over a hundred taps to cross it. Holding ramps instead. It lives in its
+ * own component because `FieldControl` returns early for the other field
+ * types, and hooks cannot sit behind those returns.
+ */
+function NumberStepper({
+  field,
+  value,
+  onNumberChange,
+}: {
+  field: SettingField;
+  value: number;
+  onNumberChange: (field: SettingField, value: number) => void;
+}) {
   const step = field.step ?? 1;
   const min = field.min ?? Number.MIN_SAFE_INTEGER;
   const max = field.max ?? Number.MAX_SAFE_INTEGER;
-  const nextDown = clampToStep(numberValue - step, field);
-  const nextUp = clampToStep(numberValue + step, field);
-  const atMin = numberValue <= min;
-  const atMax = numberValue >= max;
-  const progress = getRangeProgress(numberValue, field);
+  const atMin = value <= min;
+  const atMax = value >= max;
+  const progress = getRangeProgress(value, field);
+
+  // Repeats at full speed outrun React's re-render, so each tick advances from
+  // the value the previous tick produced rather than from the rendered prop,
+  // which would otherwise make the ramp stall and repeat the same step.
+  const live = useRef(value);
+
+  const nudge = useCallback(
+    (direction: 1 | -1) => (multiplier: number) => {
+      const next = clampToStep(live.current + direction * step * multiplier, field);
+      live.current = next;
+      if (next !== value) onNumberChange(field, next);
+    },
+    [field, onNumberChange, step, value],
+  );
+
+  const down = useHoldRepeat(nudge(-1));
+  const up = useHoldRepeat(nudge(1));
+  // Seed from what is on screen, so a hold always starts where the user sees it.
+  const seed = useCallback(() => {
+    live.current = value;
+  }, [value]);
 
   return (
     <View style={styles.stepperWrap}>
       <View style={styles.stepperTopRow}>
         <Pressable
           disabled={atMin}
-          onPress={() => onNumberChange(field, nextDown)}
+          onPressIn={() => {
+            seed();
+            down.onPressIn();
+          }}
+          onPressOut={down.onPressOut}
           accessibilityRole="button"
           accessibilityLabel={`Decrease ${field.label}`}
           style={[styles.stepButton, atMin && styles.stepButtonDisabled]}
@@ -391,12 +440,16 @@ function FieldControl({
           <Text style={[styles.stepButtonText, atMin && styles.stepButtonTextDisabled]}>−</Text>
         </Pressable>
         <View style={styles.numberReadout}>
-          <Text style={styles.numberValue}>{formatSettingValue(field, numberValue)}</Text>
+          <Text style={styles.numberValue}>{formatSettingValue(field, value)}</Text>
           <Text style={styles.numberMeta}>{formatRange(field)}</Text>
         </View>
         <Pressable
           disabled={atMax}
-          onPress={() => onNumberChange(field, nextUp)}
+          onPressIn={() => {
+            seed();
+            up.onPressIn();
+          }}
+          onPressOut={up.onPressOut}
           accessibilityRole="button"
           accessibilityLabel={`Increase ${field.label}`}
           style={[styles.stepButton, atMax && styles.stepButtonDisabled]}

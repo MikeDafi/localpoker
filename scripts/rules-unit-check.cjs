@@ -533,6 +533,36 @@ function logOk(message) {
     }));
     logOk('and an unknown reaction kind is refused');
 
+    /*
+     * Tabling your hand.
+     *
+     * Showing a bluff only means anything if the others see it, so the flag
+     * lives in the room rather than on the shower's device. It had rules but
+     * no assertions, which is precisely how three earlier write paths shipped
+     * broken, so the host's clear is exercised in the multi-path shape the
+     * app actually uses: one refused path fails the entire publish.
+     */
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown/player'), true));
+    logOk('a seated player can table their own hand');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown/host'), true));
+    logOk('but cannot expose somebody else\'s');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/shown/stranger'), true));
+    logOk('and someone not at the table cannot show anything');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown/player'), 'yes'));
+    logOk('the flag has to be a boolean, not a payload');
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PLAY1/state': { version: 1, handNumber: 9, street: 'preflop' },
+      'localpoker/rooms/PLAY1/shown': null,
+    }));
+    logOk('the host clears every tabled hand as part of publishing the next one');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown'), null));
+    logOk('a player cannot clear the table\'s shown hands wholesale');
+
     // Losing a connection is not leaving, so a dropped host marks the room
     // rather than killing it, and the room only becomes disposable once
     // nobody has come back for ten minutes.

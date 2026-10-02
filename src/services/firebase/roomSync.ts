@@ -880,7 +880,16 @@ const buildHostGame = (room: RoomState, seed: string): GameState | null => {
     id: player.id,
     name: player.name,
     seatIndex,
-    chips: player.chips || settings.startingStack,
+    /*
+     * Everyone buys in for the amount the table was set up with.
+     *
+     * This took `player.chips` when it had one, and the lobby writes a stack
+     * onto every room player as it seats them, so that value always existed
+     * and the host's chosen buy-in was never reached: a table set to 5,000
+     * dealt everyone 2,000. The room's settings are the authority on what a
+     * seat costs, and this is where a hand is dealt from, so it decides.
+     */
+    chips: settings.startingStack,
     isBot: false,
   }));
 
