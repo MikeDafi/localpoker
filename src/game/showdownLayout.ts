@@ -3,17 +3,23 @@ import type { Card } from '../engine/cards';
 /**
  * Where the winning hands sit once a showdown is over.
  *
- * A single winner's two cards slide into the two extra slots the community row
- * grows at showdown, which is the layout this screen has always used. A split
- * pot has no such place to put the second hand: the row cannot grow to nine
- * cards on a phone, and dropping one winner (which is what the screen used to
- * do, by taking the first winner it found) tells the player the pot went to
- * somebody it did not.
+ * The community row used to grow from five cards to seven so the winner's hole
+ * cards had somewhere to land. Seven across a phone shrinks every card past
+ * the point its pips can be counted, and it charged the board's own cards for
+ * the privilege of showing two more. So the board stays five, and the winning
+ * hand sits in a row of its own underneath, centred under the board.
  *
- * So ties stack instead. Each winning hand keeps the same two columns, and the
- * hands sit one above another, centred on the lane. Cards shrink so the whole
- * stack fits the height the board row was already allowed, which is what keeps
- * it clear of the pot and off the hero pod.
+ * That row holds every winning hand side by side rather than stacked. Stacking
+ * was the obvious reading of "below the board" and it is the wrong one: the
+ * band of felt between the seats and the hero pod is about one card tall, so a
+ * second hand did not halve the cards, it shrank them to the legibility floor
+ * and then ran the lower hand onto the hero anyway. Across, a split pot is
+ * four cards under a five card board, which is narrower than the board itself,
+ * so both hands keep the size a single winner gets.
+ *
+ * Returning a list per hand rather than one winner matters for its own reason:
+ * taking the first winner, as the screen used to, tells the player the pot
+ * went to somebody it did not.
  *
  * It is all arithmetic rather than layout, because these positions are the
  * flight targets of an absolutely positioned animation; keeping it pure is
@@ -22,17 +28,19 @@ import type { Card } from '../engine/cards';
 
 /** Cards are 1.42 times as tall as they are wide. */
 export const CARD_ASPECT = 1.42;
-/** Below this a card face is no longer readable, so the stack is capped instead. */
+/** Below this a card face is no longer readable, so the row is capped instead. */
 export const MIN_REVEAL_CARD = 24;
-/** Gap between two stacked hands. */
-export const ROW_GAP = 6;
+/** Gap between the two cards of a single hand, tight so the pair reads as one. */
+export const CARD_GAP = 6;
+/** Gap between two hands, wide enough that four cards do not read as one hand. */
+export const HAND_GAP = 18;
 /**
  * At most three hands are laid out.
  *
  * A four-way split is vanishingly rare and would shrink every card past
  * legibility; the result panel still names every winner.
  */
-export const MAX_REVEAL_ROWS = 3;
+export const MAX_REVEAL_HANDS = 3;
 
 export interface ShowdownWinnerHand {
   playerId: string;
@@ -41,11 +49,11 @@ export interface ShowdownWinnerHand {
   label: string;
 }
 
-export interface RevealRow {
+export interface RevealHand {
   playerId: string;
   /** Centre of each of the two cards, in table-area coordinates. */
   targets: { x: number; y: number }[];
-  /** Size the cards rest at. Shared by every row so no hand looks favoured. */
+  /** Size the cards rest at. Shared by every hand so none looks favoured. */
   size: number;
 }
 
@@ -75,58 +83,69 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
       hole: p.holeCards.slice(0, 2),
       label: options.label(w),
     });
-    if (rows.length >= MAX_REVEAL_ROWS) break;
+    if (rows.length >= MAX_REVEAL_HANDS) break;
   }
   return rows;
 }
 
 /**
- * Place each hand's two cards.
+ * Place every winning hand in one row beneath the board.
  *
- * `boardCentreY` is where a single hand lands, which is the middle of the
- * community row. Extra hands are distributed around it so the stack as a whole
- * stays centred rather than growing downward into the pot.
+ * The row runs downward from `top`, which sits just under the board, rather
+ * than being centred on it: the board keeps its own line and the winning hands
+ * get the space beneath. Hands sit side by side about `centreX`, each a tight
+ * pair with a wider gap to its neighbour, so four cards still read as two
+ * hands rather than one.
+ *
+ * Width is what decides the size, because the lane below the board is only
+ * about one card tall on a phone while the board itself is five cards wide.
+ * Two hands is four cards, which is narrower than the board, so a split pot
+ * costs the cards nothing.
  */
-export function layoutRevealRows(input: {
+export function layoutRevealHands(input: {
   count: number;
-  /** Centre x of the two landing columns, left then right. */
-  columnX: [number, number];
-  boardCentreY: number;
-  /** Size a single hand would rest at. */
+  /** Horizontal centre of the board, which the hands line up under. */
+  centreX: number;
+  /** Top of the row, just below the board. */
+  top: number;
+  /** Size a hand rests at when there is room for it, normally the board's. */
   preferredSize: number;
-  /** Vertical room the stack may use, centred on `boardCentreY`. */
+  /** Width the row may use, normally the board's own. */
+  availableW: number;
+  /** Vertical room below the board. */
   availableH: number;
   playerIds: string[];
-}): RevealRow[] {
-  const rows = Math.min(input.count, MAX_REVEAL_ROWS);
-  if (rows <= 0) return [];
+}): RevealHand[] {
+  const hands = Math.min(input.count, MAX_REVEAL_HANDS);
+  if (hands <= 0) return [];
 
   /*
-   * Solve for the card size that makes the stack fit exactly.
-   *
-   * rows * (size * CARD_ASPECT) + (rows - 1) * ROW_GAP <= availableH
-   *
-   * A single row therefore keeps its preferred size whenever the board row
-   * already fits, which it does by construction, so nothing about the
-   * one-winner case moves.
+   * Solve for the card size that makes the row fit exactly:
+   *   hands * (2 * size + CARD_GAP) + (hands - 1) * HAND_GAP <= availableW
+   * A single hand keeps its preferred size in any realistic lane, which is the
+   * ordinary case; only a three way split has to buy its space.
    */
-  const perRowH = (input.availableH - (rows - 1) * ROW_GAP) / rows;
-  const size = Math.max(
-    MIN_REVEAL_CARD,
-    Math.min(input.preferredSize, Math.floor(perRowH / CARD_ASPECT)),
-  );
-  const rowH = size * CARD_ASPECT;
-  const stackH = rows * rowH + (rows - 1) * ROW_GAP;
-  const firstCentreY = input.boardCentreY - stackH / 2 + rowH / 2;
+  const spacing = hands * CARD_GAP + (hands - 1) * HAND_GAP;
+  const byWidth = Math.floor((input.availableW - spacing) / (2 * hands));
+  const byHeight = Math.floor(input.availableH / CARD_ASPECT);
+  const size = Math.max(MIN_REVEAL_CARD, Math.min(input.preferredSize, byWidth, byHeight));
 
-  return Array.from({ length: rows }, (_, i) => ({
-    playerId: input.playerIds[i] ?? `row-${i}`,
-    size,
-    targets: [
-      { x: input.columnX[0], y: firstCentreY + i * (rowH + ROW_GAP) },
-      { x: input.columnX[1], y: firstCentreY + i * (rowH + ROW_GAP) },
-    ],
-  }));
+  const handW = 2 * size + CARD_GAP;
+  const totalW = hands * handW + (hands - 1) * HAND_GAP;
+  const rowLeft = input.centreX - totalW / 2;
+  const y = input.top + (size * CARD_ASPECT) / 2;
+
+  return Array.from({ length: hands }, (_, i) => {
+    const handLeft = rowLeft + i * (handW + HAND_GAP);
+    return {
+      playerId: input.playerIds[i] ?? `hand-${i}`,
+      size,
+      targets: [
+        { x: handLeft + size / 2, y },
+        { x: handLeft + size + CARD_GAP + size / 2, y },
+      ],
+    };
+  });
 }
 
 /**

@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
-import { layoutRevealRows, lostAtShowdown, selectShowdownHands, showdownLabel } from '../game/showdownLayout';
+import { CARD_ASPECT, layoutRevealHands, lostAtShowdown, selectShowdownHands, showdownLabel } from '../game/showdownLayout';
 import { canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
@@ -1349,39 +1349,45 @@ export function TableScreen({ navigation, route }: Props) {
   const dealAnimate = shouldAnimateDeal(animsOff, state.handNumber, restoredHand.current);
 
   // --- Showdown lay-out -------------------------------------------------------
-  // At showdown the community row grows from five slots to seven so the winner's
-  // hole cards have somewhere to land. Cards shrink just enough for seven to fit
-  // the felt; `boardBox` is measured so the flight targets are exact rather than
-  // arithmetic guesses about margins and borders.
-  const layingOut = !!showdownHand;
-  const boardCells = layingOut ? 7 : 5;
-  // Seven cards is a wide row for a round table: sized naively they hang off the
-  // felt onto the carpet. The row is therefore capped to a chord the oval can
-  // actually hold, and the cards shrink to suit.
-  const CELL_PAD = 10; // per cell: 2pt margins + 2pt ring border + 1pt padding, both sides
-  /**
-   * The board is also capped by how tall the lane is, not just how wide it is.
-   * Sizing on width alone let the row grow past the bottom of the lane, and
-   * since the hero pod is drawn over the felt the overflow simply vanished
-   * behind it, taking the pot with it. Fitting the height means the pot always
-   * has somewhere to sit.
+  /*
+   * The board is always five cards wide.
+   *
+   * It used to grow to seven at showdown so the winner's hole cards had
+   * somewhere to land, which made every card on the table smaller to show two
+   * more: at seven across a phone the pips stop being countable. The winning
+   * hand now gets a row of its own underneath instead, so the board is never
+   * charged for it. `boardBox` is measured rather than derived so the flight
+   * targets are exact instead of arithmetic guesses about margins and borders.
    */
+  const layingOut = !!showdownHand;
+  const BOARD_CELLS = 5;
+  const CELL_PAD = 10; // per cell: 2pt margins + 2pt ring border + 1pt padding, both sides
   const POT_BLOCK_H = 40; // pot pill plus the gap above it
-  const PILL_BLOCK_H = 26; // the hand-name pill above the board
   const laneH = Math.max(0, stageH - laneTop - laneBottom);
-  const boardMaxH = Math.max(28 * 1.42, laneH - POT_BLOCK_H);
+  /*
+   * At a showdown the lane holds two rows, not one, so the board gives up
+   * roughly its own height again to the hands underneath. The pot is already
+   * awarded by then and takes no room.
+   */
+  const revealRowShare = layingOut ? 0.52 : 1;
+  const boardMaxH = Math.max(28 * 1.42, (laneH - (layingOut ? 0 : POT_BLOCK_H)) * revealRowShare);
+  /*
+   * A touch smaller than a card is dealt at: the showdown board sits above a
+   * second row of cards rather than empty felt, and the pair of them read
+   * better slightly trimmed than filling the lane edge to edge.
+   */
+  const boardShrink = layingOut ? 0.88 : 1;
   const sdCardSize = Math.max(
     28,
     Math.min(
-      layingOut ? Math.min(cardSize, Math.floor((area.w * 0.8) / boardCells) - CELL_PAD) : cardSize,
+      Math.floor(cardSize * boardShrink),
+      Math.floor((area.w * 0.82) / BOARD_CELLS) - CELL_PAD,
       Math.floor(boardMaxH / 1.42),
     ),
   );
-  const cellW = boardBox.w > 0 ? boardBox.w / boardCells : sdCardSize + CELL_PAD;
-  const slotCentre = (i: number) => ({
-    x: boardBox.x + cellW * (i + 0.5),
-    y: laneTop + boardBox.y + boardBox.h / 2,
-  });
+  const cellW = boardBox.w > 0 ? boardBox.w / BOARD_CELLS : sdCardSize + CELL_PAD;
+  const boardTop = laneTop + boardBox.y;
+  const boardBottom = boardTop + boardBox.h;
 
   /** Where a winner's cards start their journey: the middle of their pod. */
   const revealFrom = useCallback((playerId: string) => {
@@ -1401,28 +1407,27 @@ export function TableScreen({ navigation, route }: Props) {
   }, [opponents, area.w, stageH, heroH]);
 
   /*
-   * One row per winning hand.
+   * One row holding every winning hand, beneath the board.
    *
-   * A single winner keeps the two slots the community row grew, exactly as
-   * before. A split pot stacks the hands in those same two columns instead of
-   * widening the row to nine cards, which no phone has the width for. The
-   * stack is given the height the board row was already allowed, so it stays
-   * clear of the pot and off the hero pod.
+   * The pot is awarded by the time a hand is tabled, so its block is not
+   * rendered and the felt below the board is free. The row is sized by width
+   * rather than by the lane, because the lane between the seats and the hero
+   * is only about one card tall: stacking a split pot into it shrank both
+   * hands to the legibility floor and still ran the lower one onto the hero.
+   * Side by side, two hands are four cards under a five card board, so they
+   * keep the size a single winner gets.
    */
-  const revealRows = layingOut
-    ? layoutRevealRows({
+  const REVEAL_GAP = 8; // breathing room between the board and the hands below it
+  const revealTop = boardBottom + REVEAL_GAP;
+  const revealHands = layingOut
+    ? layoutRevealHands({
       count: showdownHands.length,
-      columnX: [slotCentre(5).x, slotCentre(6).x],
-      boardCentreY: slotCentre(5).y,
+      centreX: boardBox.x + boardBox.w / 2,
+      top: revealTop,
       preferredSize: sdCardSize,
-      /*
-       * The pot is awarded by the time a hand is tabled, so its block is not
-       * rendered and the lane below the hand-name pill is free. Handing that
-       * room to the stack is what keeps a split pot's cards readable rather
-       * than shrinking two hands into the space of one row. `max` so a single
-       * winner can never end up with less room than it has today.
-       */
-      availableH: Math.max(boardMaxH, laneH - PILL_BLOCK_H),
+      availableW: boardBox.w > 0 ? boardBox.w : area.w * 0.82,
+      // The felt below the board, which the awarded pot has vacated.
+      availableH: Math.max(sdCardSize * CARD_ASPECT, stageH - revealTop - 8),
       playerIds: showdownHands.map((h) => h.playerId),
     })
     : [];
@@ -1436,7 +1441,7 @@ export function TableScreen({ navigation, route }: Props) {
    * board "changing" rather than being dealt.
    */
   const boardThrowFrom = (i: number) => {
-    const offsetFromCentre = (i - (boardCells - 1) / 2) * cellW;
+    const offsetFromCentre = (i - (BOARD_CELLS - 1) / 2) * cellW;
     return { x: -offsetFromCentre, y: -(stageH * 0.22) };
   };
   /**
@@ -1569,7 +1574,17 @@ export function TableScreen({ navigation, route }: Props) {
 
         {/* Community cards + pot, centred in the lane between the seat arc and
             the hero pod (see `laneTop`/`laneBottom`). */}
-        <View style={[styles.centerZone, { top: laneTop, bottom: laneBottom }]} pointerEvents="box-none">
+        {/* Centred mid-hand, but pinned to the top of the lane at a showdown:
+            the lane then carries a second row of cards under the board, and
+            centring the pair of them pushed the lower row onto the hero. */}
+        <View
+          style={[
+            styles.centerZone,
+            { top: laneTop, bottom: laneBottom },
+            layingOut && styles.centerZoneTop,
+          ]}
+          pointerEvents="box-none"
+        >
           {/* The street is already obvious from the board itself, so naming it
               only cost the lane a row. The winning hand still gets announced,
               because that is the one thing the cards do not tell you. */}
@@ -1580,16 +1595,7 @@ export function TableScreen({ navigation, route }: Props) {
           )}
 
           <View style={styles.board} onLayout={(e) => setBoardBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y, w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-            {Array.from({ length: boardCells }).map((_, i) => {
-              // Slots 5 and 6 only exist at showdown: they are the landing spots
-              // for the winner's hole cards, filled by <ShowdownReveal/> above.
-              if (i >= 5) {
-                return (
-                  <View key={`hole-${i}`} style={[styles.boardCardWrap, layingOut && styles.boardCardTight]}>
-                    <View style={{ width: sdCardSize, height: sdCardSize * 1.42 }} />
-                  </View>
-                );
-              }
+            {Array.from({ length: BOARD_CELLS }).map((_, i) => {
               const card = felt.board[i];
               if (!card) {
                 return (
@@ -1631,18 +1637,18 @@ export function TableScreen({ navigation, route }: Props) {
         {/* The winner's cards: turned over at the seat, lifted so they can be
             read, then pushed across to join the board. Rendered above the seats
             so nothing clips them in flight. */}
-        {boardBox.w > 0 && revealRows.map((row, i) => {
+        {boardBox.w > 0 && revealHands.map((placed, i) => {
           const hand = showdownHands[i];
           if (!hand) return null;
           return (
             <ShowdownReveal
-              key={`${state.handNumber}-${row.playerId}`}
-              revealKey={`${state.handNumber}-${row.playerId}`}
+              key={`${state.handNumber}-${placed.playerId}`}
+              revealKey={`${state.handNumber}-${placed.playerId}`}
               cards={hand.hole}
-              from={revealFrom(row.playerId)}
-              to={row.targets}
+              from={revealFrom(placed.playerId)}
+              to={placed.targets}
               smallSize={18}
-              bigSize={row.size}
+              bigSize={placed.size}
               highlight={highlightFor(hand)}
               animate={!animsOff}
             />
@@ -1959,7 +1965,10 @@ export function TableScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  // The safe-area inset already clears the status bar and the island, so the
+  // padding on top of it was a second gap for the same hazard and simply
+  // pushed the whole table down the screen.
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: 0 },
   iconBtn: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
   topRight: { minWidth: 44, flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   safetyBtn: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.red, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
@@ -1982,7 +1991,7 @@ const styles = StyleSheet.create({
   muckedChipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkSoft },
   friendsBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.md, paddingVertical: 6, paddingHorizontal: spacing.md },
   friendsBannerText: { fontFamily: fonts.medium, fontSize: 11, color: colors.onDarkSoft, textAlign: 'center' },
-  tableArea: { marginTop: spacing.xs, marginHorizontal: spacing.sm, position: 'relative' },
+  tableArea: { marginTop: 0, marginHorizontal: spacing.sm, position: 'relative' },
   feltOval: { position: 'absolute', top: 8, left: 8, right: 8, bottom: 8, borderRadius: 200, borderWidth: 10, borderColor: colors.feltRail, overflow: 'hidden' },
   // top-lit sliver along the inside of the rail, the single light source
   railHighlight: { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', borderTopLeftRadius: 190, borderTopRightRadius: 190, backgroundColor: colors.feltRailEdge, opacity: 0.35 },
@@ -1990,6 +1999,7 @@ const styles = StyleSheet.create({
   feltInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 190, borderWidth: 14, borderColor: colors.feltInnerShadow, opacity: 0.55 },
   feltGlow: { position: 'absolute', alignSelf: 'center', top: '18%', width: 300, height: 300, borderRadius: 150, backgroundColor: colors.feltLight, opacity: 0.22 },
   centerZone: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  centerZoneTop: { justifyContent: 'flex-start' },
   // Width is set per-render from SEAT_W: it has to match the width `seatPos`
   // positions the pod with, or the pod sits off-centre by half the difference.
   seatAbs: { position: 'absolute', alignItems: 'center' },

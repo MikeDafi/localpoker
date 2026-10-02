@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 
 import {
   CARD_ASPECT,
-  MAX_REVEAL_ROWS,
+  CARD_GAP,
+  MAX_REVEAL_HANDS,
   MIN_REVEAL_CARD,
-  ROW_GAP,
-  layoutRevealRows,
+  HAND_GAP,
+  layoutRevealHands,
   selectShowdownHands,
   showdownLabel,
   lostAtShowdown,
@@ -82,103 +83,129 @@ describe('selectShowdownHands', () => {
   it('caps the stack, so a four way split cannot shrink every card to nothing', () => {
     const many = ['a', 'b', 'c', 'd'].map((id) => player(id, [card(2, 's'), card(3, 's')]));
     const hands = pick(many.map((p) => winner(p.id, 'Two pair')), many);
-    expect(hands).toHaveLength(MAX_REVEAL_ROWS);
+    expect(hands).toHaveLength(MAX_REVEAL_HANDS);
   });
 });
 
-describe('layoutRevealRows', () => {
+describe('layoutRevealHands', () => {
   const base = {
-    columnX: [200, 260] as [number, number],
-    boardCentreY: 150,
+    centreX: 230,
+    top: 300,
     preferredSize: 56,
+    availableW: 320,
     availableH: 200,
+  };
+  const cardH = base.preferredSize * CARD_ASPECT;
+
+  const span = (hands: ReturnType<typeof layoutRevealHands>) => {
+    const xs = hands.flatMap((h) => h.targets.map((t) => t.x));
+    const size = hands[0]!.size;
+    return { left: Math.min(...xs) - size / 2, right: Math.max(...xs) + size / 2 };
   };
 
   it('places nothing when there is nothing to show', () => {
-    expect(layoutRevealRows({ ...base, count: 0, playerIds: [] })).toEqual([]);
+    expect(layoutRevealHands({ ...base, count: 0, playerIds: [] })).toEqual([]);
   });
 
-  it('leaves a single winner exactly where it has always landed', () => {
-    const [row] = layoutRevealRows({ ...base, count: 1, playerIds: ['alice'] });
-    expect(row!.size).toBe(base.preferredSize);
-    expect(row!.targets.map((t) => t.x)).toEqual([200, 260]);
-    expect(row!.targets[0]!.y).toBe(base.boardCentreY);
-    expect(row!.targets[1]!.y).toBe(base.boardCentreY);
+  it('centres one hand under the board, two cards either side', () => {
+    const [hand] = layoutRevealHands({ ...base, count: 1, playerIds: ['alice'] });
+    expect(hand!.size).toBe(base.preferredSize);
+    const [left, right] = hand!.targets;
+    expect((left!.x + right!.x) / 2).toBeCloseTo(base.centreX, 5);
+    expect(right!.x - left!.x).toBeCloseTo(base.preferredSize + CARD_GAP, 5);
+    expect(left!.y).toBe(right!.y);
   });
 
-  it('does not grow a single card beyond the size the board uses', () => {
-    const [row] = layoutRevealRows({ ...base, count: 1, availableH: 10_000, playerIds: ['a'] });
-    expect(row!.size).toBe(base.preferredSize);
+  /*
+   * The whole point of the change: the hand belongs below the board, not
+   * alongside it, so the board never has to shrink to make room.
+   */
+  it('sits the hand below the board rather than beside it', () => {
+    const [hand] = layoutRevealHands({ ...base, count: 1, playerIds: ['alice'] });
+    expect(hand!.targets[0]!.y - cardH / 2).toBeCloseTo(base.top, 5);
   });
 
-  it('stacks a tie vertically in the same two columns', () => {
-    const rows = layoutRevealRows({ ...base, count: 2, playerIds: ['alice', 'bob'] });
-    expect(rows).toHaveLength(2);
-    for (const row of rows) {
-      expect(row.targets.map((t) => t.x)).toEqual([200, 260]);
-      expect(row.targets[0]!.y).toBe(row.targets[1]!.y);
-    }
-    expect(rows[1]!.targets[0]!.y).toBeGreaterThan(rows[0]!.targets[0]!.y);
+  it('does not grow a card beyond the size it was offered', () => {
+    const [hand] = layoutRevealHands({ ...base, count: 1, availableW: 10_000, playerIds: ['a'] });
+    expect(hand!.size).toBe(base.preferredSize);
   });
 
-  it('keeps the stack centred on the board row rather than drifting into the pot', () => {
-    const rows = layoutRevealRows({ ...base, count: 2, playerIds: ['a', 'b'] });
-    const mid = (rows[0]!.targets[0]!.y + rows[1]!.targets[0]!.y) / 2;
-    expect(mid).toBeCloseTo(base.boardCentreY, 5);
+  /*
+   * The bug this replaced: stacking put each extra hand in a lane barely one
+   * card tall, so a split pot shrank both hands to the legibility floor. Side
+   * by side, four cards are narrower than the five card board above them, so
+   * a split costs the cards nothing at all.
+   */
+  it('keeps a split pot at full size, where stacking collapsed it', () => {
+    const hands = layoutRevealHands({ ...base, count: 2, playerIds: ['alice', 'bob'] });
+    expect(hands).toHaveLength(2);
+    expect(hands.every((h) => h.size === base.preferredSize)).toBe(true);
   });
 
-  it('separates the rows, so one hand never overlaps the other', () => {
-    for (const count of [2, 3]) {
-      const rows = layoutRevealRows({ ...base, count, playerIds: ['a', 'b', 'c'] });
-      const rowH = rows[0]!.size * CARD_ASPECT;
-      for (let i = 1; i < rows.length; i += 1) {
-        const gap = rows[i]!.targets[0]!.y - rows[i - 1]!.targets[0]!.y - rowH;
-        expect(gap).toBeGreaterThanOrEqual(ROW_GAP - 0.001);
-      }
-    }
+  it('lays a split pot out across one line, not down the felt', () => {
+    const hands = layoutRevealHands({ ...base, count: 2, playerIds: ['alice', 'bob'] });
+    const ys = hands.flatMap((h) => h.targets.map((t) => t.y));
+    expect(new Set(ys).size).toBe(1);
+    expect(hands[1]!.targets[0]!.x).toBeGreaterThan(hands[0]!.targets[1]!.x);
   });
 
-  it('fits the whole stack inside the room it was given', () => {
+  it('centres the whole row, however many hands are in it', () => {
     for (const count of [1, 2, 3]) {
-      const rows = layoutRevealRows({ ...base, count, playerIds: ['a', 'b', 'c'] });
-      const rowH = rows[0]!.size * CARD_ASPECT;
-      const top = rows[0]!.targets[0]!.y - rowH / 2;
-      const bottom = rows[rows.length - 1]!.targets[0]!.y + rowH / 2;
-      expect(top).toBeGreaterThanOrEqual(base.boardCentreY - base.availableH / 2 - 0.001);
-      expect(bottom).toBeLessThanOrEqual(base.boardCentreY + base.availableH / 2 + 0.001);
+      const hands = layoutRevealHands({ ...base, count, playerIds: ['a', 'b', 'c'] });
+      const { left, right } = span(hands);
+      expect((left + right) / 2).toBeCloseTo(base.centreX, 5);
     }
   });
 
-  it('shrinks the cards when the extra hands no longer fit', () => {
-    // The real lane is about one card row tall, so a second hand has to buy
-    // its space from the first.
-    const tight = { ...base, availableH: Math.round(base.preferredSize * CARD_ASPECT) };
-    const one = layoutRevealRows({ ...tight, count: 1, playerIds: ['a'] })[0]!.size;
-    const two = layoutRevealRows({ ...tight, count: 2, playerIds: ['a', 'b'] })[0]!.size;
-    const three = layoutRevealRows({ ...tight, count: 3, playerIds: ['a', 'b', 'c'] })[0]!.size;
+  it('separates two hands more than it separates one hand\u2019s own cards', () => {
+    const hands = layoutRevealHands({ ...base, count: 2, playerIds: ['a', 'b'] });
+    const size = hands[0]!.size;
+    const within = hands[0]!.targets[1]!.x - hands[0]!.targets[0]!.x - size;
+    const between = hands[1]!.targets[0]!.x - hands[0]!.targets[1]!.x - size;
+    expect(within).toBeCloseTo(CARD_GAP, 5);
+    expect(between).toBeCloseTo(HAND_GAP, 5);
+    expect(between).toBeGreaterThan(within);
+  });
+
+  it('fits every hand inside the width it was given', () => {
+    for (const count of [1, 2, 3]) {
+      const hands = layoutRevealHands({ ...base, count, playerIds: ['a', 'b', 'c'] });
+      const { left, right } = span(hands);
+      expect(right - left).toBeLessThanOrEqual(base.availableW + 0.001);
+      expect(left).toBeGreaterThanOrEqual(base.centreX - base.availableW / 2 - 0.001);
+    }
+  });
+
+  it('fits the row inside the room below the board', () => {
+    const hands = layoutRevealHands({ ...base, count: 2, availableH: 60, playerIds: ['a', 'b'] });
+    const h = hands[0]!.size * CARD_ASPECT;
+    expect(hands[0]!.targets[0]!.y - h / 2).toBeCloseTo(base.top, 5);
+    expect(hands[0]!.targets[0]!.y + h / 2).toBeLessThanOrEqual(base.top + 60 + 0.001);
+  });
+
+  it('shrinks the cards only once the extra hands no longer fit', () => {
+    const tight = { ...base, availableW: 240 };
+    const one = layoutRevealHands({ ...tight, count: 1, playerIds: ['a'] })[0]!.size;
+    const two = layoutRevealHands({ ...tight, count: 2, playerIds: ['a', 'b'] })[0]!.size;
+    const three = layoutRevealHands({ ...tight, count: 3, playerIds: ['a', 'b', 'c'] })[0]!.size;
     expect(one).toBe(base.preferredSize);
     expect(two).toBeLessThan(one);
     expect(three).toBeLessThan(two);
   });
 
-  it('does not shrink hands that already fit, since smaller helps nobody', () => {
-    const roomy = layoutRevealRows({ ...base, count: 2, availableH: 400, playerIds: ['a', 'b'] });
-    expect(roomy.every((r) => r.size === base.preferredSize)).toBe(true);
-  });
-
   it('gives every hand the same size, so none looks like the real winner', () => {
-    const rows = layoutRevealRows({ ...base, count: 3, playerIds: ['a', 'b', 'c'] });
-    expect(new Set(rows.map((r) => r.size)).size).toBe(1);
+    const hands = layoutRevealHands({ ...base, count: 3, playerIds: ['a', 'b', 'c'] });
+    expect(new Set(hands.map((h) => h.size)).size).toBe(1);
   });
 
   it('stops shrinking at the point a card stops being readable', () => {
-    const rows = layoutRevealRows({ ...base, count: 3, availableH: 40, playerIds: ['a', 'b', 'c'] });
-    expect(rows.every((r) => r.size === MIN_REVEAL_CARD)).toBe(true);
+    const hands = layoutRevealHands({ ...base, count: 3, availableW: 40, playerIds: ['a', 'b', 'c'] });
+    expect(hands.every((h) => h.size === MIN_REVEAL_CARD)).toBe(true);
   });
 
-  it('never returns more rows than it will lay out', () => {
-    const rows = layoutRevealRows({ ...base, count: 9, playerIds: ['a', 'b', 'c', 'd'] });
-    expect(rows).toHaveLength(MAX_REVEAL_ROWS);
+  it('never returns more hands than it will lay out', () => {
+    const hands = layoutRevealHands({ ...base, count: 9, playerIds: ['a', 'b', 'c', 'd'] });
+    expect(hands).toHaveLength(MAX_REVEAL_HANDS);
   });
 });
 
