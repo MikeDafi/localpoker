@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -21,7 +22,7 @@ export function ProfileScreen({ navigation }: Props) {
   const saveName = () => {
     const result = updateProfile({ name: name.trim() || profile.name });
     if (!result.ok) {
-      Alert.alert('Choose another name', result.reason || 'That name cannot be used.');
+      showAlert('Choose another name', result.reason || 'That name cannot be used.');
       setName(profile.name);
     }
   };

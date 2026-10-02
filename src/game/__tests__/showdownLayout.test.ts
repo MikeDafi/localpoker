@@ -6,6 +6,8 @@ import {
   MAX_REVEAL_HANDS,
   MIN_REVEAL_CARD,
   HAND_GAP,
+  MIN_HAND_GAP,
+  handGapFor,
   layoutRevealHands,
   selectShowdownHands,
   showdownLabel,
@@ -80,14 +82,25 @@ describe('selectShowdownHands', () => {
     expect(hands.map((h) => h.playerId)).toEqual(['bob']);
   });
 
-  it('caps the stack, so a four way split cannot shrink every card to nothing', () => {
+  /*
+   * This used to stop at three, so a four way split showed three hands and
+   * told the fourth winner they had not won.
+   */
+  it('shows every hand of a four way split', () => {
     const many = ['a', 'b', 'c', 'd'].map((id) => player(id, [card(2, 's'), card(3, 's')]));
+    const hands = pick(many.map((p) => winner(p.id, 'Two pair')), many);
+    expect(hands.map((h) => h.playerId)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('caps at a full table, which is as many hands as a board that plays can split', () => {
+    const many = 'abcdefgh'.split('').map((id) => player(id, [card(2, 's'), card(3, 's')]));
     const hands = pick(many.map((p) => winner(p.id, 'Two pair')), many);
     expect(hands).toHaveLength(MAX_REVEAL_HANDS);
   });
 });
 
 describe('layoutRevealHands', () => {
+  const SIX = ['a', 'b', 'c', 'd', 'e', 'f'];
   const base = {
     centreX: 230,
     top: 300,
@@ -150,8 +163,8 @@ describe('layoutRevealHands', () => {
   });
 
   it('centres the whole row, however many hands are in it', () => {
-    for (const count of [1, 2, 3]) {
-      const hands = layoutRevealHands({ ...base, count, playerIds: ['a', 'b', 'c'] });
+    for (const count of [1, 2, 3, 4, 5, 6]) {
+      const hands = layoutRevealHands({ ...base, count, playerIds: SIX });
       const { left, right } = span(hands);
       expect((left + right) / 2).toBeCloseTo(base.centreX, 5);
     }
@@ -168,8 +181,8 @@ describe('layoutRevealHands', () => {
   });
 
   it('fits every hand inside the width it was given', () => {
-    for (const count of [1, 2, 3]) {
-      const hands = layoutRevealHands({ ...base, count, playerIds: ['a', 'b', 'c'] });
+    for (const count of [1, 2, 3, 4, 5, 6]) {
+      const hands = layoutRevealHands({ ...base, count, playerIds: SIX });
       const { left, right } = span(hands);
       expect(right - left).toBeLessThanOrEqual(base.availableW + 0.001);
       expect(left).toBeGreaterThanOrEqual(base.centreX - base.availableW / 2 - 0.001);
@@ -199,13 +212,100 @@ describe('layoutRevealHands', () => {
   });
 
   it('stops shrinking at the point a card stops being readable', () => {
-    const hands = layoutRevealHands({ ...base, count: 3, availableW: 40, playerIds: ['a', 'b', 'c'] });
-    expect(hands.every((h) => h.size === MIN_REVEAL_CARD)).toBe(true);
+    const hands = layoutRevealHands({ ...base, count: 3, availableW: 240, playerIds: ['a', 'b', 'c'] });
+    expect(hands.every((h) => h.size >= MIN_REVEAL_CARD)).toBe(true);
+  });
+
+  /*
+   * The floor used to be absolute, so six hands held at 24pt ran a 340pt row
+   * across 320pt of felt and drew cards over the rail. Staying on the table
+   * beats staying readable.
+   */
+  it('gives up the floor rather than running off the felt', () => {
+    const hands = layoutRevealHands({ ...base, count: 6, availableW: 200, playerIds: SIX });
+    const { left, right } = span(hands);
+    expect(hands[0]!.size).toBeLessThan(MIN_REVEAL_CARD);
+    expect(right - left).toBeLessThanOrEqual(200.001);
   });
 
   it('never returns more hands than it will lay out', () => {
-    const hands = layoutRevealHands({ ...base, count: 9, playerIds: ['a', 'b', 'c', 'd'] });
+    const hands = layoutRevealHands({ ...base, count: 9, playerIds: SIX });
     expect(hands).toHaveLength(MAX_REVEAL_HANDS);
+  });
+
+  /*
+   * What the user asked for: a three or four way split shrinks into the same
+   * row of cards on the felt that a two way split uses, rather than being
+   * truncated or stacked. `FELT_W` is the cloth on an iPhone 17 Pro, which is
+   * what the row is now given instead of the narrower board.
+   */
+  describe('a multi-way split', () => {
+    const FELT_W = 347;
+    const felt = { ...base, availableW: FELT_W };
+
+    it('keeps every hand on one line, on real felt', () => {
+      for (const count of [3, 4, 5, 6]) {
+        const hands = layoutRevealHands({ ...felt, count, playerIds: SIX });
+        expect(hands).toHaveLength(count);
+        expect(new Set(hands.flatMap((h) => h.targets.map((t) => t.y))).size).toBe(1);
+      }
+    });
+
+    it('keeps a three or four way split comfortably readable', () => {
+      for (const count of [3, 4]) {
+        const hands = layoutRevealHands({ ...felt, count, playerIds: SIX });
+        expect(hands[0]!.size).toBeGreaterThanOrEqual(30);
+      }
+    });
+
+    /*
+     * Five and six ways are a board that plays for nearly the whole table, so
+     * they are allowed to reach the floor rather than being refused.
+     */
+    it('still holds the rarest splits at the legibility floor', () => {
+      for (const count of [5, 6]) {
+        const hands = layoutRevealHands({ ...felt, count, playerIds: SIX });
+        expect(hands[0]!.size).toBeGreaterThanOrEqual(MIN_REVEAL_CARD);
+      }
+    });
+
+    it('still reads as hands rather than one long row', () => {
+      for (const count of [3, 4, 5, 6]) {
+        const hands = layoutRevealHands({ ...felt, count, playerIds: SIX });
+        const size = hands[0]!.size;
+        const within = hands[0]!.targets[1]!.x - hands[0]!.targets[0]!.x - size;
+        const between = hands[1]!.targets[0]!.x - hands[0]!.targets[1]!.x - size;
+        expect(between).toBeGreaterThan(within);
+      }
+    });
+
+    it('spends the gaps before it spends the cards', () => {
+      const three = layoutRevealHands({ ...felt, count: 3, playerIds: SIX });
+      const size = three[0]!.size;
+      const between = three[1]!.targets[0]!.x - three[0]!.targets[1]!.x - size;
+      expect(between).toBeLessThan(HAND_GAP);
+      expect(between).toBeGreaterThanOrEqual(MIN_HAND_GAP);
+    });
+  });
+});
+
+describe('handGapFor', () => {
+  it('leaves a pair of hands the full gap', () => {
+    expect(handGapFor(1)).toBe(HAND_GAP);
+    expect(handGapFor(2)).toBe(HAND_GAP);
+  });
+
+  it('closes the gap as the row fills up', () => {
+    expect(handGapFor(3)).toBeLessThan(handGapFor(2));
+    expect(handGapFor(4)).toBeLessThan(handGapFor(3));
+  });
+
+  it('never closes it past the point two hands would merge', () => {
+    for (const hands of [5, 6, 9]) expect(handGapFor(hands)).toBe(MIN_HAND_GAP);
+  });
+
+  it('always keeps hands further apart than the cards within one', () => {
+    for (const hands of [1, 2, 3, 4, 5, 6]) expect(handGapFor(hands)).toBeGreaterThan(CARD_GAP);
   });
 });
 

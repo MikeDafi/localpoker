@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -71,14 +71,14 @@ export function SettingsScreen({ navigation }: Props) {
   }
 
   const confirmResetStats = () => {
-    Alert.alert('Reset stats?', 'This clears all lifetime poker stats. This cannot be undone.', [
+    showAlert('Reset stats?', 'This clears all lifetime poker stats. This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset stats', style: 'destructive', onPress: resetStats },
     ]);
   };
 
   const confirmDeleteAccount = () => {
-    Alert.alert(
+    showAlert(
       'Delete account?',
       'This deletes your LocalPoker profile, stats, friends, saved game, online handle, friend requests, and room presence. This cannot be undone.',
       [
@@ -90,7 +90,7 @@ export function SettingsScreen({ navigation }: Props) {
             setDeletingAccount(true);
             const result = await deleteAccount();
             setDeletingAccount(false);
-            Alert.alert(
+            showAlert(
               result.ok ? 'Account deleted' : 'Could not delete account',
               result.reason || (result.ok ? 'Your account data was deleted.' : 'Try again in a moment.'),
             );

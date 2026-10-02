@@ -17,6 +17,7 @@ import {
 import { AppProvider, useApp } from './src/state/AppContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { InviteBanner } from './src/components/InviteBanner';
+import { AppAlertHost } from './src/components/AppAlertHost';
 import { colors } from './src/theme/theme';
 import { sound } from './src/services/sound';
 import { ensureSignedIn } from './src/services/firebase';
@@ -167,6 +168,10 @@ export default function App() {
               <StatusBar style="dark" />
               <RootNavigator />
             </NavigationContainer>
+            {/* Outside the navigator, because an alert belongs to the app
+                rather than to whichever screen happened to raise it, and the
+                eviction flow navigates away while its own alert is still up. */}
+            <AppAlertHost />
           </AppProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

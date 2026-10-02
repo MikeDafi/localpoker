@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Share, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Share } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -143,7 +144,7 @@ export function LobbyScreen({ navigation, route }: Props) {
           if (host || navigatedRef.current) return;
           navigatedRef.current = true;
           setStatus(r.endedReason || 'The host left, so this room has closed.');
-          Alert.alert(
+          showAlert(
             'Room closed',
             r.endedReason || 'The host left before the game started.',
             [{ text: 'Back to menu', onPress: () => navigation.replace('Home') }],
@@ -246,7 +247,7 @@ export function LobbyScreen({ navigation, route }: Props) {
     const res = await startRoomGame(roomCode);
     if (!res.ok) {
       setStatus(res.reason || 'Could not start the game.');
-      Alert.alert('Could not start', res.reason || 'Try again in a moment.');
+      showAlert('Could not start', res.reason || 'Try again in a moment.');
       return;
     }
     goToTable(room);

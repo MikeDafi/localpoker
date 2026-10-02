@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleProp,
@@ -10,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -419,7 +419,7 @@ export function StoreScreen({ navigation }: Props) {
 
       if (profile.coins < item.price) {
         sound.play('error');
-        Alert.alert('Not enough coins', 'Play more hands to earn coins!');
+        showAlert('Not enough coins', 'Play more hands to earn coins!');
         return;
       }
 
@@ -430,7 +430,7 @@ export function StoreScreen({ navigation }: Props) {
       }));
       addCoins(-item.price);
       sound.play('coins');
-      Alert.alert('Cosmetic unlocked', item.name + ' is now owned and equipped.');
+      showAlert('Cosmetic unlocked', item.name + ' is now owned and equipped.');
     },
     [addCoins, equipCosmetic, ownedCosmetics, profile.coins],
   );

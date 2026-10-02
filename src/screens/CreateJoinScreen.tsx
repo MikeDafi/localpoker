@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Share, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Share } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Crypto from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
@@ -111,7 +112,7 @@ export function CreateJoinScreen({ navigation }: Props) {
   const startCreate = () => navigation.navigate('GameSetup', { mode: 'friends', roomCode });
   const startJoin = () => {
     if (!isRoomCodeShaped(joinCode)) {
-      Alert.alert('Invalid code', `Enter the ${CODE_LENGTH} character room code your friend shared.`);
+      showAlert('Invalid code', `Enter the ${CODE_LENGTH} character room code your friend shared.`);
       return;
     }
     navigation.navigate('Lobby', { roomCode: normalizeRoomCode(joinCode), host: false });

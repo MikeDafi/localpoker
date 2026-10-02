@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import { ScreenBackground } from '../components/ScreenBackground';
@@ -41,7 +42,7 @@ export function StatsScreen({ navigation }: Props) {
   };
 
   const onReset = () =>
-    Alert.alert('Reset stats?', 'This clears all your lifetime stats. This cannot be undone.', [
+    showAlert('Reset stats?', 'This clears all your lifetime stats. This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset', style: 'destructive', onPress: resetStats },
     ]);

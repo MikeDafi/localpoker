@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import { ScreenBackground } from '../components/ScreenBackground';
@@ -113,7 +114,7 @@ export function FriendsScreen({ navigation }: Props) {
   };
 
   const confirmRemoveFriend = (friend: Friend) => {
-    Alert.alert('Remove friend?', `Remove ${friend.name} from your friends list?`, [
+    showAlert('Remove friend?', `Remove ${friend.name} from your friends list?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -125,25 +126,25 @@ export function FriendsScreen({ navigation }: Props) {
 
   const handleReportFriend = async (friend: Friend) => {
     const res = await reportUser(friend.uid ?? friend.id, friend.name, 'friends');
-    Alert.alert(res.ok ? 'Report sent' : 'Could not report', res.reason || 'Thanks. We will review this player.');
+    showAlert(res.ok ? 'Report sent' : 'Could not report', res.reason || 'Thanks. We will review this player.');
   };
 
   const confirmBlockFriend = (friend: Friend) => {
-    Alert.alert('Block player?', `${friend.name} will not be able to send you friend requests. Their name and reactions will be hidden from you.`, [
+    showAlert('Block player?', `${friend.name} will not be able to send you friend requests. Their name and reactions will be hidden from you.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Block',
         style: 'destructive',
         onPress: async () => {
           const res = await blockUser(friend.uid ?? friend.id, friend.name, friend.handle);
-          Alert.alert(res.ok ? 'Player blocked' : 'Could not block', res.reason || `${friend.name} was blocked.`);
+          showAlert(res.ok ? 'Player blocked' : 'Could not block', res.reason || `${friend.name} was blocked.`);
         },
       },
     ]);
   };
 
   const openSafetyMenu = (friend: Friend) => {
-    Alert.alert(friend.name, 'Choose an action.', [
+    showAlert(friend.name, 'Choose an action.', [
       { text: 'Report offensive content', onPress: () => handleReportFriend(friend) },
       { text: 'Block player', style: 'destructive', onPress: () => confirmBlockFriend(friend) },
       { text: 'Remove friend', style: 'destructive', onPress: () => confirmRemoveFriend(friend) },
@@ -154,7 +155,7 @@ export function FriendsScreen({ navigation }: Props) {
   const handleAcceptFriend = async (friend: Friend) => {
     const res = await acceptFriendRequest(friend.uid ?? friend.id);
     if (!res.ok) {
-      Alert.alert('Could not accept', res.reason || 'Try again in a moment.');
+      showAlert('Could not accept', res.reason || 'Try again in a moment.');
       sound.play('error');
       return;
     }
@@ -164,7 +165,7 @@ export function FriendsScreen({ navigation }: Props) {
   const handleDeclineFriend = async (friend: Friend) => {
     const res = await declineFriendRequest(friend.uid ?? friend.id);
     if (!res.ok) {
-      Alert.alert('Could not decline', res.reason || 'Try again in a moment.');
+      showAlert('Could not decline', res.reason || 'Try again in a moment.');
       sound.play('error');
       return;
     }

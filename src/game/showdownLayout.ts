@@ -29,18 +29,37 @@ import type { Card } from '../engine/cards';
 /** Cards are 1.42 times as tall as they are wide. */
 export const CARD_ASPECT = 1.42;
 /** Below this a card face is no longer readable, so the row is capped instead. */
-export const MIN_REVEAL_CARD = 24;
+export const MIN_REVEAL_CARD = 22;
 /** Gap between the two cards of a single hand, tight so the pair reads as one. */
 export const CARD_GAP = 6;
 /** Gap between two hands, wide enough that four cards do not read as one hand. */
 export const HAND_GAP = 18;
+/** The gap never closes below this, or the hands merge into one long row. */
+export const MIN_HAND_GAP = 8;
 /**
- * At most three hands are laid out.
+ * Every winner gets a hand on the felt, up to a full table.
  *
- * A four-way split is vanishingly rare and would shrink every card past
- * legibility; the result panel still names every winner.
+ * This used to stop at three on the grounds that more would be unreadable.
+ * That was the wrong trade: a four-way split is rare, but when it happens the
+ * player is looking at a table where the pot went four ways and the felt shows
+ * three hands, which does not say "too many to draw", it says the fourth
+ * player did not win. Six is the table maximum, which a board that plays can
+ * reach, and it still fits because the gaps give way before the cards do.
  */
-export const MAX_REVEAL_HANDS = 3;
+export const MAX_REVEAL_HANDS = 6;
+
+/**
+ * How far apart two hands sit, given how many are sharing the row.
+ *
+ * The gap is the first thing asked to give. Space between hands only has to
+ * separate them, so losing half of it costs nothing a player would notice;
+ * taking the same points out of the cards costs the pips. At six hands the
+ * gap is still wider than the gap inside a hand, which is the only thing it
+ * has to be.
+ */
+export function handGapFor(hands: number): number {
+  return Math.max(MIN_HAND_GAP, HAND_GAP - Math.max(0, hands - 2) * 4);
+}
 
 export interface ShowdownWinnerHand {
   playerId: string;
@@ -100,7 +119,11 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
  * Width is what decides the size, because the lane below the board is only
  * about one card tall on a phone while the board itself is five cards wide.
  * Two hands is four cards, which is narrower than the board, so a split pot
- * costs the cards nothing.
+ * costs the cards nothing. Past that the row is allowed to run wider than the
+ * board and out to the edge of the felt, which is why `availableW` is the
+ * felt's width rather than the board's: a three-way split that had to fit
+ * under five cards would shrink for no reason, when there is empty cloth
+ * either side of it.
  */
 export function layoutRevealHands(input: {
   count: number;
@@ -110,7 +133,7 @@ export function layoutRevealHands(input: {
   top: number;
   /** Size a hand rests at when there is room for it, normally the board's. */
   preferredSize: number;
-  /** Width the row may use, normally the board's own. */
+  /** Width the row may use: the felt, which past two hands is wider than the board. */
   availableW: number;
   /** Vertical room below the board. */
   availableH: number;
@@ -121,22 +144,34 @@ export function layoutRevealHands(input: {
 
   /*
    * Solve for the card size that makes the row fit exactly:
-   *   hands * (2 * size + CARD_GAP) + (hands - 1) * HAND_GAP <= availableW
-   * A single hand keeps its preferred size in any realistic lane, which is the
-   * ordinary case; only a three way split has to buy its space.
+   *   hands * (2 * size + CARD_GAP) + (hands - 1) * handGap <= availableW
+   * One or two hands keep their preferred size in any realistic lane, which is
+   * the ordinary case; a three or more way split has to buy its space, and
+   * buys it out of the gaps first (see `handGapFor`) and then out of the
+   * cards.
    */
-  const spacing = hands * CARD_GAP + (hands - 1) * HAND_GAP;
-  const byWidth = Math.floor((input.availableW - spacing) / (2 * hands));
+  const handGap = handGapFor(hands);
+  const spacing = hands * CARD_GAP + (hands - 1) * handGap;
+  const byWidth = Math.max(1, Math.floor((input.availableW - spacing) / (2 * hands)));
   const byHeight = Math.floor(input.availableH / CARD_ASPECT);
-  const size = Math.max(MIN_REVEAL_CARD, Math.min(input.preferredSize, byWidth, byHeight));
+  const fits = Math.min(input.preferredSize, byWidth, byHeight);
+  /*
+   * The legibility floor is a preference, not a promise.
+   *
+   * Holding every card at `MIN_REVEAL_CARD` regardless is how a six-way split
+   * ran a row 340pt wide across 320pt of felt, putting cards off the table
+   * entirely. A card too small to read is a poor outcome; a card drawn over
+   * the rail is a broken one, so width wins when the two disagree.
+   */
+  const size = Math.max(fits, Math.min(MIN_REVEAL_CARD, byWidth));
 
   const handW = 2 * size + CARD_GAP;
-  const totalW = hands * handW + (hands - 1) * HAND_GAP;
+  const totalW = hands * handW + (hands - 1) * handGap;
   const rowLeft = input.centreX - totalW / 2;
   const y = input.top + (size * CARD_ASPECT) / 2;
 
   return Array.from({ length: hands }, (_, i) => {
-    const handLeft = rowLeft + i * (handW + HAND_GAP);
+    const handLeft = rowLeft + i * (handW + handGap);
     return {
       playerId: input.playerIds[i] ?? `hand-${i}`,
       size,

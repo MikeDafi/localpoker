@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInUp, Easing } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -75,6 +76,16 @@ import {
 type Props = NativeStackScreenProps<RootStackParamList, 'Table'>;
 
 const HUMAN_ID = 'me';
+
+/**
+ * The felt oval, as geometry rather than as decoration.
+ *
+ * The rail is drawn by `styles.feltOval`, and the board is sized from the
+ * cloth inside it, so the two have to agree: a rail widened in the stylesheet
+ * alone would quietly push the cards over it.
+ */
+const FELT_INSET = 8;
+const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
 const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 
@@ -588,7 +599,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   const onHumanAction = (action: PlayerAction, amount?: number) => {
     if (action === 'fold' && settings.confirmFoldWhenCheckAvailable && legal?.actions.includes('check')) {
-      Alert.alert('Fold this hand?', 'You can check for free. Are you sure you want to fold?', [
+      showAlert('Fold this hand?', 'You can check for free. Are you sure you want to fold?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Fold', style: 'destructive', onPress: () => doHumanAction(action, amount) },
       ]);
@@ -625,7 +636,7 @@ export function TableScreen({ navigation, route }: Props) {
          * broken" but as a popup that would not go away.
          */
         const permanent = /permission[ _]denied/i.test(reason);
-        Alert.alert(
+        showAlert(
           'Action not sent',
           permanent
             ? 'The table refused that action. It may have already moved on, so reopen the room and try again.'
@@ -710,7 +721,7 @@ export function TableScreen({ navigation, route }: Props) {
     if (!roomCode || isOnlineHost || room?.status !== 'ended' || evicted.current) return;
     evicted.current = true;
     clearSavedGame();
-    Alert.alert('Table closed', room?.endedReason || 'The host ended this table.', [
+    showAlert('Table closed', room?.endedReason || 'The host ended this table.', [
       { text: 'Back to menu', onPress: () => navigation.replace('Home') },
     ]);
   }, [room?.status, room?.endedReason, roomCode, isOnlineHost]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1031,7 +1042,7 @@ export function TableScreen({ navigation, route }: Props) {
        * player who had just busted with chips still in front of the opponent,
        * which is the exact opposite of what had happened.
        */
-      Alert.alert('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.', [
+      showAlert('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.', [
         {
           text: 'Back to menu',
           onPress: () => {
@@ -1046,7 +1057,7 @@ export function TableScreen({ navigation, route }: Props) {
       return;
     }
     if (human.chips <= 0) {
-      Alert.alert('Out of chips', 'Rebuy for free and keep playing?', [
+      showAlert('Out of chips', 'Rebuy for free and keep playing?', [
         { text: 'Back to menu', style: 'cancel', onPress: () => { clearSavedGame(); navigation.replace('Home'); } },
         { text: 'Rebuy (free)', onPress: () => { rebuy(); startNext(); } },
       ]);
@@ -1077,7 +1088,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   const leave = () => {
     if (roomCode && firebaseOnline) {
-      Alert.alert(
+      showAlert(
         'Leave table?',
         isOnlineHost ? 'Leaving will end the room for everyone.' : 'You can rejoin later with the room code if the host keeps playing.',
         [
@@ -1101,7 +1112,7 @@ export function TableScreen({ navigation, route }: Props) {
       return;
     }
 
-    Alert.alert('Leave table?', 'Your game is saved. You can resume it from the home screen.', [
+    showAlert('Leave table?', 'Your game is saved. You can resume it from the home screen.', [
       { text: 'Stay', style: 'cancel' },
       { text: 'Leave', style: 'destructive', onPress: () => navigation.replace('Home') },
     ]);
@@ -1112,11 +1123,13 @@ export function TableScreen({ navigation, route }: Props) {
   /*
    * The community cards carry the hand, so they get the space.
    *
-   * 46/52 left a lot of felt doing nothing, and the board is the thing
-   * everyone is reading. Still clamped against the measured board width
-   * further down, so a narrow phone shrinks them rather than overflowing.
+   * This is a ceiling rather than a size: the board is clamped against the
+   * width of the cloth and the height of the lane further down, and on every
+   * phone tried so far one of those two is what actually decides. It is set
+   * above both deliberately, so that raising the ceiling is never the thing
+   * standing between the board and the felt it has room for.
    */
-  const cardSize = width < 380 ? 56 : 64;
+  const cardSize = width < 380 ? 64 : 72;
   const lowChips = human.chips < settings.bigBlind * 5;
 
   /*
@@ -1179,7 +1192,7 @@ export function TableScreen({ navigation, route }: Props) {
 
     if (localPlayerEvicted(rebuyState, human.id)) {
       sound.play('lose');
-      Alert.alert(
+      showAlert(
         'Out of chips',
         'You ran out of time to rebuy, so your seat has been freed up. Thanks for playing!',
         [{ text: 'Back to menu', onPress: () => { clearSavedGame(); navigation.replace('Home'); } }],
@@ -1217,11 +1230,11 @@ export function TableScreen({ navigation, route }: Props) {
 
   const reportTablePlayer = async (player: GameState['players'][number]) => {
     const result = await reportUser(player.id, player.name, 'table', roomCode);
-    Alert.alert(result.ok ? 'Report sent' : 'Could not report', result.reason || 'Thanks. We will review this player.');
+    showAlert(result.ok ? 'Report sent' : 'Could not report', result.reason || 'Thanks. We will review this player.');
   };
 
   const confirmBlockTablePlayer = (player: GameState['players'][number]) => {
-    Alert.alert('Block player?', `${player.name} will not be able to send you friend requests, and you will leave this table.`, [
+    showAlert('Block player?', `${player.name} will not be able to send you friend requests, and you will leave this table.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Block',
@@ -1229,7 +1242,7 @@ export function TableScreen({ navigation, route }: Props) {
         onPress: async () => {
           const result = await blockUser(player.id, player.name);
           if (!result.ok) {
-            Alert.alert('Could not block', result.reason || 'Try again in a moment.');
+            showAlert('Could not block', result.reason || 'Try again in a moment.');
             return;
           }
           // Blocking someone and then being left sitting at their table is not
@@ -1259,7 +1272,7 @@ export function TableScreen({ navigation, route }: Props) {
       setStatsOpen(true);
       return;
     }
-    Alert.alert(isBlocked(player.id) ? 'Blocked player' : player.name, undefined, [
+    showAlert(isBlocked(player.id) ? 'Blocked player' : player.name, undefined, [
       {
         text: 'View stats',
         onPress: () => { setStatsFocus(player.id); setStatsOpen(true); },
@@ -1325,6 +1338,28 @@ export function TableScreen({ navigation, route }: Props) {
   const laneTop = lowestSeatTop + podH + 6;
   const laneBottom = heroH + 6;
 
+  /*
+   * How much cloth there actually is.
+   *
+   * The board used to take a flat 82% of the table area, which was a guess
+   * made against one phone and then left alone: it put the five cards well
+   * inside the rail with a band of empty felt either side, and shrank them to
+   * pay for space nothing was using.
+   *
+   * The felt's geometry is knowable, so it is derived instead. It is an oval,
+   * which means width is a function of height: a row under the board has less
+   * of it than a row on the waist, and sizing both against the waist is how
+   * the winning hands ended up drawn over the rail.
+   */
+  const feltInnerW = Math.max(0, area.w - 2 * (FELT_INSET + FELT_RAIL));
+  const feltInnerH = Math.max(0, stageH - 2 * (FELT_INSET + FELT_RAIL));
+  const feltWidthAt = (y: number) => {
+    const b = feltInnerH / 2;
+    if (feltInnerW <= 0 || b <= 0) return 0;
+    const dy = Math.abs(y - stageH / 2) / b;
+    return feltInnerW * Math.sqrt(Math.max(0, 1 - dy * dy));
+  };
+
   // --- Dealing the hole cards -------------------------------------------------
   // Cards are thrown one at a time from the middle of the table, going around
   // from the dealer's left (just like a real deal), two rounds.
@@ -1361,16 +1396,36 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const layingOut = !!showdownHand;
   const BOARD_CELLS = 5;
-  const CELL_PAD = 10; // per cell: 2pt margins + 2pt ring border + 1pt padding, both sides
+  /*
+   * What a board cell costs on top of the card itself, both sides added up:
+   * 1pt of margin and the 2pt gold win ring.
+   *
+   * This used to be 10, which bought a 1pt inset inside the ring and a 2pt
+   * margin outside it. Across five cells that is 20pt of felt spent on gaps,
+   * which is most of a card: the ring reads perfectly well sitting straight
+   * on the card edge, and the cards read better for the points back.
+   */
+  const CELL_PAD = 6;
   const POT_BLOCK_H = 40; // pot pill plus the gap above it
   const laneH = Math.max(0, stageH - laneTop - laneBottom);
   /*
    * At a showdown the lane holds two rows, not one, so the board gives up
-   * roughly its own height again to the hands underneath. The pot is already
-   * awarded by then and takes no room.
+   * part of its height to the hands underneath. The pot is already awarded by
+   * then and takes no room, and the winning hands are placed absolutely
+   * rather than flowing inside the lane, so the board can have more of it
+   * than an even split.
    */
-  const revealRowShare = layingOut ? 0.52 : 1;
+  const revealRowShare = layingOut ? 0.62 : 1;
   const boardMaxH = Math.max(28 * 1.42, (laneH - (layingOut ? 0 : POT_BLOCK_H)) * revealRowShare);
+  /*
+   * Where the board's bottom edge lands, estimated from the height it is
+   * allowed rather than the size it settles at. The width budget is read off
+   * the oval at that height, so deriving it from the measured board would
+   * feed the answer back into its own question and let the row oscillate.
+   */
+  const boardRowBottom = layingOut
+    ? laneTop + POT_BLOCK_H + boardMaxH
+    : laneTop + (laneH + boardMaxH) / 2;
   /*
    * A touch smaller than a card is dealt at: the showdown board sits above a
    * second row of cards rather than empty felt, and the pair of them read
@@ -1381,7 +1436,7 @@ export function TableScreen({ navigation, route }: Props) {
     28,
     Math.min(
       Math.floor(cardSize * boardShrink),
-      Math.floor((area.w * 0.82) / BOARD_CELLS) - CELL_PAD,
+      Math.floor(feltWidthAt(boardRowBottom) / BOARD_CELLS) - CELL_PAD,
       Math.floor(boardMaxH / 1.42),
     ),
   );
@@ -1418,16 +1473,27 @@ export function TableScreen({ navigation, route }: Props) {
    * keep the size a single winner gets.
    */
   const REVEAL_GAP = 8; // breathing room between the board and the hands below it
+  /*
+   * The winning hands sit a little smaller than the board. They are the
+   * supporting evidence rather than the thing everyone is reading, and the
+   * two rows plus the hero's pod have to share a lane barely taller than
+   * three cards, so the smaller of the two is the one that gives way.
+   */
+  const REVEAL_SHRINK = 0.82;
   const revealTop = boardBottom + REVEAL_GAP;
+  const revealSize = Math.floor(sdCardSize * REVEAL_SHRINK);
   const revealHands = layingOut
     ? layoutRevealHands({
       count: showdownHands.length,
       centreX: boardBox.x + boardBox.w / 2,
       top: revealTop,
-      preferredSize: sdCardSize,
-      availableW: boardBox.w > 0 ? boardBox.w : area.w * 0.82,
+      preferredSize: revealSize,
+      // The cloth at the row's own height, not the board's. The oval has
+      // narrowed by the time it gets down here, and giving the row the
+      // board's width is what drew the outside hands over the rail.
+      availableW: feltWidthAt(revealTop + (revealSize * CARD_ASPECT) / 2),
       // The felt below the board, which the awarded pot has vacated.
-      availableH: Math.max(sdCardSize * CARD_ASPECT, stageH - revealTop - 8),
+      availableH: Math.max(revealSize * CARD_ASPECT, stageH - revealTop - 8),
       playerIds: showdownHands.map((h) => h.playerId),
     })
     : [];
@@ -1564,9 +1630,10 @@ export function TableScreen({ navigation, route }: Props) {
           pointerEvents="none"
         >
           {/* woven cloth + suit watermark (CC0 / MIT sources).
-              The oval is inset 8pt on every side of the table area, and the
-              10pt rail border sits inside that, so the cloth fills what's left. */}
-          <FeltSurface width={Math.max(0, area.w - 16 - 20)} height={Math.max(0, stageH - 16 - 20)} />
+              The oval is inset on every side of the table area and its rail
+              border sits inside that, so the cloth fills what's left (see
+              `feltInnerW`). */}
+          <FeltSurface width={feltInnerW} height={feltInnerH} />
           <View style={styles.railHighlight} pointerEvents="none" />
           <View style={styles.feltInner} pointerEvents="none" />
           <View style={styles.feltGlow} pointerEvents="none" />
@@ -1599,14 +1666,14 @@ export function TableScreen({ navigation, route }: Props) {
               const card = felt.board[i];
               if (!card) {
                 return (
-                  <View key={i} style={[styles.boardCardWrap, layingOut && styles.boardCardTight]}>
+                  <View key={i} style={styles.boardCardWrap}>
                     <View style={[styles.cardSlot, { width: sdCardSize, height: sdCardSize * 1.42 }]} />
                   </View>
                 );
               }
               const highlighted = isShowdown && winningCardKeys.has(`${card.rank}${card.suit}`);
               return (
-                <View key={`card-${i}-${card.rank}${card.suit}`} style={[styles.boardCardWrap, layingOut && styles.boardCardTight, highlighted && styles.winCard]}>
+                <View key={`card-${i}-${card.rank}${card.suit}`} style={[styles.boardCardWrap, highlighted && styles.winCard]}>
                   <DealtCard
                     rank={card.rank}
                     suit={card.suit as any}
@@ -1982,8 +2049,7 @@ const styles = StyleSheet.create({
   // The gold win ring must not change the board's geometry, or every card
   // visibly jumps outward the moment a hand is won. The border is therefore
   // always present and merely changes colour.
-  boardCardWrap: { marginHorizontal: 3, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent', padding: 1 },
-  boardCardTight: { marginHorizontal: 2 },
+  boardCardWrap: { marginHorizontal: 1, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
   winCard: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.16)' },
   handChip: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
   handChipText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark },
@@ -1991,8 +2057,11 @@ const styles = StyleSheet.create({
   muckedChipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkSoft },
   friendsBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.md, paddingVertical: 6, paddingHorizontal: spacing.md },
   friendsBannerText: { fontFamily: fonts.medium, fontSize: 11, color: colors.onDarkSoft, textAlign: 'center' },
-  tableArea: { marginTop: 0, marginHorizontal: spacing.sm, position: 'relative' },
-  feltOval: { position: 'absolute', top: 8, left: 8, right: 8, bottom: 8, borderRadius: 200, borderWidth: 10, borderColor: colors.feltRail, overflow: 'hidden' },
+  // Wider than it looks: every point here is taken off the felt twice over,
+  // once on each side, and the board is sized from what is left of the cloth.
+  // The table still clears the screen edge, which is all this margin was for.
+  tableArea: { marginTop: 0, marginHorizontal: spacing.xs, position: 'relative' },
+  feltOval: { position: 'absolute', top: FELT_INSET, left: FELT_INSET, right: FELT_INSET, bottom: FELT_INSET, borderRadius: 200, borderWidth: FELT_RAIL, borderColor: colors.feltRail, overflow: 'hidden' },
   // top-lit sliver along the inside of the rail, the single light source
   railHighlight: { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', borderTopLeftRadius: 190, borderTopRightRadius: 190, backgroundColor: colors.feltRailEdge, opacity: 0.35 },
   // inner shadow where the felt meets the rail, so the surface reads as recessed
