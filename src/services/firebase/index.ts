@@ -50,6 +50,8 @@ export {
   subscribeActions,
   sendEmoteToRoom,
   subscribeEmotes,
+  revealOwnHand,
+  subscribeShownHands,
   getRoomListingInfo,
   sweepMyStaleRooms,
   subscribePrivateView,

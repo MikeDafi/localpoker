@@ -119,17 +119,37 @@ const isValidActionSeq = (value: unknown): value is number =>
 const playersWhoReachedShowdown = (state: GameState): number =>
   state.players.filter((player) => !player.folded && !player.sittingOut).length;
 
-const shouldPublishHoleCards = (state: GameState, player: Player): boolean =>
-  state.street === 'showdown' &&
-  state.board.length === 5 &&
-  !player.folded &&
-  !player.sittingOut &&
-  playersWhoReachedShowdown(state) > 1;
+const shouldPublishHoleCards = (
+  state: GameState,
+  player: Player,
+  revealed: ReadonlySet<string>,
+): boolean => {
+  if (state.street !== 'showdown') return false;
+  if (player.sittingOut) return false;
+  /*
+   * A hand its owner chose to table.
+   *
+   * The automatic case below only fires at a contested showdown, which means
+   * a hand that won because everyone folded was never published and the Show
+   * button did nothing for anybody else. Showing a bluff is the whole reason
+   * that button exists, so an explicit choice publishes regardless, including
+   * for a player who folded and wants to prove what they laid down.
+   */
+  if (revealed.has(player.id)) return true;
+  return state.board.length === 5 && !player.folded && playersWhoReachedShowdown(state) > 1;
+};
 
 export function redactGameState(
   state: GameState,
-  options: { code?: string; playerMeta?: Record<string, PlayerPublishMeta>; updatedAt?: number } = {},
+  options: {
+    code?: string;
+    playerMeta?: Record<string, PlayerPublishMeta>;
+    updatedAt?: number;
+    /** Players who chose to table their hand, so it publishes to everyone. */
+    revealed?: readonly string[];
+  } = {},
 ): RedactedGameState {
+  const revealed = new Set(options.revealed ?? []);
   const players: Record<string, PublicPlayerState> = {};
   const privateViews: Record<string, PrivatePlayerView> = {};
 
@@ -152,7 +172,7 @@ export function redactGameState(
       ...(meta.palSeed ? { palSeed: meta.palSeed } : {}),
     };
 
-    if (shouldPublishHoleCards(state, player)) {
+    if (shouldPublishHoleCards(state, player, revealed)) {
       publicPlayer.holeCards = cloneCards(player.holeCards);
     }
 

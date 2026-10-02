@@ -301,9 +301,11 @@ const styles = StyleSheet.create({
   allInText: { fontFamily: fonts.semibold, fontSize: 9, color: '#fff' },
   info: { marginLeft: 8 },
   name: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDark, maxWidth: 74, flexShrink: 1 },
-  chips: { fontFamily: fonts.bold, fontSize: 13, color: colors.onDark, ...numeric },
+  /* Bumped from 13. These are the numbers a decision is made on, and they
+     were the smallest text on the felt. */
+  chips: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark, ...numeric },
   bet: { marginTop: spacing.xs, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  betText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.gold, ...numeric },
+  betText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, ...numeric },
 
   // Compact vertical opponent pod
   cWrap: { alignItems: 'center', width: 84 },
@@ -338,6 +340,6 @@ const styles = StyleSheet.create({
   cTagWon: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.14)' },
   foldedChip: { marginTop: spacing.xs, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 1, borderWidth: 1, borderColor: colors.surfaceBorder },
   foldedChipText: { fontFamily: fonts.semibold, fontSize: 9, color: colors.onDarkMuted, letterSpacing: 0.3 },
-  cName: { fontFamily: fonts.semibold, fontSize: 11, color: colors.onDark, maxWidth: 70 },
-  cChips: { fontFamily: fonts.bold, fontSize: 12, color: colors.onDark, ...numeric },
+  cName: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDark, maxWidth: 84 },
+  cChips: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark, ...numeric },
 });

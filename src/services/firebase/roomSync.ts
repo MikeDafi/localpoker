@@ -58,6 +58,7 @@ const actionsPath = (code: string): string => `${roomPath(code)}/actions`;
 const actionSeqPath = (code: string): string => `${roomPath(code)}/actionSeq`;
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
 const emotePath = (code: string, playerId: string): string => `${roomPath(code)}/emotes/${playerId}`;
+const shownPath = (code: string, playerId: string): string => `${roomPath(code)}/shown/${playerId}`;
 const userRoomPath = (playerId: string, code: string): string => `localpoker/userRooms/${playerId}/${code}`;
 /**
  * Where a room advertises itself.
@@ -916,6 +917,11 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       code: roomCode,
       playerMeta: playerMetaFromRoom(room),
       updatedAt: Date.now(),
+      // Read from the room, so a player tabling their hand reaches everyone
+      // rather than only changing their own screen.
+      revealed: Object.entries((room as { shown?: Record<string, unknown> }).shown ?? {})
+        .filter(([, v]) => v === true)
+        .map(([id]) => id),
     });
     /*
      * The table first, the hole cards second, as two writes.
@@ -927,10 +933,14 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
      * depends on, and it is already redacted, so publishing it alone reveals
      * nothing.
      */
-    await update(ref(db), {
+    const table: Record<string, unknown> = {
       [`${roomPath(roomCode)}/publicState`]: publicState,
       [`${roomPath(roomCode)}/status`]: 'playing',
-    });
+    };
+    // A new hand forgets what was tabled in the last one, or cards stay face
+    // up across hands.
+    if (state.street !== 'showdown') table[`${roomPath(roomCode)}/shown`] = null;
+    await update(ref(db), table);
     setCachedHostGame(roomCode, state);
 
     // Clear the view of anyone not holding cards this hand, rather than
@@ -1253,6 +1263,51 @@ const seatsOf = (room: Partial<RoomState>, limit: number) => {
     .sort((a, b) => Number(!!b.isHost) - Number(!!a.isHost) || (a.seatIndex ?? 0) - (b.seatIndex ?? 0))
     .slice(0, limit)
     .map((p) => ({ id: p.id, name: p.name, palSeed: p.palSeed, palJson: p.palJson }));
+};
+
+/**
+ * Table your own hand, so the rest of the room can see it.
+ *
+ * Hole cards are published at a real showdown automatically, but a hand that
+ * won because everyone folded is never shown, which is precisely when someone
+ * wants to reveal a bluff. Choosing to show was local state and changed
+ * nothing on anybody else's screen.
+ *
+ * Only the owner can set their own flag, so this cannot be used to expose
+ * another player, and the host clears the node when the next hand is dealt.
+ */
+export const revealOwnHand = async (code: string): Promise<boolean> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return false;
+  try {
+    const playerId = await authedPlayerId();
+    if (!playerId) return false;
+    await set(ref(db, shownPath(roomCode, playerId)), true);
+    return true;
+  } catch (error) {
+    reportFirebaseError('reveal-own-hand', error);
+    return false;
+  }
+};
+
+/** Who has tabled their hand this hand. */
+export const subscribeShownHands = (
+  code: string,
+  cb: (playerIds: string[]) => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return noop;
+  try {
+    return onValue(ref(db, `${roomPath(roomCode)}/shown`), (snapshot) => {
+      const value = (snapshot.val() as Record<string, unknown> | null) ?? {};
+      cb(Object.entries(value).filter(([, v]) => v === true).map(([k]) => k));
+    });
+  } catch (error) {
+    reportFirebaseError('subscribe-shown-hands', error);
+    return noop;
+  }
 };
 
 /** Reactions from everyone else at the table. */

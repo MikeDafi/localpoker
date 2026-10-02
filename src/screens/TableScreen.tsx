@@ -61,6 +61,8 @@ import {
   subscribeActions,
   sendEmoteToRoom,
   subscribeEmotes,
+  revealOwnHand,
+  subscribeShownHands,
   subscribePrivateView,
   subscribeRoom,
   type RoomPrivateView,
@@ -101,7 +103,15 @@ export function TableScreen({ navigation, route }: Props) {
    * the hand ended. Pinning the stage and letting the *controls* flex instead
    * keeps the circle exactly where it is for the whole hand.
    */
-  const stageH = Math.round(Math.max(210, Math.min(380, winH * (winH < 750 ? 0.34 : 0.4))));
+  /*
+   * A longer felt.
+   *
+   * The old ceiling of 380 left obvious dead space below the seats on a
+   * modern phone, because the proportion was tuned when the cap bound far
+   * sooner. Raising both the share and the ceiling spreads the seats out and
+   * gives the board room, and the floor still protects small screens.
+   */
+  const stageH = Math.round(Math.max(210, Math.min(470, winH * (winH < 750 ? 0.38 : 0.46))));
 
   // Resume support: use the saved game's settings/seed when resuming.
   // A friends game abandoned for >15s is not resumable.
@@ -687,6 +697,27 @@ export function TableScreen({ navigation, route }: Props) {
     ]);
   }, [room?.status, room?.endedReason, roomCode, isOnlineHost]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /*
+   * Republish when somebody tables their hand.
+   *
+   * The reveal flag lives on the room, but the hole cards only reach anyone
+   * through the published public state, so the host has to redact and publish
+   * again once the flag changes. Host only: nobody else may publish.
+   */
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !isOnlineHost) return undefined;
+    return subscribeShownHands(roomCode, () => {
+      const current = getCachedHostGame(roomCode) ?? stateRef.current;
+      if (!current || current.street !== 'showdown') return;
+      publishHostGameState(roomCode, current)
+        .then((r) => noteSync(r.ok))
+        .catch((error) => {
+          noteSync(false);
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-reveal' } });
+        });
+    });
+  }, [roomCode, firebaseOnline, isOnlineHost, noteSync]);
+
   const onTimerExpire = useCallback(() => {
     if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
@@ -811,8 +842,20 @@ export function TableScreen({ navigation, route }: Props) {
   }, [revealedBoard]);
 
   useEffect(() => {
+    /*
+     * Whose turn it is, audibly.
+     *
+     * Only your own turn made a sound, so the table was silent while waiting
+     * and there was no way to tell from audio that play had moved on at all.
+     * The two cues are deliberately inverted, rising for you and falling for
+     * everyone else, so they are distinguishable without being compared.
+     */
     if (isHumanTurn) sound.play('turn');
-  }, [isHumanTurn]);
+    else if (current && !handOver) sound.play('turnOther');
+    // Keyed on who is to act, not on whether it is you. Keying on the latter
+    // meant play passing between two opponents made no sound at all, because
+    // the flag never changed.
+  }, [current?.id, isHumanTurn, handOver]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shouldSaveLocalState = !roomCode || !firebaseOnline || isOnlineHost;
 
@@ -1024,7 +1067,14 @@ export function TableScreen({ navigation, route }: Props) {
 
   const opponents = felt.players.filter((p) => p.id !== human.id);
   const dealerId = state.players[state.dealerIndex]?.id;
-  const cardSize = width < 380 ? 46 : 52;
+  /*
+   * The community cards carry the hand, so they get the space.
+   *
+   * 46/52 left a lot of felt doing nothing, and the board is the thing
+   * everyone is reading. Still clamped against the measured board width
+   * further down, so a narrow phone shrinks them rather than overflowing.
+   */
+  const cardSize = width < 380 ? 56 : 64;
   const lowChips = human.chips < settings.bigBlind * 5;
 
   const visiblePlayer = useCallback(
@@ -1637,7 +1687,14 @@ export function TableScreen({ navigation, route }: Props) {
                 not to slice through the hole cards above it. */}
             <View style={styles.muckRow}>
               <Pressable
-                onPress={() => { sound.play('tap'); setReveal(humanCardsShown ? 'muck' : 'show'); }}
+                onPress={() => {
+                  sound.play('tap');
+                  const next = humanCardsShown ? 'muck' : 'show';
+                  setReveal(next);
+                  // Showing is only meaningful if the others see it. Voided:
+                  // a failed publish must not block the local reveal.
+                  if (next === 'show' && roomCode && firebaseOnline) void revealOwnHand(roomCode);
+                }}
                 style={[styles.muckBtn, humanCardsShown && styles.muckBtnActive]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: humanCardsShown }}
@@ -1726,7 +1783,7 @@ const styles = StyleSheet.create({
   potWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm },
   potCenter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.lg, paddingVertical: 6 },
   potCenterLabel: { ...type.label, color: colors.onDarkMuted },
-  potCenterValue: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, ...numeric },
+  potCenterValue: { fontFamily: fonts.bold, fontSize: 26, color: colors.onDark, ...numeric },
   roomPill: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 44, alignItems: 'center' },
   roomText: { ...type.label, color: colors.onDarkSoft },
   // The gold win ring must not change the board's geometry, or every card
@@ -1736,7 +1793,7 @@ const styles = StyleSheet.create({
   boardCardTight: { marginHorizontal: 2 },
   winCard: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.16)' },
   handChip: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
-  handChipText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDark },
+  handChipText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark },
   muckedChip: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6 },
   muckedChipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkSoft },
   friendsBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.md, paddingVertical: 6, paddingHorizontal: spacing.md },

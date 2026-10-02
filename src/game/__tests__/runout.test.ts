@@ -12,6 +12,7 @@ import {
   runoutStreet,
   RUNOUT_BEAT_MS,
   RUNOUT_LEAD_MS,
+  SHOWDOWN_SETTLE_MS,
 } from '../runout';
 
 function ok(result: ReturnType<typeof applyAction>): GameState {
@@ -276,11 +277,18 @@ describe('the table paces a run-out over time', () => {
     expect(played.cues).toEqual([]);
   });
 
-  it('does not pause a hand whose river was already on screen', () => {
-    // Nothing left to reveal, so the result is not held back.
+  it('still pauses before showing hands, even with the river already on screen', () => {
+    /*
+     * This asserted no pause at all, reasoning that the board had been visible
+     * for a while. True of the board, but not of the decision: the final call
+     * and the reveal landed on the same frame, leaving no beat in which to
+     * register that the betting had finished before the cards answered it.
+     *
+     * There is no run-out to pace here, so it gets the settle pause only.
+     */
     const played = playOut(shovedPreflop(), { startRevealed: 5 });
     expect(played.cues).toEqual([]);
-    expect(played.elapsed).toBe(0);
+    expect(played.elapsed).toBe(SHOWDOWN_SETTLE_MS);
     expect(played.resultsOpen).toBe(true);
   });
 

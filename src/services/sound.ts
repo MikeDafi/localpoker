@@ -3,7 +3,7 @@ import { captureError } from './telemetry';
 
 export type SoundName =
   | 'tap' | 'select' | 'deal' | 'chip' | 'check' | 'fold'
-  | 'turn' | 'coins' | 'win' | 'lose' | 'error' | 'start' | 'tick' | 'tickUrgent';
+  | 'turn' | 'turnOther' | 'coins' | 'win' | 'lose' | 'error' | 'start' | 'tick' | 'tickUrgent';
 
 const SOURCES: Record<SoundName, number> = {
   tap: require('../../assets/sounds/tap.wav'),
@@ -13,6 +13,7 @@ const SOURCES: Record<SoundName, number> = {
   check: require('../../assets/sounds/check.wav'),
   fold: require('../../assets/sounds/fold.wav'),
   turn: require('../../assets/sounds/turn.wav'),
+  turnOther: require('../../assets/sounds/turnOther.wav'),
   coins: require('../../assets/sounds/coins.wav'),
   win: require('../../assets/sounds/win.wav'),
   lose: require('../../assets/sounds/lose.wav'),

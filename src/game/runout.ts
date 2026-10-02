@@ -38,6 +38,17 @@ export const RUNOUT_BEAT_MS = 1100;
 export const RUNOUT_RESULT_MS = 750;
 
 /**
+ * Pause between the last player acting and the hands being shown.
+ *
+ * This used to be zero for any hand that did not run out, on the reasoning
+ * that the river had already been on screen a while. True of the board, but
+ * not of the decision: the final call and the reveal landed on the same frame,
+ * so there was no beat in which to register that the betting had finished
+ * before the cards answered it.
+ */
+export const SHOWDOWN_SETTLE_MS = 1000;
+
+/**
  * Sound played as a street is waited on, not as it lands.
  *
  * The river gets the urgent cue because by then the hand is one card from over.
@@ -177,9 +188,9 @@ export function runoutAction(input: RunoutInput): RunoutAction {
   if (step) return { kind: 'deal', step };
 
   if (resultsOpen) return { kind: 'idle' };
-  // Only a paced run-out has earned the pause. A hand that reached the river
-  // through normal betting has had its last card on screen for a while already.
-  return { kind: 'result', delayMs: tabled ? RUNOUT_RESULT_MS : 0 };
+  // A run-out gets both pauses: one for the river to land, then the beat
+  // before the hands are turned over. Everything else gets the second.
+  return { kind: 'result', delayMs: SHOWDOWN_SETTLE_MS + (tabled ? RUNOUT_RESULT_MS : 0) };
 }
 
 /**

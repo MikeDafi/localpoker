@@ -215,6 +215,20 @@
           "invited": {
             "$friendUid": { ".validate": "newData.isBoolean()" }
           },
+          /*
+           * Players who chose to table their hand.
+           *
+           * Showing a bluff after everyone folded is a deliberate act, and it
+           * only means anything if the other players see it. Written by the
+           * owner alone, so nobody can expose somebody else's cards, and the
+           * host clears the node when the next hand is dealt.
+           */
+          "shown": {
+            "$playerId": {
+              ".write": "auth != null && ((auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
+              ".validate": "!newData.exists() || newData.isBoolean()"
+            }
+          },
           "emotes": {
             "$playerId": {
               ".write": "auth != null && auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",

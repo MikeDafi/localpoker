@@ -72,6 +72,10 @@ writeWav('chip.wav', mix(tone(2000, 0.05, { type: 'noise', vol: 0.15, decay: 4 }
 writeWav('check.wav', tone(400, 0.09, { type: 'tri', vol: 0.35, decay: 2 }));
 writeWav('fold.wav', tone(240, 0.16, { type: 'tri', vol: 0.35, decay: 1.5, sweep: -300 }));
 writeWav('turn.wav', seq(tone(880, 0.09, { type: 'sine', vol: 0.3, decay: 2 }), tone(1180, 0.09, { type: 'sine', vol: 0.3, decay: 2 })));
+// Someone else to act. Deliberately the inverse shape of `turn`: two notes
+// falling instead of rising, lower and quieter, so the ear can tell whose
+// turn it is without looking. A rising figure means it is on you.
+writeWav('turnOther.wav', seq(tone(560, 0.07, { type: 'sine', vol: 0.16, decay: 3 }), tone(420, 0.07, { type: 'sine', vol: 0.14, decay: 3 })));
 writeWav('coins.wav', seq(
   tone(900, 0.05, { type: 'tri', vol: 0.3, decay: 2 }),
   tone(1200, 0.05, { type: 'tri', vol: 0.3, decay: 2 }),
