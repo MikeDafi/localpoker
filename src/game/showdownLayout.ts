@@ -184,6 +184,56 @@ export function layoutRevealHands(input: {
 }
 
 /**
+ * How wide the cloth is at a given height.
+ *
+ * The felt is an oval, so this is its ellipse solved for width. Every row on
+ * the table has to be measured where it actually sits: a row below the board
+ * has less width than one across the middle, and sizing them all against the
+ * widest line is how cards ended up drawn over the rail.
+ */
+export function feltWidthAt(y: number, felt: { width: number; height: number; centreY: number }): number {
+  const semiH = felt.height / 2;
+  if (felt.width <= 0 || semiH <= 0) return 0;
+  const dy = Math.abs(y - felt.centreY) / semiH;
+  return felt.width * Math.sqrt(Math.max(0, 1 - dy * dy));
+}
+
+/**
+ * The biggest a community card can be and still sit on the cloth.
+ *
+ * Size and position are circular: a bigger card pushes the row's bottom edge
+ * lower, and the oval is narrower lower down. The obvious fix, measuring the
+ * rendered board and feeding that back in, puts the answer inside its own
+ * question and lets the row flip between two sizes forever. So the loop is
+ * settled here in arithmetic instead: walk down from the ceiling and take the
+ * first size whose own row fits.
+ *
+ * Downward rather than solved in closed form because `rowBottom` is the
+ * caller's business, and the caller places the board differently mid-hand
+ * (centred in the lane, above the pot) than at a showdown (pinned up, with
+ * the winning hands beneath). Both are a few points of travel, so the walk is
+ * short.
+ */
+export function fitBoardCard(input: {
+  cells: number;
+  /** What a cell costs on top of the card itself: margins and the win ring. */
+  cellPad: number;
+  /** The largest card the caller will allow, from the height it has or taste. */
+  ceiling: number;
+  minSize: number;
+  /** Where the row's bottom edge lands for a card of a given size. */
+  rowBottom: (size: number) => number;
+  /** How wide the cloth is at a height. */
+  widthAt: (y: number) => number;
+}): number {
+  const ceiling = Math.max(input.minSize, Math.floor(input.ceiling));
+  for (let size = ceiling; size > input.minSize; size -= 1) {
+    if (input.cells * (size + input.cellPad) <= input.widthAt(input.rowBottom(size))) return size;
+  }
+  return input.minSize;
+}
+
+/**
  * What to write on the pill above the board.
  *
  * Two players can split with the same hand ("Flush") or with different ones,

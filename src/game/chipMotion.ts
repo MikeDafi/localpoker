@@ -1,9 +1,19 @@
-import type { GameState, Street } from '../engine';
+import type { GameState, PlayerAction, Street } from '../engine';
 
 export const CHIP_COMMIT_DURATION_MS = 360;
 export const CHIP_SWEEP_DURATION_MS = 320;
 export const CHIP_SWEEP_PAUSE_MS = 70;
 export const ACTION_READ_DELAY_MS = 240;
+/**
+ * The extra beat an action that moves chips earns over one that does not.
+ *
+ * A check or a fold is over the moment it is read: nothing crosses the felt
+ * and nobody's decision changes. A bet, raise, call or all-in has chips to
+ * travel to the middle and a bet pill to land, and it is also the thing every
+ * remaining decision is now about, so the table ran on before anyone had
+ * taken it in. Everything gets the short beat; chips buy the long one.
+ */
+export const CHIP_ACTION_READ_BONUS_MS = 500;
 
 export interface ChipPoint {
   x: number;
@@ -84,8 +94,27 @@ export function displayedPotAmount(state: Pick<ChipMotionState, 'street' | 'cont
   return totalCommittedChips(state);
 }
 
-export function actionReadDelayMs(animationsOff: boolean): number {
-  return animationsOff ? 0 : ACTION_READ_DELAY_MS;
+/**
+ * Whether an action put chips on the felt.
+ *
+ * All-in is here for the obvious reason and call for the less obvious one: a
+ * call is a chip flight and a bet pill exactly like a raise, and a table that
+ * hurried past it read as the caller not having done anything.
+ */
+export function actionMovesChips(action?: PlayerAction | null): boolean {
+  return action === 'bet' || action === 'raise' || action === 'call' || action === 'allin';
+}
+
+/**
+ * How long the last action stays on screen before the next player moves.
+ *
+ * Takes the action rather than a flag so the caller cannot get the question
+ * backwards, and tolerates not knowing: a resumed hand has no last action and
+ * simply gets the short beat.
+ */
+export function actionReadDelayMs(animationsOff: boolean, lastAction?: PlayerAction | null): number {
+  if (animationsOff) return 0;
+  return ACTION_READ_DELAY_MS + (actionMovesChips(lastAction) ? CHIP_ACTION_READ_BONUS_MS : 0);
 }
 
 export function initialChipMotionEvents(state: ChipMotionState): ChipMotionEvent[] {

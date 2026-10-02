@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import { colors } from '../theme/theme';
 
 interface IconProps {
   size?: number;
@@ -174,6 +175,47 @@ export function SpadeSuitIcon({ size = 30, color = '#25313B' }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Path d="M12 2.5C8.5 6.5 5 8.5 5 12a3.4 3.4 0 005.6 2.6C10.3 16.5 9.4 18 8 19h8c-1.4-1-2.3-2.5-2.6-4.4A3.4 3.4 0 0019 12c0-3.5-3.5-5.5-7-9.5z" fill={color} />
+    </Svg>
+  );
+}
+
+/**
+ * Turning a card over.
+ *
+ * A card back tipped behind, a face upright in front with a proper spade on
+ * it, and an arrow curving from the one to the other. A single card on its
+ * own reads as "a card" rather than as the act of showing one, and the arrow
+ * is what makes it a verb. Used by the showdown toggle, which has no room for
+ * a label and has to say "turn these over" by itself.
+ */
+export function CardFlipIcon({ size = 30, color = '#fff' }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Rect
+        x="2.4"
+        y="8.4"
+        width="8"
+        height="11.6"
+        rx="1.7"
+        fill={color}
+        opacity={0.42}
+        transform="rotate(-9 6.4 14.2)"
+      />
+      <Rect x="12.8" y="8.4" width="8.4" height="11.6" rx="1.7" fill={color} />
+      {/* The app's own spade, shrunk onto the card face. */}
+      <Path
+        d="M12 2.5C8.5 6.5 5 8.5 5 12a3.4 3.4 0 005.6 2.6C10.3 16.5 9.4 18 8 19h8c-1.4-1-2.3-2.5-2.6-4.4A3.4 3.4 0 0019 12c0-3.5-3.5-5.5-7-9.5z"
+        fill={colors.surface}
+        transform="translate(14.6 10.6) scale(0.34 0.345) translate(-5 -2.5)"
+      />
+      <Path
+        d="M5.6 6.1C8 2.6 13.4 1.9 16.8 4.2"
+        fill="none"
+        stroke={color}
+        strokeWidth={1.9}
+        strokeLinecap="round"
+      />
+      <Path d="M18.9 5.4l-4.3.3 2-3.4z" fill={color} />
     </Svg>
   );
 }

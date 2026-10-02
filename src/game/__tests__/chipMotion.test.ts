@@ -3,6 +3,9 @@ import {
   CHIP_COMMIT_DURATION_MS,
   CHIP_SWEEP_DURATION_MS,
   actionReadDelayMs,
+  actionMovesChips,
+  ACTION_READ_DELAY_MS,
+  CHIP_ACTION_READ_BONUS_MS,
   chipMotionEvents,
   chipMotionPath,
   currentStreetBetTotal,
@@ -342,5 +345,42 @@ describe('chip motion geometry', () => {
   it('removes the bot read delay when animations are disabled', () => {
     expect(actionReadDelayMs(true)).toBe(0);
     expect(actionReadDelayMs(false)).toBeGreaterThan(0);
+    expect(actionReadDelayMs(true, 'raise')).toBe(0);
+  });
+
+  describe('holding an action on screen', () => {
+    it('knows which actions put chips on the felt', () => {
+      for (const action of ['bet', 'raise', 'call', 'allin'] as const) {
+        expect(actionMovesChips(action)).toBe(true);
+      }
+      for (const action of ['check', 'fold'] as const) {
+        expect(actionMovesChips(action)).toBe(false);
+      }
+    });
+
+    it('gives a resumed hand with no last action the short beat', () => {
+      expect(actionMovesChips(undefined)).toBe(false);
+      expect(actionMovesChips(null)).toBe(false);
+      expect(actionReadDelayMs(false)).toBe(ACTION_READ_DELAY_MS);
+    });
+
+    /*
+     * The point of the whole thing: a bet is what every remaining decision is
+     * about, and the table used to run straight past it.
+     */
+    it('holds a bet half a second longer than a check', () => {
+      const bet = actionReadDelayMs(false, 'raise');
+      const check = actionReadDelayMs(false, 'check');
+      expect(bet - check).toBe(CHIP_ACTION_READ_BONUS_MS);
+      expect(CHIP_ACTION_READ_BONUS_MS).toBe(500);
+    });
+
+    it('holds a call as long as a raise, because the chips travel either way', () => {
+      expect(actionReadDelayMs(false, 'call')).toBe(actionReadDelayMs(false, 'raise'));
+    });
+
+    it('does not dawdle over a fold', () => {
+      expect(actionReadDelayMs(false, 'fold')).toBe(ACTION_READ_DELAY_MS);
+    });
   });
 });

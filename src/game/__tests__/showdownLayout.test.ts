@@ -9,6 +9,8 @@ import {
   MIN_HAND_GAP,
   handGapFor,
   layoutRevealHands,
+  feltWidthAt,
+  fitBoardCard,
   selectShowdownHands,
   showdownLabel,
   lostAtShowdown,
@@ -366,5 +368,96 @@ describe('lostAtShowdown', () => {
 
   it('does not mark a player holding no cards at all', () => {
     expect(lostAtShowdown({ id: 'bob', holeCards: [] }, won, { contested: true })).toBe(false);
+  });
+});
+
+/*
+ * The cloth on an iPhone 17 Pro: the table area less the oval's inset and its
+ * rail on both sides, and the stage less the same top and bottom.
+ */
+const FELT = { width: 370, height: 374, centreY: 201 };
+
+describe('feltWidthAt', () => {
+  it('is widest across the middle', () => {
+    expect(feltWidthAt(FELT.centreY, FELT)).toBeCloseTo(FELT.width, 5);
+  });
+
+  it('narrows the further a row sits from the middle', () => {
+    const near = feltWidthAt(FELT.centreY + 40, FELT);
+    const far = feltWidthAt(FELT.centreY + 120, FELT);
+    expect(near).toBeLessThan(FELT.width);
+    expect(far).toBeLessThan(near);
+  });
+
+  it('is the same above the middle as below it', () => {
+    expect(feltWidthAt(FELT.centreY - 70, FELT)).toBeCloseTo(feltWidthAt(FELT.centreY + 70, FELT), 5);
+  });
+
+  it('runs out at the ends rather than going imaginary', () => {
+    expect(feltWidthAt(FELT.centreY + FELT.height, FELT)).toBe(0);
+    expect(feltWidthAt(-1000, FELT)).toBe(0);
+  });
+
+  it('has no width when there is no table yet', () => {
+    expect(feltWidthAt(0, { width: 0, height: 0, centreY: 0 })).toBe(0);
+  });
+});
+
+describe('fitBoardCard', () => {
+  const base = {
+    cells: 5,
+    cellPad: 4,
+    minSize: 28,
+    widthAt: (y: number) => feltWidthAt(y, FELT),
+  };
+  /** The board pinned below the winning-hand pill, as it sits at a showdown. */
+  const pinned = (top: number) => (size: number) => top + size * CARD_ASPECT + 4;
+
+  it('takes the ceiling when the cloth is wider than the ceiling needs', () => {
+    const size = fitBoardCard({ ...base, ceiling: 40, rowBottom: pinned(188) });
+    expect(size).toBe(40);
+  });
+
+  /*
+   * The whole reason this is a search rather than one division: the answer
+   * decides where the row sits, and where the row sits decides the answer.
+   */
+  it('settles on a size whose own row actually fits', () => {
+    const size = fitBoardCard({ ...base, ceiling: 90, rowBottom: pinned(188) });
+    const bottom = pinned(188)(size);
+    expect(base.cells * (size + base.cellPad)).toBeLessThanOrEqual(base.widthAt(bottom));
+  });
+
+  it('leaves nothing on the table: one point more would not fit', () => {
+    const size = fitBoardCard({ ...base, ceiling: 90, rowBottom: pinned(188) });
+    const bigger = size + 1;
+    expect(base.cells * (bigger + base.cellPad)).toBeGreaterThan(base.widthAt(pinned(188)(bigger)));
+  });
+
+  it('gives a row nearer the middle of the felt a bigger card', () => {
+    const high = fitBoardCard({ ...base, ceiling: 90, rowBottom: pinned(150) });
+    const low = fitBoardCard({ ...base, ceiling: 90, rowBottom: pinned(230) });
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it('spends a smaller cell cost on the cards', () => {
+    const tight = fitBoardCard({ ...base, cellPad: 4, ceiling: 90, rowBottom: pinned(188) });
+    const padded = fitBoardCard({ ...base, cellPad: 10, ceiling: 90, rowBottom: pinned(188) });
+    expect(tight).toBeGreaterThan(padded);
+  });
+
+  it('refuses to go below a readable card even off the end of the felt', () => {
+    const size = fitBoardCard({ ...base, ceiling: 90, rowBottom: () => 10_000 });
+    expect(size).toBe(base.minSize);
+  });
+
+  it('never returns more than it was allowed', () => {
+    for (const ceiling of [28, 35, 50, 61, 90]) {
+      expect(fitBoardCard({ ...base, ceiling, rowBottom: pinned(188) })).toBeLessThanOrEqual(ceiling);
+    }
+  });
+
+  it('rounds a fractional ceiling down to a whole point', () => {
+    expect(fitBoardCard({ ...base, ceiling: 40.9, rowBottom: pinned(188) })).toBe(40);
   });
 });

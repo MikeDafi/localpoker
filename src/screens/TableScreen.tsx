@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
-import { CARD_ASPECT, layoutRevealHands, lostAtShowdown, selectShowdownHands, showdownLabel } from '../game/showdownLayout';
+import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands, showdownLabel } from '../game/showdownLayout';
 import { canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
@@ -17,7 +17,7 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Seat } from '../components/Seat';
 import { ActionBar } from '../components/ActionBar';
 import { WiiButton } from '../components/WiiButton';
-import { ChevronLeft, StatsIcon } from '../components/Icons';
+import { CardFlipIcon, ChevronLeft, StatsIcon } from '../components/Icons';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { TurnTimer } from '../components/TurnTimer';
 import { LiveStatsPanel } from '../components/LiveStatsPanel';
@@ -84,7 +84,7 @@ const HUMAN_ID = 'me';
  * cloth inside it, so the two have to agree: a rail widened in the stylesheet
  * alone would quietly push the cards over it.
  */
-const FELT_INSET = 8;
+const FELT_INSET = 4;
 const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
 const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
@@ -157,7 +157,6 @@ export function TableScreen({ navigation, route }: Props) {
 
   const botSpeedMs = settings.botSpeed === 'fast' ? 550 : settings.botSpeed === 'slow' ? 1700 : 1050;
   const animsOff = settings.animationSpeed === 'off' || settings.reduceMotion;
-  const botActionDelayMs = botSpeedMs + actionReadDelayMs(animsOff);
 
   const pals = useMemo<Record<string, PalConfig>>(() => {
     const map: Record<string, PalConfig> = { [HUMAN_ID]: profile.pal, [localPlayerId]: profile.pal };
@@ -376,9 +375,22 @@ export function TableScreen({ navigation, route }: Props) {
   // is derived from them, so taking the running maximum is what stops the board
   // and pot drifting up and down mid-hand.
   const [podH, setPodH] = useState(78);
-  const [heroH, setHeroH] = useState(96);
+  /*
+   * Null until the hero's pod has been laid out once.
+   *
+   * This used to start at 96, which was a guess, and `growHero` only ever
+   * raises it, so the guess became a floor the table could never get back
+   * under. The real pod is nearer 60, and the lane is measured from this, so
+   * the board spent the whole session paying for forty points of felt nobody
+   * was standing on. Starting from the first real measurement keeps the
+   * high-water behaviour that stops the lane jumping, without inventing the
+   * number it starts from.
+   */
+  const [heroH, setHeroH] = useState<number | null>(null);
   const growPod = useCallback((h: number) => setPodH((prev) => (h > prev ? h : prev)), []);
-  const growHero = useCallback((h: number) => setHeroH((prev) => (h > prev ? h : prev)), []);
+  const growHero = useCallback((h: number) => setHeroH((prev) => (prev === null || h > prev ? h : prev)), []);
+  /** The pod's height before it has ever been measured, near enough to start. */
+  const heroPodH = heroH ?? 96;
   const [boardBox, setBoardBox] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const [chipFlights, setChipFlights] = useState<RenderedChipFlight[]>([]);
   const chipMotionFrom = useRef<GameState | null>(null);
@@ -588,7 +600,17 @@ export function TableScreen({ navigation, route }: Props) {
     else sound.play('chip');
   };
 
+  /**
+   * What the table is still showing.
+   *
+   * The pause before the next player moves is a pause to read the *last*
+   * action, so it has to know what that action was. Kept in a ref rather than
+   * state because nothing renders from it and a re-render for pacing would be
+   * a re-render of the whole table.
+   */
+  const lastAction = useRef<PlayerAction | null>(null);
   const step = useCallback((action: PlayerAction, amount?: number, actorId?: string) => {
+    lastAction.current = action;
     setState((prev) => {
       const id = actorId ?? prev.players[prev.currentPlayerIndex]?.id;
       if (!id) return prev;
@@ -945,6 +967,13 @@ export function TableScreen({ navigation, route }: Props) {
     const actor = state.players[state.currentPlayerIndex];
     if (roomCode && firebaseOnline) return;
     if (!actor || actor.id === human.id || !actor.isBot) return;
+    /*
+     * Measured from the last action rather than fixed, so a bet is left on
+     * the felt long enough to be read before the next player answers it. A
+     * check or a fold keeps the short beat; the table should not dawdle over
+     * nothing happening.
+     */
+    const delayMs = botSpeedMs + actionReadDelayMs(animsOff, lastAction.current);
     botTimer.current = setTimeout(() => {
       const decision = decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
       actionSound(decision.action);
@@ -957,11 +986,11 @@ export function TableScreen({ navigation, route }: Props) {
         showEmote(actor.id, pool[Math.floor(emoteRoll * 997) % pool.length]);
       }
       step(decision.action, decision.amount, actor.id);
-    }, botActionDelayMs);
+    }, delayMs);
     return () => {
       if (botTimer.current) clearTimeout(botTimer.current);
     };
-  }, [state, isShowdown, step, botDiff, settings.difficulty, botActionDelayMs, showEmote, seed]);
+  }, [state, isShowdown, step, botDiff, settings.difficulty, botSpeedMs, animsOff, showEmote, seed]);
 
   // Record stats + award coins once per hand at showdown.
   useEffect(() => {
@@ -1129,7 +1158,7 @@ export function TableScreen({ navigation, route }: Props) {
    * above both deliberately, so that raising the ceiling is never the thing
    * standing between the board and the felt it has room for.
    */
-  const cardSize = width < 380 ? 64 : 72;
+  const cardSize = width < 380 ? 68 : 76;
   const lowChips = human.chips < settings.bigBlind * 5;
 
   /*
@@ -1336,7 +1365,7 @@ export function TableScreen({ navigation, route }: Props) {
     ? Math.max(...opponents.map((_, i) => seatPos(i, opponents.length).top))
     : 0;
   const laneTop = lowestSeatTop + podH + 6;
-  const laneBottom = heroH + 6;
+  const laneBottom = heroPodH + 6;
 
   /*
    * How much cloth there actually is.
@@ -1351,14 +1380,12 @@ export function TableScreen({ navigation, route }: Props) {
    * of it than a row on the waist, and sizing both against the waist is how
    * the winning hands ended up drawn over the rail.
    */
-  const feltInnerW = Math.max(0, area.w - 2 * (FELT_INSET + FELT_RAIL));
-  const feltInnerH = Math.max(0, stageH - 2 * (FELT_INSET + FELT_RAIL));
-  const feltWidthAt = (y: number) => {
-    const b = feltInnerH / 2;
-    if (feltInnerW <= 0 || b <= 0) return 0;
-    const dy = Math.abs(y - stageH / 2) / b;
-    return feltInnerW * Math.sqrt(Math.max(0, 1 - dy * dy));
+  const clothOval = {
+    width: Math.max(0, area.w - 2 * (FELT_INSET + FELT_RAIL)),
+    height: Math.max(0, stageH - 2 * (FELT_INSET + FELT_RAIL)),
+    centreY: stageH / 2,
   };
+  const cloth = (y: number) => feltWidthAt(y, clothOval);
 
   // --- Dealing the hole cards -------------------------------------------------
   // Cards are thrown one at a time from the middle of the table, going around
@@ -1398,48 +1425,75 @@ export function TableScreen({ navigation, route }: Props) {
   const BOARD_CELLS = 5;
   /*
    * What a board cell costs on top of the card itself, both sides added up:
-   * 1pt of margin and the 2pt gold win ring.
+   * the 2pt gold win ring, and nothing else.
    *
-   * This used to be 10, which bought a 1pt inset inside the ring and a 2pt
-   * margin outside it. Across five cells that is 20pt of felt spent on gaps,
-   * which is most of a card: the ring reads perfectly well sitting straight
-   * on the card edge, and the cards read better for the points back.
+   * This was 10, which bought a 1pt inset inside the ring and a 2pt margin
+   * outside it. Across five cells that is 30pt of felt spent on gaps, which
+   * is half a card. The ring reads perfectly well sitting straight on the
+   * card edge, and it still leaves 4pt between one card face and the next.
    */
-  const CELL_PAD = 6;
+  const CELL_PAD = 4;
+  /** The gold win ring, top and bottom, which a card carries at every size. */
+  const CARD_FRAME = 4;
   const POT_BLOCK_H = 40; // pot pill plus the gap above it
+  const PILL_BLOCK_H = 28; // winning-hand pill plus the gap below it
+  const REVEAL_GAP = 8; // breathing room between the board and the hands below it
+  /*
+   * The winning hands sit smaller than the board. They are the supporting
+   * evidence rather than the thing everyone is reading, and the board, the
+   * hands and the hero's pod all have to come out of the same strip of felt,
+   * so the hands are what gives way.
+   */
+  const REVEAL_SHRINK = 0.76;
+  /*
+   * What the hero's pod takes at a showdown, measured on an iPhone 17 Pro:
+   * avatar, name, chips and a badge come to about 46pt once the bets have
+   * been swept into the pot. `heroPodH` cannot answer this even now that it
+   * is measured, because it is still a high-water mark and a betting round
+   * leaves it carrying the hero's bet chip.
+   */
+  const HERO_SHOWDOWN_H = 50;
   const laneH = Math.max(0, stageH - laneTop - laneBottom);
+  const boardTopFor = (showdown: boolean) => laneTop + (showdown ? PILL_BLOCK_H : 0);
   /*
-   * At a showdown the lane holds two rows, not one, so the board gives up
-   * part of its height to the hands underneath. The pot is already awarded by
-   * then and takes no room, and the winning hands are placed absolutely
-   * rather than flowing inside the lane, so the board can have more of it
-   * than an even split.
+   * How tall a board card may be.
+   *
+   * Mid-hand it is the lane, less the pot block beneath it. At a showdown the
+   * lane is the wrong measure: the winning hands are placed absolutely rather
+   * than flowing inside it, and the hero's pod shrinks once the bets are
+   * swept, so the real limit is the run from the board's top edge down to
+   * that pod, shared between the two rows in proportion.
    */
-  const revealRowShare = layingOut ? 0.62 : 1;
-  const boardMaxH = Math.max(28 * 1.42, (laneH - (layingOut ? 0 : POT_BLOCK_H)) * revealRowShare);
-  /*
-   * Where the board's bottom edge lands, estimated from the height it is
-   * allowed rather than the size it settles at. The width budget is read off
-   * the oval at that height, so deriving it from the measured board would
-   * feed the answer back into its own question and let the row oscillate.
-   */
-  const boardRowBottom = layingOut
-    ? laneTop + POT_BLOCK_H + boardMaxH
-    : laneTop + (laneH + boardMaxH) / 2;
+  const boardMaxH = layingOut
+    ? Math.max(28 * CARD_ASPECT,
+      (stageH - boardTopFor(true) - HERO_SHOWDOWN_H - REVEAL_GAP - CARD_FRAME) / (1 + REVEAL_SHRINK))
+    : Math.max(28 * CARD_ASPECT, laneH - POT_BLOCK_H);
   /*
    * A touch smaller than a card is dealt at: the showdown board sits above a
    * second row of cards rather than empty felt, and the pair of them read
    * better slightly trimmed than filling the lane edge to edge.
    */
   const boardShrink = layingOut ? 0.88 : 1;
-  const sdCardSize = Math.max(
-    28,
-    Math.min(
-      Math.floor(cardSize * boardShrink),
-      Math.floor(feltWidthAt(boardRowBottom) / BOARD_CELLS) - CELL_PAD,
-      Math.floor(boardMaxH / 1.42),
-    ),
-  );
+  /*
+   * Where the row's bottom edge lands for a card of a given size, which is
+   * what decides how much cloth it has. Mid-hand the board and the pot are
+   * centred in the lane together; at a showdown the board is pinned to the
+   * top of it with the winning hands beneath.
+   */
+  const boardRowBottom = (size: number) => {
+    const h = size * CARD_ASPECT + CARD_FRAME;
+    if (layingOut) return boardTopFor(true) + h;
+    const block = h + 6 + POT_BLOCK_H;
+    return laneTop + Math.max(0, (laneH - block) / 2) + h;
+  };
+  const sdCardSize = fitBoardCard({
+    cells: BOARD_CELLS,
+    cellPad: CELL_PAD,
+    ceiling: Math.min(cardSize * boardShrink, boardMaxH / CARD_ASPECT),
+    minSize: 28,
+    rowBottom: boardRowBottom,
+    widthAt: cloth,
+  });
   const cellW = boardBox.w > 0 ? boardBox.w / BOARD_CELLS : sdCardSize + CELL_PAD;
   const boardTop = laneTop + boardBox.y;
   const boardBottom = boardTop + boardBox.h;
@@ -1447,7 +1501,7 @@ export function TableScreen({ navigation, route }: Props) {
   /** Where a winner's cards start their journey: the middle of their pod. */
   const revealFrom = useCallback((playerId: string) => {
     const idx = opponents.findIndex((p) => p.id === playerId);
-    if (idx < 0) return { x: area.w / 2, y: Math.max(0, stageH - heroH / 2) };
+    if (idx < 0) return { x: area.w / 2, y: Math.max(0, stageH - heroPodH / 2) };
     const pos = seatPos(idx, opponents.length);
     // Beside the avatar rather than on top of it, squarely over the pod the
     // grown cards hide the face of the player who just won, and nudged toward
@@ -1459,7 +1513,7 @@ export function TableScreen({ navigation, route }: Props) {
       y: pos.top + 40,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opponents, area.w, stageH, heroH]);
+  }, [opponents, area.w, stageH, heroPodH]);
 
   /*
    * One row holding every winning hand, beneath the board.
@@ -1472,14 +1526,6 @@ export function TableScreen({ navigation, route }: Props) {
    * Side by side, two hands are four cards under a five card board, so they
    * keep the size a single winner gets.
    */
-  const REVEAL_GAP = 8; // breathing room between the board and the hands below it
-  /*
-   * The winning hands sit a little smaller than the board. They are the
-   * supporting evidence rather than the thing everyone is reading, and the
-   * two rows plus the hero's pod have to share a lane barely taller than
-   * three cards, so the smaller of the two is the one that gives way.
-   */
-  const REVEAL_SHRINK = 0.82;
   const revealTop = boardBottom + REVEAL_GAP;
   const revealSize = Math.floor(sdCardSize * REVEAL_SHRINK);
   const revealHands = layingOut
@@ -1491,7 +1537,7 @@ export function TableScreen({ navigation, route }: Props) {
       // The cloth at the row's own height, not the board's. The oval has
       // narrowed by the time it gets down here, and giving the row the
       // board's width is what drew the outside hands over the rail.
-      availableW: feltWidthAt(revealTop + (revealSize * CARD_ASPECT) / 2),
+      availableW: cloth(revealTop + (revealSize * CARD_ASPECT) / 2),
       // The felt below the board, which the awarded pot has vacated.
       availableH: Math.max(revealSize * CARD_ASPECT, stageH - revealTop - 8),
       playerIds: showdownHands.map((h) => h.playerId),
@@ -1539,7 +1585,7 @@ export function TableScreen({ navigation, route }: Props) {
       let seatPoint: ChipPoint | null = null;
       let betPoint: ChipPoint | null = null;
       if (isHero) {
-        seatPoint = heroSeatChipPoint(area.w, stageH, heroH);
+        seatPoint = heroSeatChipPoint(area.w, stageH, heroPodH);
         betPoint = heroBetChipPoint(area.w, stageH);
       } else {
         const opponentIndex = opponents.findIndex((player) => player.id === event.playerId);
@@ -1569,7 +1615,7 @@ export function TableScreen({ navigation, route }: Props) {
     area.h,
     area.w,
     boardBox,
-    heroH,
+    heroPodH,
     human.id,
     laneTop,
     opponents,
@@ -1633,7 +1679,7 @@ export function TableScreen({ navigation, route }: Props) {
               The oval is inset on every side of the table area and its rail
               border sits inside that, so the cloth fills what's left (see
               `feltInnerW`). */}
-          <FeltSurface width={feltInnerW} height={feltInnerH} />
+          <FeltSurface width={clothOval.width} height={clothOval.height} />
           <View style={styles.railHighlight} pointerEvents="none" />
           <View style={styles.feltInner} pointerEvents="none" />
           <View style={styles.feltGlow} pointerEvents="none" />
@@ -1924,9 +1970,11 @@ export function TableScreen({ navigation, route }: Props) {
               </View>
             )}
 
-            {/* Mucking is the default, so this is a single opt-in toggle rather
-                than a two-button choice, it also keeps the panel short enough
-                not to slice through the hole cards above it. */}
+            {/* Mucking is the default, so this is a single opt-in toggle
+                rather than a two-button choice. A round icon rather than a
+                line of text: the panel is the one thing tall enough to reach
+                the hole cards above it, so the row it costs matters, and
+                "turn these over" is a picture before it is a sentence. */}
             <View style={styles.muckRow}>
               <Pressable
                 onPress={() => {
@@ -1940,11 +1988,10 @@ export function TableScreen({ navigation, route }: Props) {
                 style={[styles.muckBtn, humanCardsShown && styles.muckBtnActive]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: humanCardsShown }}
-                accessibilityLabel={humanCardsShown ? 'Hide your cards' : 'Show your cards'}
+                accessibilityLabel={humanCardsShown ? 'Showing your cards, tap to muck' : 'Cards mucked, tap to show'}
+                accessibilityHint="Turns your hole cards face up for the rest of the table"
               >
-                <Text style={[styles.muckText, humanCardsShown && styles.muckTextActive]}>
-                  {humanCardsShown ? 'Showing cards · tap to muck' : 'Mucked · tap to show'}
-                </Text>
+                <CardFlipIcon size={24} color={humanCardsShown ? colors.blueLight : colors.onDarkMuted} />
               </Pressable>
             </View>
 
@@ -2049,7 +2096,7 @@ const styles = StyleSheet.create({
   // The gold win ring must not change the board's geometry, or every card
   // visibly jumps outward the moment a hand is won. The border is therefore
   // always present and merely changes colour.
-  boardCardWrap: { marginHorizontal: 1, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
+  boardCardWrap: { marginHorizontal: 0, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
   winCard: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.16)' },
   handChip: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
   handChipText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark },
@@ -2060,7 +2107,7 @@ const styles = StyleSheet.create({
   // Wider than it looks: every point here is taken off the felt twice over,
   // once on each side, and the board is sized from what is left of the cloth.
   // The table still clears the screen edge, which is all this margin was for.
-  tableArea: { marginTop: 0, marginHorizontal: spacing.xs, position: 'relative' },
+  tableArea: { marginTop: 0, marginHorizontal: 2, position: 'relative' },
   feltOval: { position: 'absolute', top: FELT_INSET, left: FELT_INSET, right: FELT_INSET, bottom: FELT_INSET, borderRadius: 200, borderWidth: FELT_RAIL, borderColor: colors.feltRail, overflow: 'hidden' },
   // top-lit sliver along the inside of the rail, the single light source
   railHighlight: { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', borderTopLeftRadius: 190, borderTopRightRadius: 190, backgroundColor: colors.feltRailEdge, opacity: 0.35 },
@@ -2103,10 +2150,10 @@ const styles = StyleSheet.create({
   coin: { width: 17, height: 17, borderRadius: 8.5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.goldDeep },
   coinT: { fontFamily: fonts.bold, color: '#2A2210', fontSize: 11 },
   coinEarned: { fontFamily: fonts.bold, fontSize: 13, color: colors.gold, ...numeric },
-  muckRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  muckBtn: { flex: 1, paddingVertical: spacing.sm, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center' },
+  muckRow: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.sm },
+  // 44pt because that is the smallest target iOS considers reachable, and the
+  // button is now a circle with no words to widen it.
+  muckBtn: { width: 44, height: 44, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   muckBtnActive: { borderColor: colors.blue, backgroundColor: 'rgba(47,159,212,0.16)' },
-  muckText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDarkMuted },
-  muckTextActive: { color: colors.blueLight },
   adWrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.xs },
 });
