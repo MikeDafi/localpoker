@@ -44,6 +44,7 @@ export {
   getCachedHostGame,
   joinRoom,
   leaveRoom,
+  removePlayerFromRoom,
   publishHostGameState,
   pushAction,
   setPlayerConnected,

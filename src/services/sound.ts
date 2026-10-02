@@ -2,7 +2,7 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-aud
 import { captureError } from './telemetry';
 
 export type SoundName =
-  | 'tap' | 'select' | 'deal' | 'chip' | 'check' | 'fold'
+  | 'tap' | 'select' | 'deal' | 'chip' | 'check' | 'fold' | 'raise'
   | 'turn' | 'turnOther' | 'coins' | 'win' | 'lose' | 'error' | 'start' | 'tick' | 'tickUrgent';
 
 const SOURCES: Record<SoundName, number> = {
@@ -11,6 +11,7 @@ const SOURCES: Record<SoundName, number> = {
   deal: require('../../assets/sounds/deal.wav'),
   chip: require('../../assets/sounds/chip.wav'),
   check: require('../../assets/sounds/check.wav'),
+  raise: require('../../assets/sounds/raise.wav'),
   fold: require('../../assets/sounds/fold.wav'),
   turn: require('../../assets/sounds/turn.wav'),
   turnOther: require('../../assets/sounds/turnOther.wav'),

@@ -19,6 +19,15 @@ export interface SeatProps {
   isHuman: boolean;
   showCards?: boolean;
   won?: boolean;
+  /**
+   * Beaten at a showdown.
+   *
+   * Gold alone only says who won; it leaves everyone else looking exactly as
+   * they did mid-hand, so a player has to read the result panel to find out
+   * they lost. Red says it on the seat, and only for someone who actually got
+   * to the end of the hand: folding is not losing a showdown.
+   */
+  lost?: boolean;
   reaction?: PalExpression;
   idleMotion?: boolean;
   /** Compact vertical pod (avatar over a small name tag), used for opponents. */
@@ -57,7 +66,7 @@ export interface SeatProps {
 }
 
 /** A player pod around the felt: animated Pal, name, stack, status, and cards. */
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -148,13 +157,14 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
             { width: ringSize, height: ringSize, borderRadius: ringSize / 2 },
             isCurrent && styles.cRingActive,
             won && styles.cRingWon,
+            lost && styles.cRingLost,
             { opacity: dimmed ? 0.34 : 1 },
           ]}>
-            <AnimatedPal config={pal} size={avatarSize} alive={idleMotion && !dimmed} reaction={won ? 'happy' : reaction} />
+            <AnimatedPal config={pal} size={avatarSize} alive={idleMotion && !dimmed} reaction={won ? 'happy' : lost ? 'sad' : reaction} />
           </View>
           {isDealer && <View style={styles.cDealer}><Text style={styles.dealerText}>D</Text></View>}
         </View>
-        <View style={[styles.cTag, won && styles.cTagWon, { opacity: dimmed ? 0.45 : 1 }]}>
+        <View style={[styles.cTag, won && styles.cTagWon, lost && styles.cTagLost, { opacity: dimmed ? 0.45 : 1 }]}>
           {showName && <Text style={styles.cName} numberOfLines={1}>{player.name}</Text>}
           <Text style={styles.cChips}>{player.chips.toLocaleString()}</Text>
         </View>
@@ -185,9 +195,9 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
 
       <View style={styles.podWrap}>
         {isCurrent && <Animated.View style={[styles.glow, glowStyle]} pointerEvents="none" />}
-        <View style={[styles.pod, shadows.soft, isCurrent && styles.podActive, won && styles.podWon, { opacity: dimmed ? 0.5 : 1 }]}>
+        <View style={[styles.pod, shadows.soft, isCurrent && styles.podActive, won && styles.podWon, lost && styles.podLost, { opacity: dimmed ? 0.5 : 1 }]}>
           <View style={styles.avatarWrap}>
-            <AnimatedPal config={pal} size={40} alive={idleMotion && !dimmed} reaction={won ? 'happy' : reaction} />
+            <AnimatedPal config={pal} size={40} alive={idleMotion && !dimmed} reaction={won ? 'happy' : lost ? 'sad' : reaction} />
           </View>
           <View style={styles.info}>
             <View style={styles.nameRow}>
@@ -289,6 +299,7 @@ const styles = StyleSheet.create({
   },
   podActive: { borderColor: colors.blue, borderWidth: 2 },
   podWon: { borderColor: colors.gold, borderWidth: 2, backgroundColor: 'rgba(214,180,92,0.14)' },
+  podLost: { borderColor: colors.red, borderWidth: 2, backgroundColor: 'rgba(238,81,64,0.14)' },
   avatarWrap: { width: 40, height: 40 },
   nameRow: { flexDirection: 'row', alignItems: 'center', minHeight: 18 },
   dealer: {
@@ -329,6 +340,7 @@ const styles = StyleSheet.create({
   },
   cRingActive: { borderColor: colors.blue },
   cRingWon: { borderColor: colors.gold },
+  cRingLost: { borderColor: colors.red },
   cDealer: {
     position: 'absolute', bottom: -2, right: 10, width: 18, height: 18, borderRadius: 9,
     backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center',
@@ -338,6 +350,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.surfaceBorder, paddingHorizontal: 10, paddingVertical: 2, maxWidth: 84, ...shadows.soft,
   },
   cTagWon: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.14)' },
+  cTagLost: { borderColor: colors.red, backgroundColor: 'rgba(238,81,64,0.14)' },
   foldedChip: { marginTop: spacing.xs, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 1, borderWidth: 1, borderColor: colors.surfaceBorder },
   foldedChipText: { fontFamily: fonts.semibold, fontSize: 9, color: colors.onDarkMuted, letterSpacing: 0.3 },
   cName: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDark, maxWidth: 84 },

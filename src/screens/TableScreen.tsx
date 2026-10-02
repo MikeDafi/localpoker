@@ -6,6 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
+import { layoutRevealRows, lostAtShowdown, selectShowdownHands, showdownLabel } from '../game/showdownLayout';
+import { canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
 import { HoleCards } from '../components/HoleCards';
@@ -52,6 +54,7 @@ import {
 } from '../engine';
 import {
   endRoom,
+  removePlayerFromRoom,
   getAuthUid,
   getCachedHostGame,
   isFirebaseConfigured,
@@ -482,6 +485,14 @@ export function TableScreen({ navigation, route }: Props) {
    * result says so.
    */
   const handsTabled = tabledHand && remainingAtEnd > 1;
+  /*
+   * A hand only has losers if somebody stayed to be beaten. When everyone
+   * folds the pot is simply uncontested, and painting the folders red would
+   * claim their cards lost when nobody ever saw them.
+   */
+  const contestedShowdown = isShowdown && remainingAtEnd > 1 && felt.board.length === 5;
+  const seatLost = (p: { id: string; folded?: boolean; sittingOut?: boolean; holeCards: unknown[] }) =>
+    lostAtShowdown(p, felt.winners, { contested: contestedShowdown });
 
   /**
    * What the table is waiting on while a board runs out, or null when it is not
@@ -538,24 +549,31 @@ export function TableScreen({ navigation, route }: Props) {
    * Null when the pot was won without a showdown (everybody folded): there is
    * no hand to lay out, and the winner is entitled to keep it hidden.
    */
-  const showdownHand = useMemo(() => {
-    if (!isShowdown) return null;
-    const w = felt.winners.find((x) => x.hand?.cards?.length);
-    if (!w) return null;
-    const p = felt.players.find((pp) => pp.id === w.playerId);
-    if (!p || p.holeCards.length < 2) return null;
-    if (p.id === human.id && !humanCardsShown) return null;
-    return {
-      playerId: p.id,
-      name: p.name,
-      hole: p.holeCards.slice(0, 2),
-      label: handName(w.hand!.category),
-    };
-  }, [isShowdown, felt.winners, felt.players, humanCardsShown]);
+  const showdownHands = useMemo(() => {
+    if (!isShowdown) return [];
+    return selectShowdownHands(felt.winners, felt.players, {
+      localPlayerId: human.id,
+      localCardsShown: humanCardsShown,
+      label: (w) => handName(w.hand!.category),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown]);
+  /** The first hand laid out, which is what drives the single-winner layout. */
+  const showdownHand = showdownHands[0] ?? null;
 
+  /*
+   * Checking, folding and putting chips in each sound like themselves.
+   *
+   * Betting, raising and shoving all played the same single chip clack as a
+   * call, so the table sounded identical whether somebody called 20 or moved
+   * all in, and you had to be looking at the screen to know which. Raising now
+   * gets its own rising run of chips. Calling keeps the plain clack, because a
+   * call really is the small version of the same act.
+   */
   const actionSound = (action: PlayerAction) => {
     if (action === 'fold') sound.play('fold');
     else if (action === 'check') sound.play('check');
+    else if (action === 'bet' || action === 'raise' || action === 'allin') sound.play('raise');
     else sound.play('chip');
   };
 
@@ -986,10 +1004,34 @@ export function TableScreen({ navigation, route }: Props) {
      * player list. In a room the roster is authoritative and someone being
      * briefly absent is not the same as being out.
      */
+    /*
+     * A rebuy still on the clock is not a finished table.
+     *
+     * The auto-advance timer calls in here the moment a hand ends, so without
+     * this the table declared itself over and offered only "Back to menu"
+     * while the rebuy window underneath was still counting down, which is a
+     * straight contradiction: the player was told to leave and invited to stay
+     * at the same time. The window decides; when it expires, the eviction
+     * effect takes over.
+     */
+    if (rebuyState.phase === 'waiting') return;
+    /*
+     * An expired window belongs to the eviction effect, which has its own
+     * message about the clock running out. Falling through would put a second
+     * alert on top of that one, and iOS would queue both, so the player
+     * dismisses "you ran out of time" only to be told "table over" as well.
+     */
+    if (localPlayerEvicted(rebuyState, human.id)) return;
+
     const active = state.players.filter((p) => p.chips > 0 && !p.sittingOut);
     const roomSeated = Object.keys(room?.players ?? {}).length;
     if (active.length < 2 && (!roomCode || roomSeated < 2)) {
-      Alert.alert('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'Everyone else is out.', [
+      /*
+       * Who actually ran out matters. This said "Everyone else is out" to a
+       * player who had just busted with chips still in front of the opponent,
+       * which is the exact opposite of what had happened.
+       */
+      Alert.alert('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.', [
         {
           text: 'Back to menu',
           onPress: () => {
@@ -1076,6 +1118,94 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const cardSize = width < 380 ? 56 : 64;
   const lowChips = human.chips < settings.bigBlind * 5;
+
+  /*
+   * Waiting on a rebuy, with a clock on it.
+   *
+   * A hand needs two players holding chips. When somebody busts the table used
+   * to simply stop, saying only that it was waiting, with no sign of what for
+   * or for how long, which was forever. Now the wait is named and bounded, and
+   * whoever does not take the rebuy is shown out rather than left holding a
+   * seat nobody can play against.
+   *
+   * `openedAt` is set when a hand first fails to start, not when a stack hits
+   * zero, so busting on the final hand does not start a clock nobody is
+   * watching.
+   */
+  const [rebuyOpenedAt, setRebuyOpenedAt] = useState<number | null>(null);
+  const [rebuyTick, setRebuyTick] = useState(0);
+  const tableBlocked = handOver && !canDealHand(state.players);
+
+  useEffect(() => {
+    if (!tableBlocked) {
+      if (rebuyOpenedAt !== null) setRebuyOpenedAt(null);
+      return undefined;
+    }
+    if (rebuyOpenedAt === null) {
+      setRebuyOpenedAt(Date.now());
+      return undefined;
+    }
+    // One second is the resolution the countdown is displayed at, so polling
+    // faster only burns renders.
+    const timer = setInterval(() => setRebuyTick((t) => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, [tableBlocked, rebuyOpenedAt]);
+
+  const rebuyState = useMemo(
+    () => rebuyPhase({ players: state.players, openedAt: rebuyOpenedAt, now: Date.now() }),
+    // rebuyTick is the clock: it exists only to re-evaluate this on the second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.players, rebuyOpenedAt, rebuyTick],
+  );
+  const rebuyMessage = rebuyNotice(rebuyState, human.id);
+  const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
+
+  /*
+   * The window closed.
+   *
+   * Two different things happen, and confusing them would throw somebody out
+   * of a table they were still playing at: being evicted yourself is a
+   * navigation, and somebody else being evicted is a seat opening up. Only the
+   * host can act on the room, for the same reason it deals.
+   */
+  const evictionHandled = useRef<number | null>(null);
+  useEffect(() => {
+    if (rebuyState.phase !== 'expired') {
+      evictionHandled.current = null;
+      return;
+    }
+    if (evictionHandled.current === state.handNumber) return;
+    evictionHandled.current = state.handNumber;
+
+    if (localPlayerEvicted(rebuyState, human.id)) {
+      sound.play('lose');
+      Alert.alert(
+        'Out of chips',
+        'You ran out of time to rebuy, so your seat has been freed up. Thanks for playing!',
+        [{ text: 'Back to menu', onPress: () => { clearSavedGame(); navigation.replace('Home'); } }],
+      );
+      return;
+    }
+
+    if (roomCode && firebaseOnline && isOnlineHost) {
+      for (const p of playersToEvict(state.players)) {
+        removePlayerFromRoom(roomCode, p.id).catch((error: unknown) => {
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'evict-no-rebuy' } });
+        });
+      }
+    }
+    /*
+     * Offline, a bot that cannot pay is simply dropped from the table rather
+     * than navigated anywhere, and the hand can then be dealt.
+     */
+    if (!roomCode) {
+      setState((prev) => ({
+        ...prev,
+        players: prev.players.filter((p) => p.chips > 0 || p.id === human.id),
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuyState, human.id, roomCode, isOnlineHost, state.handNumber]);
 
   const visiblePlayer = useCallback(
     (player: GameState['players'][number]) =>
@@ -1237,6 +1367,7 @@ export function TableScreen({ navigation, route }: Props) {
    * has somewhere to sit.
    */
   const POT_BLOCK_H = 40; // pot pill plus the gap above it
+  const PILL_BLOCK_H = 26; // the hand-name pill above the board
   const laneH = Math.max(0, stageH - laneTop - laneBottom);
   const boardMaxH = Math.max(28 * 1.42, laneH - POT_BLOCK_H);
   const sdCardSize = Math.max(
@@ -1252,10 +1383,9 @@ export function TableScreen({ navigation, route }: Props) {
     y: laneTop + boardBox.y + boardBox.h / 2,
   });
 
-  /** Where the winner's cards start their journey: the middle of their pod. */
-  const revealFrom = useMemo(() => {
-    if (!showdownHand) return { x: area.w / 2, y: stageH / 2 };
-    const idx = opponents.findIndex((p) => p.id === showdownHand.playerId);
+  /** Where a winner's cards start their journey: the middle of their pod. */
+  const revealFrom = useCallback((playerId: string) => {
+    const idx = opponents.findIndex((p) => p.id === playerId);
     if (idx < 0) return { x: area.w / 2, y: Math.max(0, stageH - heroH / 2) };
     const pos = seatPos(idx, opponents.length);
     // Beside the avatar rather than on top of it, squarely over the pod the
@@ -1268,12 +1398,36 @@ export function TableScreen({ navigation, route }: Props) {
       y: pos.top + 40,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showdownHand, opponents, area.w, stageH, heroH]);
+  }, [opponents, area.w, stageH, heroH]);
 
-  const revealTargets = layingOut ? [slotCentre(5), slotCentre(6)] : [];
-  const revealHighlight = showdownHand
-    ? showdownHand.hole.map((c) => winningCardKeys.has(`${c.rank}${c.suit}`))
+  /*
+   * One row per winning hand.
+   *
+   * A single winner keeps the two slots the community row grew, exactly as
+   * before. A split pot stacks the hands in those same two columns instead of
+   * widening the row to nine cards, which no phone has the width for. The
+   * stack is given the height the board row was already allowed, so it stays
+   * clear of the pot and off the hero pod.
+   */
+  const revealRows = layingOut
+    ? layoutRevealRows({
+      count: showdownHands.length,
+      columnX: [slotCentre(5).x, slotCentre(6).x],
+      boardCentreY: slotCentre(5).y,
+      preferredSize: sdCardSize,
+      /*
+       * The pot is awarded by the time a hand is tabled, so its block is not
+       * rendered and the lane below the hand-name pill is free. Handing that
+       * room to the stack is what keeps a split pot's cards readable rather
+       * than shrinking two hands into the space of one row. `max` so a single
+       * winner can never end up with less room than it has today.
+       */
+      availableH: Math.max(boardMaxH, laneH - PILL_BLOCK_H),
+      playerIds: showdownHands.map((h) => h.playerId),
+    })
     : [];
+  const highlightFor = (hand: { hole: { rank: number; suit: string }[] }) =>
+    hand.hole.map((c) => winningCardKeys.has(`${c.rank}${c.suit}`));
 
   /**
    * Community cards are pitched in from the dealer's spot like the hole cards,
@@ -1419,9 +1573,9 @@ export function TableScreen({ navigation, route }: Props) {
           {/* The street is already obvious from the board itself, so naming it
               only cost the lane a row. The winning hand still gets announced,
               because that is the one thing the cards do not tell you. */}
-          {showdownHand && (
+          {showdownHands.length > 0 && (
             <View style={styles.handNamePill}>
-              <Text style={styles.handNameText}>{showdownHand.label}</Text>
+              <Text style={styles.handNameText}>{showdownLabel(showdownHands)}</Text>
             </View>
           )}
 
@@ -1477,18 +1631,23 @@ export function TableScreen({ navigation, route }: Props) {
         {/* The winner's cards: turned over at the seat, lifted so they can be
             read, then pushed across to join the board. Rendered above the seats
             so nothing clips them in flight. */}
-        {showdownHand && boardBox.w > 0 && (
-          <ShowdownReveal
-            revealKey={`${state.handNumber}-${showdownHand.playerId}`}
-            cards={showdownHand.hole}
-            from={revealFrom}
-            to={revealTargets}
-            smallSize={18}
-            bigSize={sdCardSize}
-            highlight={revealHighlight}
-            animate={!animsOff}
-          />
-        )}
+        {boardBox.w > 0 && revealRows.map((row, i) => {
+          const hand = showdownHands[i];
+          if (!hand) return null;
+          return (
+            <ShowdownReveal
+              key={`${state.handNumber}-${row.playerId}`}
+              revealKey={`${state.handNumber}-${row.playerId}`}
+              cards={hand.hole}
+              from={revealFrom(row.playerId)}
+              to={row.targets}
+              smallSize={18}
+              bigSize={row.size}
+              highlight={highlightFor(hand)}
+              animate={!animsOff}
+            />
+          );
+        })}
 
         {chipFlights.map((flight) => (
           <FlyingChipStack
@@ -1526,9 +1685,10 @@ export function TableScreen({ navigation, route }: Props) {
                 showCards={(isShowdown || handsTabled) && !p.folded && remainingAtEnd > 1}
                 back={settings.cardBack}
                 showName={settings.showAvatarNames}
-                handOff={showdownHand?.playerId === p.id}
+                handOff={showdownHands.some((h) => h.playerId === p.id)}
                 avatarSize={avatarSize}
                 won={isShowdown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
+                lost={seatLost(p)}
                 reaction={reactionFor(p.id)}
                 idleMotion={settings.avatarIdleMotion && !animsOff}
                 emote={visibleEmote(p.id)}
@@ -1555,6 +1715,7 @@ export function TableScreen({ navigation, route }: Props) {
               back={settings.cardBack}
               showName={settings.showAvatarNames}
               won={humanWon}
+              lost={seatLost(human)}
               reaction={reactionFor(human.id)}
               idleMotion={settings.avatarIdleMotion && !animsOff}
               emote={visibleEmote(human.id)}
@@ -1571,9 +1732,17 @@ export function TableScreen({ navigation, route }: Props) {
       <View
         style={[
           styles.humanCardRow,
-          // Lifted just clear of the result panel, but never so far that the
-          // cards climb back onto the felt.
-          isShowdown && { marginBottom: Math.min(resultH - 96, 76) },
+          /*
+           * Lifted clear of the result panel, but never so far that the cards
+           * climb back onto the felt.
+           *
+           * The cap used to be 76, which was exactly enough for the panel as
+           * it stood and nothing more. Any extra row, the free rebuy offered
+           * to a short stack among them, grew the panel past the lift and it
+           * printed straight through the hole cards. The cap now has room for
+           * one more button, which is the most this panel ever adds.
+           */
+          isShowdown && { marginBottom: Math.max(0, Math.min(resultH - 96, 148)) },
         ]}
       >
         {handHint && !human.folded ? (
@@ -1670,7 +1839,7 @@ export function TableScreen({ navigation, route }: Props) {
               );
             })}
 
-            {!animsOff && (!roomCode || !firebaseOnline || isOnlineHost) && (
+            {!animsOff && !rebuyMessage && (!roomCode || !firebaseOnline || isOnlineHost) && (
               <View style={{ marginTop: spacing.xs }}>
                 <TurnTimer
                   seconds={10}
@@ -1706,9 +1875,24 @@ export function TableScreen({ navigation, route }: Props) {
               </Pressable>
             </View>
 
-            {lowChips && (
+            {/* The countdown rides on the button rather than taking a line of
+                its own: this panel is the one thing tall enough to reach the
+                hole cards above it, and every row added here is a row that
+                has to be cleared. */}
+            {rebuyMessage && !mustRebuy && (
+              <Text style={styles.rebuyNotice}>{rebuyMessage}</Text>
+            )}
+            {(lowChips || mustRebuy) && (
               <View style={{ marginTop: spacing.sm }}>
-                <WiiButton label="Rebuy (free)" variant="gold" size="md" fullWidth onPress={rebuy} />
+                <WiiButton
+                  label={mustRebuy && rebuyState.phase === 'waiting'
+                    ? `Rebuy (free) \u00b7 ${rebuyState.secondsLeft}s`
+                    : 'Rebuy (free)'}
+                  variant="gold"
+                  size="md"
+                  fullWidth
+                  onPress={rebuy}
+                />
               </View>
             )}
             <View style={{ height: spacing.sm }} />
@@ -1748,8 +1932,8 @@ export function TableScreen({ navigation, route }: Props) {
                 label={`${currentActorName}'s turn`}
               />
             ) : null}
-            <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText]}>
-              {runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
+            <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText, !!rebuyMessage && styles.rebuyNotice]}>
+              {rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
             </Text>
             {human.folded && !isShowdown && (
               <Text style={styles.foldedNote}>You folded this hand</Text>
@@ -1825,6 +2009,8 @@ const styles = StyleSheet.create({
   emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 6 },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },
+  rebuyNotice: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, textAlign: 'center', marginTop: spacing.xs },
+  rebuyNoticeUrgent: { color: colors.red },
   waitingText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDarkSoft },
   // A run-out is the loudest moment in the hand, so its status line is the one
   // thing in this row that is allowed to shout.

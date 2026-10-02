@@ -744,6 +744,32 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
   }
 };
 
+/**
+ * The host clearing a seat somebody has stopped using.
+ *
+ * Used when a busted player lets their rebuy window run out. Their seat is
+ * holding up everyone else, and with no Cloud Functions the host is the only
+ * party that can act on the table's behalf. Deliberate, bounded and announced,
+ * which is what separates it from a dropped socket: losing a connection still
+ * costs nobody their seat.
+ */
+export const removePlayerFromRoom = async (code: string, playerId: string): Promise<void> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  const target = cleanKey(playerId);
+  if (!db || !roomCode || !target) return;
+  try {
+    await update(ref(db), {
+      [playerPath(roomCode, target)]: null,
+      [viewPath(roomCode, target)]: null,
+      [userRoomPath(target, roomCode)]: null,
+      [`${roomPath(roomCode)}/shown/${target}`]: null,
+    });
+  } catch (error) {
+    reportFirebaseError('remove-player', error);
+  }
+};
+
 /** Removes a player from a room; silently no-ops when Firebase is unavailable. */
 export const leaveRoom = async (code: string, playerId: string): Promise<void> => {
   const db = getConfiguredDb();
@@ -764,6 +790,18 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
         [`${roomPath(roomCode)}/endedAt`]: Date.now(),
         [`${roomPath(roomCode)}/actions`]: null,
         [`${roomPath(roomCode)}/publicState`]: null,
+        [`${roomPath(roomCode)}/shown`]: null,
+        /*
+         * Withdraw the adverts, not just the room.
+         *
+         * Ending the room left its public listing and every outstanding
+         * invite in place, so a table whose host had walked away still showed
+         * up under Join Room and still sat in friends' invites. Tapping one
+         * got as far as joinRoom before being refused, which reads as the app
+         * being broken rather than the room being over. A room that has ended
+         * should stop being offered.
+         */
+        ...discoveryTeardown(room, roomCode),
       };
       for (const id of Object.keys(room.players ?? {})) {
         updates[viewPath(roomCode, id)] = null;

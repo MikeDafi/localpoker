@@ -563,6 +563,50 @@ function logOk(message) {
     await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown'), null));
     logOk('a player cannot clear the table\'s shown hands wholesale');
 
+    /*
+     * The host clearing a seat, and withdrawing the adverts.
+     *
+     * Two new write shapes: evicting a player who let their rebuy window run
+     * out, and pulling an ended room out of publicRooms and every outstanding
+     * invite. Both are multi-path, so one refused child fails the lot, and
+     * both are exactly the kind of rule that has shipped broken here before
+     * for want of an assertion.
+     */
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PLAY1/players/player': null,
+      'localpoker/views/PLAY1/player': null,
+      'localpoker/userRooms/player/PLAY1': null,
+    }));
+    logOk('the host can free up the seat of a player who did not rebuy');
+
+    await assertFails(update(ref(strangerDb), {
+      'localpoker/rooms/PLAY1/players/host': null,
+    }));
+    logOk('but a stranger cannot clear somebody out of a table');
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/ADVERT'), {
+        code: 'ADVERT', hostId: 'host', status: 'lobby', createdAt: 80,
+        invited: { player: true },
+        players: { host: { id: 'host', name: 'Host', isHost: true, connected: true } },
+      });
+      await set(ref(ctx.database(), 'localpoker/publicRooms/ADVERT'), { code: 'ADVERT', hostUid: 'host', createdAt: 80 });
+      await set(ref(ctx.database(), 'localpoker/roomInvites/player/ADVERT'), { code: 'ADVERT', hostUid: 'host', createdAt: 80 });
+    });
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/ADVERT/status': 'ended',
+      'localpoker/rooms/ADVERT/endedAt': Date.now(),
+      'localpoker/rooms/ADVERT/endedReason': 'Host left the room.',
+      'localpoker/publicRooms/ADVERT': null,
+      'localpoker/roomInvites/player/ADVERT': null,
+    }));
+    logOk('a host leaving ends the room and withdraws its listing and invites');
+
+    const stillListed = await get(ref(hostDb, 'localpoker/publicRooms/ADVERT'));
+    if (stillListed.exists()) throw new Error('ended room is still advertised publicly');
+    logOk('so the closed room is no longer offered under Join Room');
+
     // Losing a connection is not leaving, so a dropped host marks the room
     // rather than killing it, and the room only becomes disposable once
     // nobody has come back for ten minutes.

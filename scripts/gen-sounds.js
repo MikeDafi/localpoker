@@ -70,6 +70,20 @@ writeWav('select.wav', seq(tone(520, 0.05, { type: 'tri', vol: 0.35, decay: 2 })
 writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }), tone(300, 0.05, { type: 'tri', vol: 0.2, decay: 3 })));
 writeWav('chip.wav', mix(tone(2000, 0.05, { type: 'noise', vol: 0.15, decay: 4 }), tone(900, 0.06, { type: 'square', vol: 0.12, decay: 3 })));
 writeWav('check.wav', tone(400, 0.09, { type: 'tri', vol: 0.35, decay: 2 }));
+/*
+ * Raising needs its own cue.
+ *
+ * Betting, calling and raising all played chip.wav, so the table sounded the
+ * same whether somebody called 20 or shoved. This is three chips pushed out
+ * instead of one, each higher than the last. Fold is a single tone falling
+ * away; raise is a rising run of hits, which is the difference you can hear
+ * across a room rather than one you have to listen for.
+ */
+writeWav('raise.wav', seq(
+  mix(tone(2200, 0.04, { type: 'noise', vol: 0.14, decay: 5 }), tone(640, 0.05, { type: 'square', vol: 0.10, decay: 4 })),
+  mix(tone(2800, 0.04, { type: 'noise', vol: 0.15, decay: 5 }), tone(860, 0.05, { type: 'square', vol: 0.11, decay: 4 })),
+  mix(tone(3400, 0.05, { type: 'noise', vol: 0.17, decay: 4 }), tone(1180, 0.09, { type: 'square', vol: 0.13, decay: 2.5, sweep: 700 })),
+));
 writeWav('fold.wav', tone(240, 0.16, { type: 'tri', vol: 0.35, decay: 1.5, sweep: -300 }));
 writeWav('turn.wav', seq(tone(880, 0.09, { type: 'sine', vol: 0.3, decay: 2 }), tone(1180, 0.09, { type: 'sine', vol: 0.3, decay: 2 })));
 // Someone else to act. Deliberately the inverse shape of `turn`: two notes

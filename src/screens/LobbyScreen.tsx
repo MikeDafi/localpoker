@@ -131,7 +131,23 @@ export function LobbyScreen({ navigation, route }: Props) {
           // state and can go straight through.
           if (!host || getCachedHostGame(roomCode)) goToTable(r);
         } else if (r?.status === 'ended') {
-          setStatus('Room ended because the host disconnected or left.');
+          /*
+           * The host left, so there is no table to wait at.
+           *
+           * This used to set a line of text and leave everybody sitting in a
+           * lobby that could never start, watching a roster of players who
+           * were also stuck. Nothing about that room can progress without its
+           * host, so take people out of it instead of telling them about it.
+           * Guests only: the host is already on their way somewhere.
+           */
+          if (host || navigatedRef.current) return;
+          navigatedRef.current = true;
+          setStatus(r.endedReason || 'The host left, so this room has closed.');
+          Alert.alert(
+            'Room closed',
+            r.endedReason || 'The host left before the game started.',
+            [{ text: 'Back to menu', onPress: () => navigation.replace('Home') }],
+          );
         }
       });
       if (cancelled) { u(); return; }
