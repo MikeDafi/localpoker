@@ -118,9 +118,9 @@ In short, this route means incorporating a company. That may still be the right
 answer, but it is a real decision rather than paperwork, which is exactly why
 Option 0 is worth doing first.
 
-**Option 2, stay on TestFlight.** Beta review approved build 26 and external
-testing is unaffected by this rejection, so up to 10,000 testers can use the
-app via the public link today. That is a real distribution channel for a
+**Option 2, stay on TestFlight.** External testing is unaffected by this
+rejection, and build 27 is live, so up to 10,000 testers can use the app via
+the public link today. That is a real distribution channel for a
 play-money game among friends, though builds expire after 90 days and it is
 not a substitute for the App Store.
 

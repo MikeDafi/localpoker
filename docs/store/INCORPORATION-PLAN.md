@@ -154,10 +154,10 @@ early and it is what the current testers depend on.
 
 ## While this is in progress
 
-TestFlight is unaffected by the rejection. Build 26 is approved and live for up
-to 10,000 testers through the public link, so the game can keep being played
-and tested throughout. Builds expire 90 days after upload, so a fresh build
-will be needed if this runs long.
+TestFlight is unaffected by the rejection. Build 27 is live for up to 10,000
+testers through the public link, so the game can keep being played and tested
+throughout. Builds expire 90 days after upload, so a fresh build will be needed
+if this runs long.
 
 ---
 

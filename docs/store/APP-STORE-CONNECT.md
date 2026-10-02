@@ -15,12 +15,12 @@ gate no longer applies.
 |---|---|---|
 | Linked to an EAS project? | **Yes** | `@mike0264/localpoker`, project `0cb2ee24-24de-4ecb-b7ca-8f7a3f896373`. Done, it is free and needs no Apple account. |
 | Builds natively outside Expo Go? | **Yes** | Release configuration, simulator, unsigned. Verified reaching the age gate from a fresh install. |
-| Has a release binary been built? | **Yes** | EAS Build, production profile, signed. Build `1.0.0 (3)`, built and uploaded by CI. |
+| Has a release binary been built? | **Yes** | EAS Build, production profile, signed. Latest is `1.0.0 (27)`, built and uploaded by CI. |
 | Developer Program membership? | **Active** | Team `Michael Askndafi - D7VUBSSP2F`, with four other apps already in App Store Connect. |
 | Bundle ID registered? | **Yes** | `com.mike0264.localpoker`, registered under that team. |
 | App record in App Store Connect? | **Yes** | `LocalPoker: Poker with Friends`, ASC app ID `6815726621`, iOS 1.0 in *Prepare for Submission*. |
-| On TestFlight? | **Yes** | `1.0.0 (3)`, status *Complete*, internal *ready for beta testing*. |
-| Is any Apple ID a TestFlight tester? | **Not yet** | Testers are per app and no internal group exists yet, so nobody can install it. One click, see `EAS-SUBMIT.md`. |
+| On TestFlight? | **Yes** | `1.0.0 (27)`, processed and *in beta testing* for both the internal group and the public link. |
+| Is any Apple ID a TestFlight tester? | **Yes** | One internal tester, plus an external *Public Beta* group behind a public link. |
 | Distribution certificate present? | **Yes** | The account's existing distribution certificate is reused, with a provisioning profile created for this bundle ID. |
 
 Re-check any time with:
