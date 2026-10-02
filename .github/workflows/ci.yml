@@ -93,7 +93,22 @@ jobs:
     name: Build and submit iOS (TestFlight)
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'workflow_dispatch' && inputs.ios_release
+    # Never on a push or a pull request, and never on a dispatch that did not
+    # ask for it. The two halves matter for different reasons.
+    #
+    # `workflow_dispatch` keeps pushes out. A push run does still *list* this
+    # job, but it resolves to "skipped" and starts nothing.
+    #
+    # The explicit comparison keeps a mistyped dispatch out. A boolean input
+    # arrives as a real boolean from the web UI and from `gh workflow run`,
+    # but the REST API will pass whatever it is given, and GitHub expressions
+    # treat any non-empty string as true. Left as a bare truthiness test,
+    # `"ios_release": "false"` over the API would spend EAS Build minutes and
+    # push a real binary to App Store Connect. Both spellings of yes are
+    # accepted; everything else, including the string "false", is a no.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && (inputs.ios_release == true || inputs.ios_release == 'true')
     # 60 minutes was not enough and cancelled a submit that was still queued.
     # Two EAS queues run back to back here, build then submit, and on the free
     # tier either can sit for a long time before it starts. The timeout is a
