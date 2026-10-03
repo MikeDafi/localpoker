@@ -1,29 +1,40 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, fonts } from '../theme/theme';
+import { useApp } from '../state/AppContext';
+import { resolveChips, type ChipPalette } from '../game/cosmetics';
 
-const DENOMS: { value: number; color: string; edge: string }[] = [
-  { value: 1000, color: colors.chipGold, edge: '#B8860B' },
-  { value: 500, color: colors.chipPurple, edge: '#5B3AA0' },
-  { value: 100, color: colors.chipBlack, edge: '#000' },
-  { value: 25, color: colors.chipGreen, edge: '#186B3D' },
-  { value: 5, color: colors.chipRed, edge: '#A82C22' },
-  { value: 1, color: colors.chipWhite, edge: '#B8C4CC' },
+/**
+ * Denominations, coloured by whichever chip set the table is using.
+ *
+ * The values are fixed because they are the game; only the colours come from
+ * the palette, so a bought chip set changes what the chips look like and
+ * never what they are worth.
+ */
+const DENOM_VALUES: { value: number; slot: keyof ChipPalette }[] = [
+  { value: 1000, slot: 'gold' },
+  { value: 500, slot: 'purple' },
+  { value: 100, slot: 'black' },
+  { value: 25, slot: 'green' },
+  { value: 5, slot: 'red' },
+  { value: 1, slot: 'white' },
 ];
 
 /** Break an amount into chip counts per denomination (largest first). */
-function breakdown(amount: number): { color: string; edge: string; count: number }[] {
+function breakdown(amount: number, palette: ChipPalette): { color: string; edge: string; count: number }[] {
   let remaining = Math.max(0, Math.floor(amount));
   const out: { color: string; edge: string; count: number }[] = [];
-  for (const d of DENOMS) {
+  for (const d of DENOM_VALUES) {
+    const [color, edge] = palette[d.slot];
     if (remaining >= d.value) {
       const count = Math.min(5, Math.floor(remaining / d.value));
-      out.push({ color: d.color, edge: d.edge, count });
+      out.push({ color, edge, count });
       remaining -= count * d.value;
     }
     if (out.length >= 4) break;
   }
-  return out.length ? out : [{ color: colors.chipWhite, edge: '#B8C4CC', count: 1 }];
+  const [color, edge] = palette.white;
+  return out.length ? out : [{ color, edge, count: 1 }];
 }
 
 function Chip({ color, edge, size = 22 }: { color: string; edge: string; size?: number }) {
@@ -47,7 +58,20 @@ export interface ChipStackProps {
 }
 
 export function ChipStack({ amount, size = 26, showLabel = true, compact }: ChipStackProps) {
-  const stacks = breakdown(amount);
+  /*
+   * Read from the table's settings rather than taken as a prop.
+   *
+   * Chips are drawn in a dozen places: pods, bet pills, the pot, every chip
+   * in flight. Threading a palette through all of them would mean a dozen
+   * chances for one of them to be missed and keep rendering the old colours.
+   */
+  const { settings, cosmetics } = useApp();
+  const palette = resolveChips({
+    setting: settings.chipStyle,
+    equippedId: cosmetics.equippedByCategory.chips,
+    owned: cosmetics.ownedCosmeticIds,
+  });
+  const stacks = breakdown(amount, palette);
   return (
     <View style={styles.row}>
       {!compact &&

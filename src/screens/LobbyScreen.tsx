@@ -20,6 +20,7 @@ import {
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson } from '../game/settings';
+import { pinCosmetics } from '../game/cosmetics';
 import type { GameSettings } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
@@ -36,7 +37,7 @@ const parseRoomPal = (palJson?: string): PalConfig | undefined => {
 
 export function LobbyScreen({ navigation, route }: Props) {
   const { roomCode, host, settings: hostSettings } = route.params;
-  const { profile, friends } = useApp();
+  const { profile, friends, cosmetics } = useApp();
   const online = isFirebaseConfigured();
 
   const me: RoomPlayer = useMemo(() => ({
@@ -102,7 +103,7 @@ export function LobbyScreen({ navigation, route }: Props) {
     let cancelled = false;
     (async () => {
       const res = host
-        ? await createRoom(roomCode, me, roomSettingsJson(hostSettings ?? DEFAULT_GAME_SETTINGS), {
+        ? await createRoom(roomCode, me, roomSettingsJson(pinCosmetics(hostSettings ?? DEFAULT_GAME_SETTINGS, cosmetics)), {
             visibility: (hostSettings ?? DEFAULT_GAME_SETTINGS).roomVisibility,
             // Friends are told about the table whether it is public or private;
             // private means hidden from strangers, not from them.

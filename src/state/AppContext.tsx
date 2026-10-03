@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
 import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
+import { emptyCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
 import type { ObservedCounters } from '../game/observedStats';
 import {
   Stats, HandResult, DEFAULT_STATS, applyHandResult, derivedStats as computeDerived, mergeStats,
@@ -157,6 +158,16 @@ const SAVED_GAME_KEY = '@pokerpals/savedgame';
 const AGE_KEY = '@pokerpals/ageVerified';
 const BLOCKS_KEY = '@pokerpals/blocks';
 const OPPONENT_HISTORY_KEY = '@pokerpals/opponentHistory';
+/*
+ * Written by the Store, read by the table.
+ *
+ * It lives here rather than inside StoreScreen because a bought felt has to
+ * reach the felt, and a screen that is not mounted cannot tell anyone what is
+ * equipped. The shape is read leniently on purpose: `resolveFelt` and
+ * `resolveChips` already refuse anything unknown or unowned, so a stale id
+ * from an older build is handled where it matters rather than guarded twice.
+ */
+const COSMETICS_KEY = '@localpoker/cosmetics';
 
 /**
  * Which account the keys above currently hold. See `accountBundle.ts` for why
@@ -257,6 +268,9 @@ interface AppContextValue {
   isBlocked: (uid: string) => boolean;
   /** What opponents have done at tables before this one. */
   opponentHistory: OpponentHistory;
+  /** What has been bought in the Store, and what is currently worn. */
+  cosmetics: CosmeticsState;
+  setCosmetics: (next: CosmeticsState | ((prev: CosmeticsState) => CosmeticsState)) => void;
   /** Fold a finished table's observations into that long view. */
   absorbObservedTable: (tableCounters: Record<string, ObservedCounters>) => void;
   updateSettings: (patch: Partial<GameSettings>) => void;
@@ -282,12 +296,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [p, s, a, f, st, g, av, b, acct, oh] = await Promise.all([
+        const [p, s, a, f, st, g, av, b, acct, oh, cos] = await Promise.all([
           AsyncStorage.getItem(PROFILE_KEY), AsyncStorage.getItem(STATS_KEY),
           AsyncStorage.getItem(AUTH_KEY), AsyncStorage.getItem(FRIENDS_KEY),
           AsyncStorage.getItem(SETTINGS_KEY), AsyncStorage.getItem(SAVED_GAME_KEY),
           AsyncStorage.getItem(AGE_KEY), AsyncStorage.getItem(BLOCKS_KEY),
           AsyncStorage.getItem(ACTIVE_ACCOUNT_KEY), AsyncStorage.getItem(OPPONENT_HISTORY_KEY),
+          AsyncStorage.getItem(COSMETICS_KEY),
         ]);
         activeAccount.current = acct || GUEST_ACCOUNT;
         if (p) { const parsed = JSON.parse(p); setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
@@ -310,6 +325,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (av === 'true') setAgeVerified(true);
         if (b) setBlockedUsers(JSON.parse(b));
         if (oh) setOpponentHistory(JSON.parse(oh));
+        if (cos) setCosmeticsState(readCosmetics(cos));
       } catch (error) {
         captureError(error, { tags: { area: 'async-storage', operation: 'hydrate-app-state' } });
       }
@@ -895,6 +911,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    * of them, so the long view needs somewhere of its own to live.
    */
   const [opponentHistory, setOpponentHistory] = useState<OpponentHistory>({});
+  const [cosmetics, setCosmeticsState] = useState<CosmeticsState>(emptyCosmetics);
+
+  // Takes an updater as well as a value, because buying and equipping both
+  // read the current closet to produce the next one.
+  const setCosmetics = useCallback((next: CosmeticsState | ((prev: CosmeticsState) => CosmeticsState)) => {
+    setCosmeticsState((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      persist(COSMETICS_KEY, resolved);
+      return resolved;
+    });
+  }, [persist]);
 
   const absorbObservedTable = useCallback((tableCounters: Record<string, ObservedCounters>) => {
     setOpponentHistory((prev) => {
@@ -906,9 +933,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [persist]);
 
   const value = useMemo(() => ({
-    ready, auth, ageVerified, verifyAge, profile, stats, friends: friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, opponentHistory,
+    ready, auth, ageVerified, verifyAge, profile, stats, friends: friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, opponentHistory, cosmetics, setCosmetics,
     login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, absorbObservedTable,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, opponentHistory, absorbObservedTable]);
+  }), [ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, opponentHistory, absorbObservedTable, cosmetics, setCosmetics]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { showAlert } from '../components/alertBus';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -59,7 +58,6 @@ type CosmeticsState = {
   equippedByCategory: Partial<Record<CosmeticCategoryId, string>>;
 };
 
-const COSMETICS_STORAGE_KEY = '@localpoker/cosmetics';
 
 const COSMETIC_CATEGORIES: CosmeticCategory[] = [
   {
@@ -348,10 +346,15 @@ function formatCoins(amount: number): string {
 }
 
 export function StoreScreen({ navigation }: Props) {
-  const { profile, addCoins } = useApp();
+  /*
+   * Owned and equipped live in AppContext, not here.
+   *
+   * A bought felt has to reach the felt, and a screen that is not mounted
+   * cannot tell the table what is equipped. The Store is now just the thing
+   * that edits it.
+   */
+  const { profile, addCoins, cosmetics, setCosmetics, ready } = useApp();
   const { width } = useWindowDimensions();
-  const [cosmetics, setCosmetics] = useState<CosmeticsState>(() => makeDefaultCosmeticsState());
-  const [hydrated, setHydrated] = useState(false);
   const [activeCategory, setActiveCategory] = useState<CosmeticCategoryId>('outfits');
 
   const isWide = width >= 680;
@@ -361,42 +364,6 @@ export function StoreScreen({ navigation }: Props) {
     () => COSMETIC_CATEGORIES.find((category) => category.id === activeCategory) ?? COSMETIC_CATEGORIES[0],
     [activeCategory],
   );
-
-  useEffect(() => {
-    let mounted = true;
-
-    void (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(COSMETICS_STORAGE_KEY);
-        if (mounted) setCosmetics(parseCosmeticsState(raw));
-      } catch (error) {
-        captureError(error, {
-          tags: { area: 'async-storage', operation: 'hydrate-cosmetics', key: COSMETICS_STORAGE_KEY },
-        });
-        if (mounted) setCosmetics(makeDefaultCosmeticsState());
-      } finally {
-        if (mounted) setHydrated(true);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-
-    void (async () => {
-      try {
-        await AsyncStorage.setItem(COSMETICS_STORAGE_KEY, JSON.stringify(cosmetics));
-      } catch (error) {
-        captureError(error, {
-          tags: { area: 'async-storage', operation: 'persist-cosmetics', key: COSMETICS_STORAGE_KEY },
-        });
-      }
-    })();
-  }, [cosmetics, hydrated]);
 
   const equipCosmetic = useCallback((item: CosmeticItem) => {
     setCosmetics((current) => {
@@ -445,7 +412,7 @@ export function StoreScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(360)}>
-          <BalanceBanner coins={profile.coins} hydrated={hydrated} />
+          <BalanceBanner coins={profile.coins} hydrated={ready} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(90).duration(360)}>

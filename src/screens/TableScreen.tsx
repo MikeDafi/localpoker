@@ -27,6 +27,7 @@ import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings 
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { chipSoundsFor, chipsCommitted } from '../game/betSound';
+import { resolveFelt } from '../game/cosmetics';
 import { captureError } from '../services/telemetry';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
@@ -105,7 +106,7 @@ interface RenderedChipFlight {
 
 export function TableScreen({ navigation, route }: Props) {
   const app = useApp();
-  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked, opponentHistory, absorbObservedTable } = app;
+  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked, opponentHistory, absorbObservedTable, cosmetics } = app;
   const { width, height: winH } = useWindowDimensions();
 
   /**
@@ -1180,6 +1181,20 @@ export function TableScreen({ navigation, route }: Props) {
    * standing between the board and the felt it has room for.
    */
   const cardSize = width < 380 ? 68 : 76;
+
+  /*
+   * The cloth this table is played on.
+   *
+   * Read from the game's settings rather than from the player, so an online
+   * room looks the same to everyone sitting at it: the host's settings travel
+   * with the room, and a felt is a property of the table. Falls back to the
+   * classic green for anything unowned or unrecognised.
+   */
+  const feltPalette = resolveFelt({
+    setting: settings.feltStyle,
+    equippedId: cosmetics.equippedByCategory.tables,
+    owned: cosmetics.ownedCosmeticIds,
+  });
   const lowChips = human.chips < settings.bigBlind * 5;
 
   /*
@@ -1699,10 +1714,10 @@ export function TableScreen({ navigation, route }: Props) {
       <View style={[styles.tableArea, { height: stageH }]} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
         {/* felt oval: matte surface, top-lit rail edge, inner shadow at the rail */}
         <LinearGradient
-          colors={[colors.feltLight, colors.felt, colors.feltDeep]}
+          colors={[feltPalette.light, feltPalette.base, feltPalette.deep]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={[styles.feltOval, shadows.raised]}
+          style={[styles.feltOval, shadows.raised, { borderColor: feltPalette.rail }]}
           pointerEvents="none"
         >
           {/* woven cloth + suit watermark (CC0 / MIT sources).
@@ -1710,9 +1725,9 @@ export function TableScreen({ navigation, route }: Props) {
               border sits inside that, so the cloth fills what's left (see
               `feltInnerW`). */}
           <FeltSurface width={clothOval.width} height={clothOval.height} />
-          <View style={styles.railHighlight} pointerEvents="none" />
+          <View style={[styles.railHighlight, { backgroundColor: feltPalette.railEdge }]} pointerEvents="none" />
           <View style={styles.feltInner} pointerEvents="none" />
-          <View style={styles.feltGlow} pointerEvents="none" />
+          <View style={[styles.feltGlow, { backgroundColor: feltPalette.light }]} pointerEvents="none" />
         </LinearGradient>
 
         {/* Community cards + pot, centred in the lane between the seat arc and
