@@ -12,7 +12,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { ClipPath, Defs, G, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { CardFaceContent, PlayingCard } from './PlayingCard';
-import { cardBackGeometry, cardBackTheme, type CardBackVariant } from './CardBack';
+import {
+  CardBackLattice,
+  CardBackRosette,
+  cardBackGeometry,
+  cardBackTheme,
+  type CardBackVariant,
+} from './CardBack';
 import { motion, easings, colors, radii } from '../theme/theme';
 import type { Suit } from '../game/cardFace';
 import type { Affine } from '../game/peelFold';
@@ -414,6 +420,11 @@ function PeekCardInner({
               <ClipPath id={`${gradId}-flat`}>
                 <AnimatedPath animatedProps={flatClipProps} />
               </ClipPath>
+              <CardBackLattice
+                id={`${gradId}-lattice`}
+                size={size}
+                color={backTheme.line}
+              />
             </Defs>
 
             {/* The white board the design is printed on. Without it a
@@ -446,6 +457,13 @@ function PeekCardInner({
               strokeWidth={back.rim}
               strokeLinejoin="round"
             />
+            {/* The engraving, cut by the same crease as the colour under it.
+                Reusing `flatProps` rather than clipping means the lattice can
+                never disagree with the fold about where the paper ends. */}
+            <AnimatedPath animatedProps={flatProps} fill={`url(#${gradId}-lattice)`} />
+            <G clipPath={`url(#${gradId}-flat)`}>
+              <CardBackRosette size={size} color={backTheme.line} />
+            </G>
             <AnimatedPath
               animatedProps={panelProps}
               fill="none"

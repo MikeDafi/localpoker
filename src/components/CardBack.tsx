@@ -1,5 +1,17 @@
 import React, { useId } from 'react';
-import Svg, { Circle, Defs, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  G,
+  LinearGradient,
+  Line,
+  Path,
+  Pattern,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
+import { latticeTile, rosetteRings } from '../game/cardBackPattern';
 import { colors } from '../theme/theme';
 
 /**
@@ -68,6 +80,7 @@ export const cardBackColors = {
   emblemFill: 'rgba(255,255,255,0.14)',
   emblemStroke: 'rgba(255,255,255,0.45)',
   mark: 'rgba(255,255,255,0.9)',
+  line: 'rgba(255,255,255,0.4)',
 };
 
 /** The card back designs offered in Settings. */
@@ -81,6 +94,8 @@ export interface CardBackTheme {
   emblemFill: string;
   emblemStroke: string;
   mark: string;
+  /** The engraved lattice and rosette printed across the card. */
+  line: string;
   /** The glyph in the middle, so the designs differ in shape and not just hue. */
   glyph: string;
 }
@@ -113,6 +128,7 @@ export const CARD_BACK_THEMES: Record<CardBackVariant, CardBackTheme> = {
     emblemFill: 'rgba(255,255,255,0.10)',
     emblemStroke: 'rgba(255,255,255,0.38)',
     mark: 'rgba(255,255,255,0.82)',
+    line: 'rgba(255,255,255,0.3)',
     glyph: '♣',
   },
   holo: {
@@ -122,6 +138,7 @@ export const CARD_BACK_THEMES: Record<CardBackVariant, CardBackTheme> = {
     emblemFill: 'rgba(255,255,255,0.2)',
     emblemStroke: 'rgba(255,255,255,0.6)',
     mark: 'rgba(255,255,255,0.95)',
+    line: 'rgba(255,255,255,0.5)',
     glyph: '◆',
   },
   retro: {
@@ -131,6 +148,7 @@ export const CARD_BACK_THEMES: Record<CardBackVariant, CardBackTheme> = {
     emblemFill: 'rgba(92,58,20,0.12)',
     emblemStroke: 'rgba(92,58,20,0.42)',
     mark: 'rgba(72,44,14,0.85)',
+    line: 'rgba(92,58,20,0.34)',
     glyph: '♦',
   },
 };
@@ -148,6 +166,78 @@ export interface CardBackProps {
 }
 
 /**
+ * The lattice, as a tiling pattern rather than as loose lines.
+ *
+ * Drawn line by line this is around thirty nodes per card, and a full table is
+ * seventeen face-down cards. As a `<Pattern>` it is one definition that the
+ * renderer repeats, so the cost does not grow with the number of cards.
+ *
+ * Belongs inside a `<Defs>`.
+ */
+export function CardBackLattice({ id, size, color }: { id: string; size: number; color: string }) {
+  const t = latticeTile(size);
+  return (
+    <Pattern
+      id={id}
+      x={0}
+      y={0}
+      width={t.pitch}
+      height={t.pitch}
+      patternUnits="userSpaceOnUse"
+    >
+      {t.secondary.map((l, i) => (
+        <Line
+          key={`s${i}`}
+          x1={l.x1}
+          y1={l.y1}
+          x2={l.x2}
+          y2={l.y2}
+          stroke={color}
+          strokeWidth={t.secondaryStroke}
+          opacity={0.55}
+        />
+      ))}
+      {t.primary.map((l, i) => (
+        <Line
+          key={`p${i}`}
+          x1={l.x1}
+          y1={l.y1}
+          x2={l.x2}
+          y2={l.y2}
+          stroke={color}
+          strokeWidth={t.primaryStroke}
+        />
+      ))}
+      <Circle cx={t.pitch / 2} cy={t.pitch / 2} r={t.dot} fill={color} opacity={0.7} />
+    </Pattern>
+  );
+}
+
+/**
+ * The engraved medallion behind the suit disc.
+ *
+ * Sized to the emblem so the disc always covers the rosette's busiest part and
+ * the glyph keeps a clean field to sit on.
+ */
+export function CardBackRosette({ size, color }: { size: number; color: string }) {
+  const g = cardBackGeometry(size);
+  return (
+    <G>
+      {rosetteRings(g.emblem.cx, g.emblem.cy, g.emblem.r * 1.55).map((ring, i) => (
+        <Path
+          key={i}
+          d={ring.d}
+          fill="none"
+          stroke={color}
+          strokeWidth={ring.stroke}
+          opacity={ring.opacity}
+        />
+      ))}
+    </G>
+  );
+}
+
+/**
  * The back of a playing card.
  *
  * Drawn as SVG rather than nested views so it is the same artwork the peel
@@ -158,7 +248,9 @@ export function CardBack({ size, variant }: CardBackProps) {
   const g = cardBackGeometry(size);
   const theme = cardBackTheme(variant);
   // Gradient ids share a namespace, so each card needs its own.
-  const gradId = `cardBack-${useId()}`;
+  const uid = useId();
+  const gradId = `cardBack-${uid}`;
+  const latticeId = `cardBackLattice-${uid}`;
   return (
     <Svg width={size} height={g.h}>
       <Defs>
@@ -167,6 +259,7 @@ export function CardBack({ size, variant }: CardBackProps) {
           <Stop offset="0.5" stopColor={theme.gradient[1]} />
           <Stop offset="1" stopColor={theme.gradient[2]} />
         </LinearGradient>
+        <CardBackLattice id={latticeId} size={size} color={theme.line} />
       </Defs>
       <Rect
         x={0.5}
@@ -188,6 +281,17 @@ export function CardBack({ size, variant }: CardBackProps) {
         stroke={theme.rim}
         strokeWidth={Math.min(g.rim, g.stock)}
       />
+      {/* The engraving, laid over the colour and inside the same printed area
+          so it stops exactly where the white stock begins. */}
+      <Rect
+        x={g.print.x}
+        y={g.print.y}
+        width={g.print.w}
+        height={g.print.h}
+        rx={g.print.radius}
+        fill={`url(#${latticeId})`}
+      />
+      <CardBackRosette size={size} color={theme.line} />
       <Rect
         x={g.panel.x}
         y={g.panel.y}

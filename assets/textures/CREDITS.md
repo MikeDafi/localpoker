@@ -160,3 +160,18 @@ test asserted that every rank was symmetric about its centre and was simply
 wrong about how a seven is printed.
 
 CC0 imposes no attribution requirement; credited here so the asset can be traced.
+
+## Card backs
+
+Nothing to credit, deliberately.
+
+The backs in `src/game/cardBackPattern.ts` are generated from geometry: a
+seamless diagonal lattice and a guilloche rosette, both plain trigonometry.
+No artwork was traced, downloaded or shipped.
+
+This was a decision, not an accident. The obvious reference is the Bicycle
+Rider Back, which is **registered trade dress owned by the US Playing Card
+Company**, and the stock images of it are licensed, not free. Several decks on
+Wikimedia are CC0 for their *faces* only and have no back design at all.
+Generating the pattern sidesteps all of that, costs nothing at any resolution,
+and means a new back is a palette rather than an asset.
