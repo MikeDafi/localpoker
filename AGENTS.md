@@ -77,8 +77,29 @@ measure and render; it should not decide.
 ## Store state
 
 1.0.0 was **rejected** under guideline 2.3.6 and has not shipped. TestFlight is
-unaffected: build 27 is live for internal testers and behind a public link.
+unaffected: build 31 is live for internal testers and behind a public link.
 `docs/store/SUBMISSION-CHECKLIST.md` has the open items.
+
+## Cosmetics
+
+Anything the in-app store sells is **data keyed by the store item id**, in
+`src/game/cosmetics.ts`. Felts, chip sets and card backs all work this way, and
+each has a `resolve*` that settles the table setting over the equipped item
+over the classic default, refusing anything unowned.
+
+Two rules, both learned the hard way, and both now locked by tests:
+
+- **An item on sale with no palette is a bug, not a gap.** It takes the coins,
+  shows the tick, and changes nothing. This shipped twice, once for felts and
+  chip sets and again for card backs.
+- **`equipped` is an instruction, not a thing.** Publish it to a room and every
+  guest follows it into their own closet. `pinCosmetics` settles it into a real
+  id before a room is published, which is what makes a table look the same to
+  everyone sitting at it.
+
+A store preview must render the real component rather than an impression of
+one. The card back preview was a gradient with two plain views standing in for
+the pattern, so the thing on sale and the thing dealt were different pictures.
 
 ## Do not
 
