@@ -49,7 +49,7 @@ export interface GameSettings {
   mixedDifficulty: boolean;
 
   // Table appearance
-  cardBack: 'blue' | 'red' | 'black' | 'holo' | 'retro';
+  cardBack: string;
   /**
    * The felt and the chips, as properties of the table rather than of the
    * player looking at it. 'equipped' follows whatever is worn in the Store,
@@ -107,7 +107,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   botSpeed: 'normal',
   mixedDifficulty: false,
 
-  cardBack: 'blue',
+  cardBack: 'equipped',
   feltStyle: 'equipped',
   chipStyle: 'equipped',
   cardFace: 'classic',
@@ -188,7 +188,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'appearance', title: 'Appearance', icon: '🎨',
     fields: [
-      { key: 'cardBack', label: 'Card Back', type: 'select', options: [{ value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }] },
+      { key: 'cardBack', label: 'Card Back', type: 'select', help: 'The back printed on every card at this table. Equipped follows the Store; anything you own can be pinned instead, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'equipped', label: 'Equipped' }, { value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }, { value: 'card-sunrise', label: 'Sunrise' }, { value: 'card-nebula', label: 'Neon Nebula' }, { value: 'card-royal-holo', label: 'Royal Holo' }, { value: 'card-lucky-koi', label: 'Lucky Koi' }, { value: 'card-midnight', label: 'Midnight Matrix' }] },
       { key: 'feltStyle', label: 'Felt', type: 'select', help: 'The cloth this table is played on. Equipped follows the Store; anything you own can be pinned to the table instead, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'equipped', label: 'Equipped' }, { value: 'classic', label: 'Classic' }, { value: 'table-emerald', label: 'Emerald' }, { value: 'table-miami', label: 'Miami' }, { value: 'table-velvet', label: 'Velvet' }, { value: 'table-sakura', label: 'Sakura' }, { value: 'table-lunar', label: 'Lunar' }] },
       { key: 'chipStyle', label: 'Chips', type: 'select', help: 'The chip set used for every bet at this table.', options: [{ value: 'equipped', label: 'Equipped' }, { value: 'classic', label: 'Classic' }, { value: 'chips-candy', label: 'Candy' }, { value: 'chips-obsidian', label: 'Obsidian' }, { value: 'chips-circuit', label: 'Circuit' }, { value: 'chips-diamond', label: 'Diamond' }, { value: 'chips-golden-tiki', label: 'Golden Tiki' }] },
       { key: 'showAvatarNames', label: 'Show Names', type: 'toggle' },

@@ -12,6 +12,11 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 import { latticeTile, rosetteRings } from '../game/cardBackPattern';
+import {
+  CARD_BACK_PALETTES,
+  CLASSIC_CARD_BACK,
+  type CardBackPalette,
+} from '../game/cosmetics';
 import { colors } from '../theme/theme';
 
 /**
@@ -74,89 +79,17 @@ export function cardBackGeometry(size: number) {
   };
 }
 
-export const cardBackColors = {
-  rim: 'rgba(255,255,255,0.5)',
-  panel: 'rgba(255,255,255,0.4)',
-  emblemFill: 'rgba(255,255,255,0.14)',
-  emblemStroke: 'rgba(255,255,255,0.45)',
-  mark: 'rgba(255,255,255,0.9)',
-  line: 'rgba(255,255,255,0.4)',
-};
+/** The card back designs, by id: the five built in and the five the store sells. */
+export type CardBackVariant = string;
 
-/** The card back designs offered in Settings. */
-export type CardBackVariant = 'blue' | 'red' | 'black' | 'holo' | 'retro';
+export type CardBackTheme = CardBackPalette;
 
-export interface CardBackTheme {
-  /** Gradient run across the card: top-left, middle, bottom-right. */
-  gradient: readonly [string, string, string];
-  rim: string;
-  panel: string;
-  emblemFill: string;
-  emblemStroke: string;
-  mark: string;
-  /** The engraved lattice and rosette printed across the card. */
-  line: string;
-  /** The glyph in the middle, so the designs differ in shape and not just hue. */
-  glyph: string;
-}
+export const CARD_BACK_THEMES = CARD_BACK_PALETTES;
 
-/**
- * Every back is the same artwork in a different palette.
- *
- * Keeping one geometry and swapping only colours means a new design cannot
- * break the peel, which cuts into this exact shape, and guarantees all five
- * read equally well at an 18pt opponent card.
- *
- * `retro` is the one light design, so it carries ink-coloured accents instead
- * of the white the dark backs use; white on cream would disappear.
- */
-export const CARD_BACK_THEMES: Record<CardBackVariant, CardBackTheme> = {
-  blue: {
-    gradient: [colors.cardBackEdge, colors.cardBack, colors.cardBackDeep],
-    ...cardBackColors,
-    glyph: '♠',
-  },
-  red: {
-    gradient: ['#B4394A', '#8E1F32', '#5E0F1F'],
-    ...cardBackColors,
-    glyph: '♥',
-  },
-  black: {
-    gradient: ['#4A4F58', '#282C33', '#14171B'],
-    rim: 'rgba(255,255,255,0.42)',
-    panel: 'rgba(255,255,255,0.32)',
-    emblemFill: 'rgba(255,255,255,0.10)',
-    emblemStroke: 'rgba(255,255,255,0.38)',
-    mark: 'rgba(255,255,255,0.82)',
-    line: 'rgba(255,255,255,0.3)',
-    glyph: '♣',
-  },
-  holo: {
-    gradient: ['#6ED8D0', '#7A5CE0', '#2C1B6B'],
-    rim: 'rgba(255,255,255,0.62)',
-    panel: 'rgba(255,255,255,0.5)',
-    emblemFill: 'rgba(255,255,255,0.2)',
-    emblemStroke: 'rgba(255,255,255,0.6)',
-    mark: 'rgba(255,255,255,0.95)',
-    line: 'rgba(255,255,255,0.5)',
-    glyph: '◆',
-  },
-  retro: {
-    gradient: ['#F3DCAE', '#E0B978', '#B9844A'],
-    rim: 'rgba(92,58,20,0.45)',
-    panel: 'rgba(92,58,20,0.38)',
-    emblemFill: 'rgba(92,58,20,0.12)',
-    emblemStroke: 'rgba(92,58,20,0.42)',
-    mark: 'rgba(72,44,14,0.85)',
-    line: 'rgba(92,58,20,0.34)',
-    glyph: '♦',
-  },
-};
-
-export const DEFAULT_CARD_BACK: CardBackVariant = 'blue';
+export const DEFAULT_CARD_BACK = CLASSIC_CARD_BACK;
 
 export function cardBackTheme(variant: CardBackVariant | undefined): CardBackTheme {
-  return CARD_BACK_THEMES[variant ?? DEFAULT_CARD_BACK] ?? CARD_BACK_THEMES[DEFAULT_CARD_BACK];
+  return CARD_BACK_PALETTES[variant ?? DEFAULT_CARD_BACK] ?? CARD_BACK_PALETTES[DEFAULT_CARD_BACK]!;
 }
 
 export interface CardBackProps {

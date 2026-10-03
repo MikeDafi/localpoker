@@ -12,6 +12,7 @@ import {
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import { CardBack } from '../components/CardBack';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -636,12 +637,15 @@ function CosmeticPreview({ item }: { item: CosmeticItem }) {
   }
 
   if (item.category === 'cardBacks') {
+    /*
+     * The real card, not an impression of one. This used to be a gradient with
+     * two plain views standing in for the pattern, so the thing on sale and
+     * the thing dealt at the table were different pictures.
+     */
     return (
       <View style={styles.previewFrame}>
-        <LinearGradient colors={item.swatches} style={styles.cardBackPreview}>
-          <View style={styles.cardBackPattern} />
-          <Text style={styles.previewEmoji}>{item.emoji}</Text>
-          <View style={[styles.cardBackPattern, styles.cardBackPatternBottom]} />
+        <LinearGradient colors={item.swatches} style={styles.cardBackStage}>
+          <CardBack size={62} variant={item.id} />
         </LinearGradient>
       </View>
     );
@@ -845,29 +849,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   previewGlow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  cardBackPreview: {
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-    width: 78,
-    height: 92,
-    borderRadius: radii.md,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.8)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    ...shadows.soft,
-  },
-  cardBackPattern: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderRadius: radii.pill,
-  },
-  cardBackPatternBottom: { top: undefined, bottom: 12 },
+  cardBackStage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   tablePreview: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   tableRail: {
     width: '86%',

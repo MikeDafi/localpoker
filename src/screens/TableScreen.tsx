@@ -27,7 +27,7 @@ import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings 
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { chipSoundsFor, chipsCommitted } from '../game/betSound';
-import { resolveFelt } from '../game/cosmetics';
+import { resolveCardBack, resolveFelt } from '../game/cosmetics';
 import { captureError } from '../services/telemetry';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
@@ -1195,6 +1195,16 @@ export function TableScreen({ navigation, route }: Props) {
     equippedId: cosmetics.equippedByCategory.tables,
     owned: cosmetics.ownedCosmeticIds,
   });
+  /*
+   * Same rule for the deck. The store sold five card backs that changed
+   * nothing, because the setting only ever held one of the five built-in
+   * names and no purchase could reach it.
+   */
+  const cardBack = resolveCardBack({
+    setting: settings.cardBack,
+    equippedId: cosmetics.equippedByCategory.cardBacks,
+    owned: cosmetics.ownedCosmeticIds,
+  });
   const lowChips = human.chips < settings.bigBlind * 5;
 
   /*
@@ -1839,7 +1849,7 @@ export function TableScreen({ navigation, route }: Props) {
                 isDealer={dealerId === p.id}
                 showBet={!isShowdown}
                 showCards={(isShowdown || handsTabled) && !p.folded && remainingAtEnd > 1}
-                back={settings.cardBack}
+                back={cardBack}
                 showName={settings.showAvatarNames}
                 handOff={showdownHands.some((h) => h.playerId === p.id)}
                 avatarSize={avatarSize}
@@ -1868,7 +1878,7 @@ export function TableScreen({ navigation, route }: Props) {
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
               showBet={!isShowdown}
-              back={settings.cardBack}
+              back={cardBack}
               showName={settings.showAvatarNames}
               won={humanWon}
               lost={seatLost(human)}
@@ -1939,7 +1949,7 @@ export function TableScreen({ navigation, route }: Props) {
                 forceOpen={openAlways && reveal !== 'show'}
                 // thrown down from the middle of the felt, which sits above this row
                 fromY={-(tableH * 0.5 + 40)}
-                back={settings.cardBack}
+                back={cardBack}
                 onPeek={() => sound.play('tap')}
               />
             );

@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  CARD_BACK_PALETTES,
   CHIP_PALETTES,
+  CLASSIC_CARD_BACK,
   CLASSIC_CHIPS,
   CLASSIC_FELT,
   FELT_PALETTES,
+  resolveCardBack,
   resolveChips,
   resolveFelt,
   pinCosmetics,
@@ -135,5 +138,88 @@ describe('pinCosmetics', () => {
   it('keeps the rest of the settings untouched', () => {
     const pinned = pinCosmetics({ feltStyle: 'equipped', chipStyle: 'equipped', bigBlind: 50 } as never, closet) as { bigBlind: number };
     expect(pinned.bigBlind).toBe(50);
+  });
+});
+
+describe('card backs', () => {
+  /*
+   * The same bug as the felts, found later and in the same shape: the store
+   * sold five card backs and none of them could ever reach the table, because
+   * the setting only held the five built-in names.
+   */
+  it('has a palette for every card back the store sells', () => {
+    for (const id of [
+      'card-sunrise',
+      'card-nebula',
+      'card-royal-holo',
+      'card-lucky-koi',
+      'card-midnight',
+    ]) {
+      expect(CARD_BACK_PALETTES[id], `no card back palette for ${id}`).toBeDefined();
+    }
+  });
+
+  it('keeps the five backs the game shipped with', () => {
+    for (const id of ['blue', 'red', 'black', 'holo', 'retro']) {
+      expect(CARD_BACK_PALETTES[id], `lost built-in back ${id}`).toBeDefined();
+    }
+  });
+
+  it('gives every back a full set of ink colours and its own glyph', () => {
+    const glyphs = new Set<string>();
+    for (const [id, p] of Object.entries(CARD_BACK_PALETTES)) {
+      expect(p.gradient, `${id} gradient`).toHaveLength(3);
+      for (const slot of ['rim', 'panel', 'emblemFill', 'emblemStroke', 'mark', 'line'] as const) {
+        expect(p[slot], `${id}.${slot}`).toBeTruthy();
+      }
+      expect(p.glyph.length, `${id} glyph`).toBeGreaterThan(0);
+      glyphs.add(p.glyph);
+    }
+    // Backs that differ only in hue are hard to tell apart on a small card.
+    expect(glyphs.size).toBe(Object.keys(CARD_BACK_PALETTES).length);
+  });
+
+  it('falls back to the classic blue for anything unknown', () => {
+    expect(resolveCardBack({ setting: 'card-does-not-exist' })).toBe(CLASSIC_CARD_BACK);
+    expect(resolveCardBack({})).toBe(CLASSIC_CARD_BACK);
+  });
+
+  it('refuses a back that was never bought', () => {
+    expect(resolveCardBack({ setting: 'card-midnight', owned: [] })).toBe(CLASSIC_CARD_BACK);
+    expect(resolveCardBack({ equippedId: 'card-midnight', owned: [] })).toBe(CLASSIC_CARD_BACK);
+  });
+
+  it('uses a bought back, whether pinned or merely equipped', () => {
+    const owned = ['card-midnight'];
+    expect(resolveCardBack({ setting: 'card-midnight', owned })).toBe('card-midnight');
+    expect(resolveCardBack({ equippedId: 'card-midnight', owned })).toBe('card-midnight');
+  });
+
+  it('lets the table setting override what is equipped', () => {
+    const owned = ['card-midnight', 'card-nebula'];
+    expect(
+      resolveCardBack({ setting: 'card-nebula', equippedId: 'card-midnight', owned }),
+    ).toBe('card-nebula');
+  });
+
+  it('pins the back before a room is published, so guests see the host deck', () => {
+    // 'equipped' is an instruction to look in a closet. Published raw, every
+    // guest would follow it into their own and see a different deck.
+    const pinned = pinCosmetics(
+      { feltStyle: 'equipped', chipStyle: 'equipped', cardBack: 'equipped' },
+      {
+        ownedCosmeticIds: ['card-royal-holo'],
+        equippedByCategory: { cardBacks: 'card-royal-holo' },
+      },
+    );
+    expect(pinned.cardBack).toBe('card-royal-holo');
+  });
+
+  it('pins to the classic blue when the host owns nothing', () => {
+    const pinned = pinCosmetics(
+      { feltStyle: 'equipped', chipStyle: 'equipped', cardBack: 'equipped' },
+      { ownedCosmeticIds: [], equippedByCategory: {} },
+    );
+    expect(pinned.cardBack).toBe(CLASSIC_CARD_BACK);
   });
 });
