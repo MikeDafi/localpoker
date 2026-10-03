@@ -181,6 +181,44 @@ jobs:
               console.error("::error::Missing repository secrets: " + missing.join(", ") + ". See docs/online/ENABLING-ONLINE.md.");
               process.exit(1);
             }
+            /*
+             * Present is not the same as plausible.
+             *
+             * A secret only has to be non-empty to pass the check above, so a
+             * value of "-" sailed through and was inlined into a release
+             * bundle. Nothing failed loudly: the app treats "-" as configured,
+             * Firebase then throws on a URL it cannot parse, the throw is
+             * caught, and online play is simply dead in a build that looks
+             * fine. A Sentry DSN of "-" is worse, because it silently removes
+             * the crash reporting you would have used to find out.
+             *
+             * These patterns are deliberately loose. They are here to catch a
+             * placeholder or a truncated paste, not to validate credentials.
+             */
+            const shape = {
+              EXPO_PUBLIC_FIREBASE_API_KEY: /^[\w-]{20,}$/,
+              EXPO_PUBLIC_FIREBASE_DATABASE_URL: /^https:\/\/[\w-]+\.[\w.-]+$/,
+              EXPO_PUBLIC_FIREBASE_PROJECT_ID: /^[a-z0-9-]{4,}$/,
+              EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: /^[\w.-]+\.\w+$/,
+              EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: /^[\w.-]+\.\w+$/,
+              EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: /^\d{6,}$/,
+              EXPO_PUBLIC_FIREBASE_APP_ID: /^\d+:\d+:\w+:\w+$/,
+              EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: /\.apps\.googleusercontent\.com$/,
+              EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: /\.apps\.googleusercontent\.com$/,
+              EXPO_PUBLIC_SENTRY_DSN: /^https:\/\/\w+@[\w.-]+\/\d+$/,
+            };
+            // Report every bad one at once: finding them a build at a time,
+            // at forty minutes a build, is its own kind of outage. The value
+            // is never printed, only the name and the length.
+            const malformed = Object.entries(shape)
+              .filter(([key, re]) => process.env[key] && !re.test(process.env[key].trim()))
+              .map(([key]) => key + " (" + process.env[key].trim().length + " chars)");
+            if (malformed.length) {
+              console.error("::error::These repository secrets are set but do not look like real values: "
+                + malformed.join(", ")
+                + ". A placeholder here ships a build that installs and runs with online play silently dead.");
+              process.exit(1);
+            }
             const easJson = JSON.parse(fs.readFileSync("eas.json", "utf8"));
             const env = easJson.build.production.env ?? {};
             for (const key of required.concat(optional)) {
