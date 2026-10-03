@@ -4,6 +4,7 @@ import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown, Easing } from 're
 import { colors, fonts, radii, shadows, spacing, type, motion, easings } from '../theme/theme';
 import { sound } from '../services/sound';
 import { GIF_LIBRARY, gifUrl, gifThumbUrl } from '../services/gifs';
+import { shuffleForDay } from '../game/dailyShuffle';
 
 export type EmoteAnim = 'bounce' | 'spin' | 'pulse' | 'shake' | 'burst';
 export type Emote = { type: 'emoji' | 'text' | 'sticker' | 'gif'; value: string; anim?: EmoteAnim };
@@ -36,8 +37,12 @@ export function EmoteBar({ onEmote }: { onEmote: (emote: Emote) => void }) {
   // The whole curated pack, shown at once. Thumbnails are Giphy's tiny static
   // renditions (~6KB each) so all of them load instantly; the GIF that actually
   // gets sent is the full animated one.
+  //
+  // The order is reshuffled once a day (see `shuffleForDay`), so the ones in
+  // easy reach are not the same six forever, while the tray still holds still
+  // for as long as anyone is playing.
   const gifs = useMemo(
-    () => GIF_LIBRARY.map((g) => ({ send: gifUrl(g.id), thumb: gifThumbUrl(g.id) })),
+    () => shuffleForDay(GIF_LIBRARY).map((g) => ({ send: gifUrl(g.id), thumb: gifThumbUrl(g.id) })),
     [],
   );
 

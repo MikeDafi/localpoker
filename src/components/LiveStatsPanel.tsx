@@ -6,6 +6,7 @@ import { useApp, derivedStats } from '../state/AppContext';
 import { InfoDot, InfoNote } from './InfoDot';
 import { LIVE_STAT_KEYS, OPPONENT_STAT_KEYS, STAT_HELP, statHelpText, type StatKey } from '../game/statHelp';
 import { observedStats, emptyCounters, type ObservedTable, type ObservedCounters } from '../game/observedStats';
+import { isDurableOpponentKey } from '../game/opponentHistory';
 
 export interface LiveStatsOpponent {
   id: string;
@@ -159,31 +160,44 @@ export function LiveStatsPanel({
               if (!who) return null;
               const live = observed?.counters[who.id] ?? emptyCounters();
               const past: ObservedCounters = history[who.id] ?? emptyCounters();
-              const s = observedStats(span === 'current' ? live : past);
+              /*
+               * A bot has no past to show.
+               *
+               * Bot ids are generated per table, so nothing is ever recorded
+               * against one (see `isDurableOpponentKey`). Offering the tab
+               * anyway gave every bot a "Previous" that was permanently
+               * empty, which reads as the app having lost the figures rather
+               * than there never having been any.
+               */
+              const hasPast = isDurableOpponentKey(who.id);
+              const shownSpan: Span = hasPast ? span : 'current';
+              const s = observedStats(shownSpan === 'current' ? live : past);
               return (
                 <View style={styles.oppCard}>
                   {/* This table or every table before it. Both are earned by
                       watching, so neither can be faked, but they answer
                       different questions: whether someone has changed gear
                       tonight, and what they are like generally. */}
-                  <View style={styles.spanTabs}>
-                    {(['current', 'previous'] as Span[]).map((sp) => (
-                      <Pressable
-                        key={sp}
-                        onPress={() => { setSpan(sp); setOpenHelp(null); }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: span === sp }}
-                        style={[styles.spanTab, span === sp && styles.spanTabActive]}
-                      >
-                        <Text style={[styles.spanText, span === sp && styles.spanTextActive]}>
-                          {sp === 'current' ? 'This game' : 'Previous'}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
+                  {hasPast && (
+                    <View style={styles.spanTabs}>
+                      {(['current', 'previous'] as Span[]).map((sp) => (
+                        <Pressable
+                          key={sp}
+                          onPress={() => { setSpan(sp); setOpenHelp(null); }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: shownSpan === sp }}
+                          style={[styles.spanTab, shownSpan === sp && styles.spanTabActive]}
+                        >
+                          <Text style={[styles.spanText, shownSpan === sp && styles.spanTextActive]}>
+                            {sp === 'current' ? 'This game' : 'Previous'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
                   <Text style={styles.oppHands}>
                     {s.handsSeen === 0
-                      ? span === 'current' ? 'No hands seen yet' : 'You have not played them before'
+                      ? shownSpan === 'current' ? 'No hands seen yet' : 'You have not played them before'
                       : `${s.handsSeen} hand${s.handsSeen === 1 ? '' : 's'} seen${s.handsSeen < 20 ? ', still a small sample' : ''}`}
                   </Text>
                   <View style={styles.oppGrid}>
