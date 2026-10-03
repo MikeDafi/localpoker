@@ -19,7 +19,6 @@ import {
   PaletteIcon,
   SoundIcon,
   SparklesIcon,
-  TargetIcon,
 } from '../components/Icons';
 import {
   SETTINGS_SCHEMA,
@@ -37,12 +36,19 @@ type SettingValue = GameSettings[keyof GameSettings];
 type SetField = <K extends keyof GameSettings>(key: K, value: GameSettings[K]) => void;
 type IconComponent = React.ComponentType<{ size?: number; color?: string }>;
 
-const APP_PREFERENCE_SECTION_IDS = ['ingame', 'sound', 'animations', 'a11y', 'appearance'] as const;
+/*
+ * What belongs to the player rather than to a game.
+ *
+ * `ingame` is deliberately absent. Live stats, auto-muck and the fold
+ * confirmation are table rules, they are already offered in Game Setup where
+ * the rest of the table is configured, and having them in two places meant
+ * two screens that could disagree about the same game.
+ */
+const APP_PREFERENCE_SECTION_IDS = ['sound', 'animations', 'a11y', 'appearance'] as const;
 type AppPreferenceSectionId = (typeof APP_PREFERENCE_SECTION_IDS)[number];
 
 const APP_PREFERENCE_SECTION_SET = new Set<string>(APP_PREFERENCE_SECTION_IDS);
 const APP_SECTION_ICONS: Record<AppPreferenceSectionId, IconComponent> = {
-  ingame: TargetIcon,
   sound: SoundIcon,
   animations: SparklesIcon,
   a11y: AccessibilityIcon,

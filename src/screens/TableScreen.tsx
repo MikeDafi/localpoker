@@ -1930,9 +1930,6 @@ export function TableScreen({ navigation, route }: Props) {
             );
           })()}
         </View>
-        {human.folded && !isShowdown && (
-          <Text style={styles.peekHint}>Folded · peel an edge or corner to look</Text>
-        )}
         <View style={styles.emoteAnchor}>
           <EmoteBar onEmote={sendEmote} />
         </View>
@@ -2152,7 +2149,6 @@ const styles = StyleSheet.create({
   // above the controls or the action bar paints over the lifted corner.
   humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.sm, minHeight: 142, zIndex: 41 },
   humanCards: { flexDirection: 'row' },
-  peekHint: { fontFamily: fonts.medium, fontSize: 11, color: colors.onDarkSoft },
   emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 6 },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },

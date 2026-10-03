@@ -108,7 +108,6 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
     return (
       <View style={styles.cWrap}>
         {emote && <EmoteBubble emote={emote} />}
-        {isCurrent && <View style={styles.turnBadge}><Text style={styles.turnBadgeText}>To act</Text></View>}
         <View style={styles.cAvatarWrap}>
         {player.holeCards.length > 0 && !dimmed && !handOff && (
           <Animated.View
@@ -172,14 +171,6 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
         {showBet && player.currentBet > 0 && !player.sittingOut && (
           <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
         )}
-        {/* On the dark felt a dimmed pod alone reads as "not rendered" rather
-            than "out of the hand", so say it explicitly. */}
-        {player.folded && (
-          /* Folding already shows: the whole pod greys out and the cards go.
-             The word was a second way of saying the same thing, and it said
-             it in the row the community cards were trying to use. */
-          null
-        )}
       </View>
     );
   }
@@ -193,8 +184,6 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
           <PlayingCard faceDown={!showCards} rank={player.holeCards[1]?.rank} suit={player.holeCards[1]?.suit as any} size={26} dimmed={dimmed} back={back} style={{ marginLeft: -10 }} />
         </View>
       )}
-
-      {isCurrent && <View style={styles.turnBadge}><Text style={styles.turnBadgeText}>To act</Text></View>}
 
       <View style={styles.podWrap}>
         {isCurrent && <Animated.View style={[styles.glow, glowStyle]} pointerEvents="none" />}
@@ -290,11 +279,6 @@ const styles = StyleSheet.create({
     position: 'absolute', top: -3, left: -3, right: -3, bottom: -3,
     borderRadius: radii.pill, borderWidth: 2, borderColor: colors.blue,
   },
-  turnBadge: {
-    backgroundColor: colors.blue, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2,
-    marginBottom: 3,
-  },
-  turnBadgeText: { fontFamily: fonts.semibold, fontSize: 10, color: colors.onBlue },
   pod: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
     borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder,

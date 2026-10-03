@@ -70,6 +70,15 @@ export interface PeelControl {
 export const PEEL_TIMING = { open: 260, hold: 520, close: 170, flip: 420 };
 
 const THROW_MS = motion.dealCard;
+/**
+ * How far outside the card the peel is allowed to draw.
+ *
+ * The lifted corner swings away from the card and the curl casts a shadow
+ * past it, so the drawing surface has to be bigger than the thing being
+ * drawn. Measured against the card rather than fixed, so it holds at every
+ * size a card is rendered at.
+ */
+const PEEL_PAD_RATIO = 0.5;
 
 export interface PeekCardProps {
   rank: number;
@@ -130,6 +139,7 @@ function PeekCardInner({
   variant,
 }: PeekCardProps) {
   const h = size * 1.42;
+  const PEEL_PAD = Math.round(size * PEEL_PAD_RATIO);
   const back = useMemo(() => cardBackGeometry(size), [size]);
   const backTheme = cardBackTheme(variant);
   // Gradient ids share one namespace across the whole document, so each card
@@ -327,7 +337,26 @@ function PeekCardInner({
         </Animated.View>
 
         <Animated.View style={[styles.layer, { width: size, height: h }, peelStyle]}>
-          <Svg width={size} height={h}>
+          {/*
+            * The canvas is bigger than the card, because the flap is not.
+            *
+            * A peeled corner swings up and away from the card, well outside
+            * its own rectangle, and an Svg sized to the card clipped it off
+            * square: the lifted corner came back cut along a hard straight
+            * edge, which reads as a rendering fault rather than a card.
+            *
+            * Shifting the viewBox origin by the same padding keeps every
+            * path coordinate meaning what it meant before, so none of the
+            * geometry below had to move; the canvas simply has room around
+            * it now, and the view is offset to put the card back where it
+            * was.
+            */}
+          <Svg
+            width={size + PEEL_PAD * 2}
+            height={h + PEEL_PAD * 2}
+            viewBox={`${-PEEL_PAD} ${-PEEL_PAD} ${size + PEEL_PAD * 2} ${h + PEEL_PAD * 2}`}
+            style={{ position: 'absolute', left: -PEEL_PAD, top: -PEEL_PAD }}
+          >
             <Defs>
               <LinearGradient
                 id={`${gradId}-back`}
