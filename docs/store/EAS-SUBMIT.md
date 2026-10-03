@@ -461,3 +461,33 @@ it most likely avoided a rejection rather than merely delaying the release.
 - `ITSAppUsesNonExemptEncryption` is `false`; keep that only if the app uses standard HTTPS/TLS and no custom non-exempt encryption.
 - `npx eas-cli@latest build --profile production` may ask to link an EAS project if `extra.eas.projectId` is not present. This project is not linked yet, so run `npx eas-cli@latest init` once first and commit the `app.json` change it makes.
 - `eas-cli` is deliberately not a dependency of this project, so always invoke it through `npx eas-cli@latest`. A bare `eas` will not resolve here.
+
+## A secret that is set is not a secret that is right
+
+Build 27 crashed on startup for at least one device, and the cause was not
+in the app. One repository secret had been set to a bare `-`.
+
+It is provable from the release log without reading the value, which is worth
+knowing because you cannot read it back out of GitHub. GitHub masks secret
+values wherever they appear, so when a secret is `-`, every hyphen in the log
+is masked too: `non-interactive` renders as `non***interactive`, and
+`eas-cli` as `eas***cli`. Seeing that is how the value was identified. Once
+the secrets were re-entered, `non-interactive` appeared unmasked again, which
+is how the repair was confirmed.
+
+The old guard only asked whether each secret was non-empty, so `-` passed and
+was inlined into the bundle. Nothing failed loudly afterwards: `clean()` treats
+`-` as configured, Firebase throws on a URL it cannot parse, `getDb` catches
+it, and online play is dead in a build that installs and runs. A Sentry DSN of
+`-` is worse, because it quietly removes the crash reporting you would have
+used to notice any of this.
+
+The workflow now checks the *shape* of all ten `EXPO_PUBLIC_*` values. The
+patterns are loose on purpose, aimed at a placeholder or a truncated paste
+rather than at validating a credential, and each was tested against the real
+values so the guard cannot reject a working configuration. Failures name the
+secret and its length, never its value, and report every bad one at once.
+
+**Do not add a secret the workflow does not use.** `EXPO_PUBLIC_ADS_ENABLED`
+was briefly added and then removed for this reason: its value is `false`, and
+GitHub would have masked the word "false" everywhere in every log.
