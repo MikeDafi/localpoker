@@ -106,7 +106,9 @@ rather than assumed:
   Apple", and Apple "do not accept DBAs, fictitious business names, trade
   names, or branches". That means an actual incorporated company, an LLC or
   equivalent, not a name.
-- It needs a **D-U-N-S Number** for Apple to verify legal entity status.
+- It needs a **D-U-N-S Number** for Apple to verify legal entity status. Free,
+  but it is the long pole and it cannot be stubbed: Apple checks it against Dun
+  & Bradstreet during enrolment. See `INCORPORATION-PLAN.md`.
 - The entity's name "will be displayed as the seller name of your apps", so it
   becomes public.
 

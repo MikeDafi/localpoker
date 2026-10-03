@@ -76,6 +76,37 @@ name. So:
 Getting those two records to match on the first attempt is the difference
 between a fortnight and a month.
 
+### The entity record
+
+One place for the facts, because the stall in step 2 is always the same thing:
+four systems holding slightly different versions of the same company. Fill
+these in as they become real, and copy from here rather than retyping.
+
+| Field | Value | Used by |
+|---|---|---|
+| Legal entity name | `TBD` | Registration, D&B, Apple, becomes the public seller name |
+| Registered address | `TBD` | Registration, D&B, Apple, Privacy Policy, Terms |
+| Jurisdiction | `TBD` | Registration, governing law clause |
+| D-U-N-S number | `TBD` | Apple organization enrolment only |
+| Entity formed on | `TBD` | |
+| D-U-N-S requested on | `TBD` | Track it, the wait is the gating item |
+| Bundle identifier | `TBD`, see above | `app.json`, Google OAuth client, CI secret |
+
+**The D-U-N-S number cannot be a placeholder.** Apple checks it against Dun &
+Bradstreet while you enrol, so an invented one fails the lookup, and one that
+happens to belong to somebody else is a false statement in a contract with
+Apple. `TBD` stays `TBD` until D&B issues the real one.
+
+Two things worth knowing before requesting it:
+
+- It is **free**. Anyone charging for one is reselling a free service. Use
+  Apple's own lookup and request form, which is wired to D&B for this purpose,
+  rather than going to a broker.
+- D&B may **already hold a record** for the entity, because registering a
+  company sometimes creates one automatically. Look it up before requesting a
+  new one: a duplicate record is its own delay, and the lookup is also how you
+  catch a name or address that does not match what you filed.
+
 ### Two things to get right in step 1
 
 The entity name becomes the **public App Store seller name**, so it is a naming
@@ -102,7 +133,9 @@ accountant is cheaper than a guess.
 **2. Get a D-U-N-S Number.** Apple requires one "so that we can verify your
 organization's identity, legal entity status, and address". Free from Dun &
 Bradstreet via Apple's own lookup form. Allow time: it is not instant, and the
-details must match the entity registration exactly.
+details must match the entity registration exactly. Record it in **The entity
+record** above, and note that it cannot be stubbed to get moving: Apple
+verifies it against D&B during enrolment.
 
 **3. Enrol the organization in the Apple Developer Program.** You must be able
 to bind the company to agreements. The entity name becomes the public seller
