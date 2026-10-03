@@ -51,6 +51,48 @@ function tone(freq, dur, { type = 'sine', vol = 0.5, decay = 1, sweep = 0 } = {}
   return out;
 }
 
+/** A gap, so a double knock reads as two taps rather than one long one. */
+function silence(dur) {
+  return new Float32Array(Math.floor(SR * dur));
+}
+
+/**
+ * Knuckles on a table.
+ *
+ * A knock is a noise transient with almost no sustain, over a short woody
+ * resonance: a low body around 200Hz and a harder partial about five times
+ * up. What makes wood sound like wood rather than like a drum is how fast it
+ * stops, but note the envelope here is `(1 - t/dur)^decay` over the tone's
+ * own length, not an exponential in absolute time: a big `decay` kills the
+ * sound in the first few milliseconds and leaves a tick. The shaping is done
+ * with short durations and modest exponents instead.
+ */
+function knock(body, vol) {
+  return mix(
+    tone(5000, 0.012, { type: 'noise', vol: vol * 0.45, decay: 1.6 }),
+    tone(body, 0.075, { type: 'sine', vol: vol, decay: 2.6 }),
+    tone(body * 5.1, 0.04, { type: 'tri', vol: vol * 0.3, decay: 3.2 }),
+    tone(body * 2.4, 0.055, { type: 'sine', vol: vol * 0.24, decay: 3 }),
+  );
+}
+
+/**
+ * One clay chip landing on a stack.
+ *
+ * Money is a bright, hard click with a short ring under it, not a beep. The
+ * noise burst is the contact, the two partials are the disc, and everything
+ * is over inside 60ms so a handful of them can be played in a row without
+ * turning into a drone.
+ */
+function chipHit(pitch, vol) {
+  return mix(
+    tone(3400 * pitch, 0.016, { type: 'noise', vol: vol * 0.5, decay: 1.8 }),
+    tone(1250 * pitch, 0.045, { type: 'tri', vol: vol * 0.4, decay: 2.8 }),
+    tone(2550 * pitch, 0.03, { type: 'sine', vol: vol * 0.26, decay: 3 }),
+    tone(520 * pitch, 0.04, { type: 'sine', vol: vol * 0.2, decay: 2.6 }),
+  );
+}
+
 function mix(...arrs) {
   const n = Math.max(...arrs.map((a) => a.length));
   const out = new Float32Array(n);
@@ -68,22 +110,30 @@ function seq(...arrs) {
 writeWav('tap.wav', tone(660, 0.08, { type: 'tri', vol: 0.4, decay: 2 }));
 writeWav('select.wav', seq(tone(520, 0.05, { type: 'tri', vol: 0.35, decay: 2 }), tone(720, 0.06, { type: 'tri', vol: 0.35, decay: 2 })));
 writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }), tone(300, 0.05, { type: 'tri', vol: 0.2, decay: 3 })));
-writeWav('chip.wav', mix(tone(2000, 0.05, { type: 'noise', vol: 0.15, decay: 4 }), tone(900, 0.06, { type: 'square', vol: 0.12, decay: 3 })));
-writeWav('check.wav', tone(400, 0.09, { type: 'tri', vol: 0.35, decay: 2 }));
 /*
- * Raising needs its own cue.
+ * One chip, played once per unit of bet.
  *
- * Betting, calling and raising all played chip.wav, so the table sounded the
- * same whether somebody called 20 or shoved. This is three chips pushed out
- * instead of one, each higher than the last. Fold is a single tone falling
- * away; raise is a rising run of hits, which is the difference you can hear
- * across a room rather than one you have to listen for.
+ * The screen decides how many to play from the size of the bet relative to
+ * the big blind (see `chipSoundsFor`), so this has to be a single clean hit
+ * that stacks well rather than a finished phrase.
  */
-writeWav('raise.wav', seq(
-  mix(tone(2200, 0.04, { type: 'noise', vol: 0.14, decay: 5 }), tone(640, 0.05, { type: 'square', vol: 0.10, decay: 4 })),
-  mix(tone(2800, 0.04, { type: 'noise', vol: 0.15, decay: 5 }), tone(860, 0.05, { type: 'square', vol: 0.11, decay: 4 })),
-  mix(tone(3400, 0.05, { type: 'noise', vol: 0.17, decay: 4 }), tone(1180, 0.09, { type: 'square', vol: 0.13, decay: 2.5, sweep: 700 })),
-));
+writeWav('chip.wav', chipHit(1, 0.34));
+
+/*
+ * Checking is knocking on the table, so it sounds like knocking on a table.
+ *
+ * It used to be a 400Hz triangle beep, which is the one sound at this table
+ * that has a real-world original everybody already knows. Two raps, the
+ * second softer and a touch lower, because nobody knocks twice identically.
+ */
+writeWav('check.wav', seq(knock(210, 0.33), silence(0.055), knock(196, 0.23)));
+/*
+ * Raising no longer has a cue of its own.
+ *
+ * It used to be three rising hits, to separate a raise from a call. The
+ * screen now plays one chip per doubling of the bet instead, which says the
+ * same thing and says how much, so a fixed phrase would only fight it.
+ */
 writeWav('fold.wav', tone(240, 0.16, { type: 'tri', vol: 0.35, decay: 1.5, sweep: -300 }));
 writeWav('turn.wav', seq(tone(880, 0.09, { type: 'sine', vol: 0.3, decay: 2 }), tone(1180, 0.09, { type: 'sine', vol: 0.3, decay: 2 })));
 // Someone else to act. Deliberately the inverse shape of `turn`: two notes

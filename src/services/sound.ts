@@ -2,7 +2,7 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-aud
 import { captureError } from './telemetry';
 
 export type SoundName =
-  | 'tap' | 'select' | 'deal' | 'chip' | 'check' | 'fold' | 'raise'
+  | 'tap' | 'select' | 'deal' | 'chip' | 'check' | 'fold'
   | 'turn' | 'turnOther' | 'coins' | 'win' | 'lose' | 'error' | 'start' | 'tick' | 'tickUrgent';
 
 const SOURCES: Record<SoundName, number> = {
@@ -11,7 +11,6 @@ const SOURCES: Record<SoundName, number> = {
   deal: require('../../assets/sounds/deal.wav'),
   chip: require('../../assets/sounds/chip.wav'),
   check: require('../../assets/sounds/check.wav'),
-  raise: require('../../assets/sounds/raise.wav'),
   fold: require('../../assets/sounds/fold.wav'),
   turn: require('../../assets/sounds/turn.wav'),
   turnOther: require('../../assets/sounds/turnOther.wav'),
@@ -28,6 +27,7 @@ const players: Partial<Record<SoundName, AudioPlayer>> = {};
 let enabled = true;
 let volume = 1;
 let initialized = false;
+const chipTimers = new Set<ReturnType<typeof setTimeout>>();
 const reportedSoundErrors = new Set<string>();
 
 const reportSoundError = (operation: string, error: unknown, name?: SoundName): void => {
@@ -74,5 +74,27 @@ export const sound = {
     } catch (error) {
       reportSoundError('play', error, name);
     }
+  },
+  /**
+   * A handful of chips, one after another.
+   *
+   * There is a single player per sound, so overlapping calls would restart
+   * the same one rather than layering. Spacing them is what turns one chip
+   * into several, and 62ms is close to how fast chips actually fall off a
+   * thumb: much tighter reads as a buzz, much wider as counting.
+   */
+  playChips(count: number) {
+    if (!enabled || count <= 0) return;
+    this.play('chip');
+    for (let i = 1; i < count; i += 1) {
+      const timer = setTimeout(() => this.play('chip'), i * 62);
+      chipTimers.add(timer);
+      setTimeout(() => chipTimers.delete(timer), i * 62 + 10);
+    }
+  },
+  /** Leaving a table must not leave chips rattling over the next screen. */
+  stopChips() {
+    for (const timer of chipTimers) clearTimeout(timer);
+    chipTimers.clear();
   },
 };

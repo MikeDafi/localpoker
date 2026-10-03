@@ -3,6 +3,18 @@ import type { GameState, PlayerAction, Street } from '../engine';
 export const CHIP_COMMIT_DURATION_MS = 360;
 export const CHIP_SWEEP_DURATION_MS = 320;
 export const CHIP_SWEEP_PAUSE_MS = 70;
+export const CHIP_PAYOUT_DURATION_MS = 430;
+/**
+ * How long the pot sits before it is pushed to whoever won it.
+ *
+ * Long enough for the tabled hands to have finished flying out and taken
+ * their ring (see `REVEAL.ring` in `ShowdownReveal`). Paying first would
+ * answer the question before the cards had asked it, and the pot arriving on
+ * top of cards still in flight reads as a collision rather than a result.
+ */
+export const CHIP_PAYOUT_PAUSE_MS = 2200;
+/** Two winners should not be paid in the same instant, or it looks like one. */
+export const CHIP_PAYOUT_STAGGER_MS = 110;
 export const ACTION_READ_DELAY_MS = 240;
 /**
  * The extra beat an action that moves chips earns over one that does not.
@@ -35,9 +47,11 @@ export interface ChipMotionState {
   players: readonly ChipMotionPlayer[];
   contributions: Record<string, number>;
   pots?: readonly ChipMotionPot[];
+  /** Who is owed what, once the hand is over. */
+  winners?: readonly { playerId: string; amount: number }[];
 }
 
-export type ChipMotionPhase = 'commit' | 'sweep';
+export type ChipMotionPhase = 'commit' | 'sweep' | 'payout';
 
 export interface ChipMotionEvent {
   phase: ChipMotionPhase;
@@ -117,6 +131,27 @@ export function actionReadDelayMs(animationsOff: boolean, lastAction?: PlayerAct
   return ACTION_READ_DELAY_MS + (actionMovesChips(lastAction) ? CHIP_ACTION_READ_BONUS_MS : 0);
 }
 
+/**
+ * The pot going to whoever won it, one flight per winner.
+ *
+ * Split pots are the reason this is per winner rather than one flight: the
+ * screen said "split pot" in words while a single stack slid to one player,
+ * which is the opposite of what happened. Each winner gets their own share
+ * moving to their own seat.
+ */
+export function payoutEvents(state: ChipMotionState): ChipMotionEvent[] {
+  if (state.street !== 'showdown') return [];
+  return (state.winners ?? [])
+    .filter((w) => w.amount > 0)
+    .map((w, i) => ({
+      phase: 'payout' as const,
+      playerId: w.playerId,
+      amount: w.amount,
+      delayMs: CHIP_PAYOUT_PAUSE_MS + i * CHIP_PAYOUT_STAGGER_MS,
+      durationMs: CHIP_PAYOUT_DURATION_MS,
+    }));
+}
+
 export function initialChipMotionEvents(state: ChipMotionState): ChipMotionEvent[] {
   if (state.street === 'showdown') return [];
   return state.players
@@ -135,6 +170,19 @@ export function chipMotionEvents(prev: ChipMotionState | null, next: ChipMotionS
     return initialChipMotionEvents(next);
   }
 
+  /*
+   * Arriving at a showdown pays the pot out, after whatever else that same
+   * step is already doing. Only on the transition: every later render while
+   * the result panel is up would otherwise push the chips again.
+   *
+   * It is appended rather than returned early because the last street's bets
+   * still have to be swept into the middle first. Returning here paid out a
+   * pot the player had just watched not be collected.
+   */
+  const payouts = prev.street !== 'showdown' && next.street === 'showdown'
+    ? payoutEvents(next)
+    : [];
+
   const deltas = contributionDeltas(prev, next);
   const commits: ChipMotionEvent[] = deltas.map(({ playerId, amount }) => ({
     phase: 'commit',
@@ -144,7 +192,7 @@ export function chipMotionEvents(prev: ChipMotionState | null, next: ChipMotionS
     durationMs: CHIP_COMMIT_DURATION_MS,
   }));
 
-  if (!didSweepStreet(prev, next, deltas)) return commits;
+  if (!didSweepStreet(prev, next, deltas)) return [...commits, ...payouts];
 
   const endingBets = endingStreetBets(prev, deltas);
   const sweepDelay = commits.length > 0
@@ -160,7 +208,7 @@ export function chipMotionEvents(prev: ChipMotionState | null, next: ChipMotionS
       durationMs: CHIP_SWEEP_DURATION_MS,
     }));
 
-  return [...commits, ...sweeps];
+  return [...commits, ...sweeps, ...payouts];
 }
 
 export function opponentSeatChipPoint(seat: SeatBox, seatWidth: number, podHeight: number): ChipPoint {
@@ -210,9 +258,10 @@ export function chipMotionPath(
   betPoint: ChipPoint,
   potPoint: ChipPoint,
 ): { from: ChipPoint; to: ChipPoint } {
-  return phase === 'commit'
-    ? { from: seatPoint, to: betPoint }
-    : { from: betPoint, to: potPoint };
+  if (phase === 'commit') return { from: seatPoint, to: betPoint };
+  // Paying out is sweeping in reverse: the pot goes back to a seat.
+  if (phase === 'payout') return { from: potPoint, to: seatPoint };
+  return { from: betPoint, to: potPoint };
 }
 
 function contributionDeltas(prev: ChipMotionState, next: ChipMotionState): { playerId: string; amount: number }[] {

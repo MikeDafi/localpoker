@@ -3,6 +3,9 @@ import {
   CHIP_COMMIT_DURATION_MS,
   CHIP_SWEEP_DURATION_MS,
   actionReadDelayMs,
+  payoutEvents,
+  CHIP_PAYOUT_PAUSE_MS,
+  CHIP_PAYOUT_STAGGER_MS,
   actionMovesChips,
   ACTION_READ_DELAY_MS,
   CHIP_ACTION_READ_BONUS_MS,
@@ -382,5 +385,92 @@ describe('chip motion geometry', () => {
     it('does not dawdle over a fold', () => {
       expect(actionReadDelayMs(false, 'fold')).toBe(ACTION_READ_DELAY_MS);
     });
+  });
+});
+
+describe('paying the pot out', () => {
+  const showdown = {
+    handNumber: 4,
+    street: 'showdown' as const,
+    players: [{ id: 'a', currentBet: 0 }, { id: 'b', currentBet: 0 }],
+    contributions: { a: 50, b: 50 },
+    pots: [{ amount: 100 }],
+  };
+
+  it('sends the pot to the one winner', () => {
+    const events = payoutEvents({ ...showdown, winners: [{ playerId: 'a', amount: 100 }] });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ phase: 'payout', playerId: 'a', amount: 100 });
+  });
+
+  /*
+   * The screen used to say "split pot" in words while a single stack slid to
+   * one player, which is the opposite of what had happened.
+   */
+  it('gives every winner of a split their own share', () => {
+    const events = payoutEvents({
+      ...showdown,
+      winners: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }],
+    });
+    expect(events.map((e) => [e.playerId, e.amount])).toEqual([['a', 50], ['b', 50]]);
+  });
+
+  it('staggers them, so two winners do not look like one', () => {
+    const events = payoutEvents({
+      ...showdown,
+      winners: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }],
+    });
+    expect(events[0]!.delayMs).toBe(CHIP_PAYOUT_PAUSE_MS);
+    expect(events[1]!.delayMs - events[0]!.delayMs).toBe(CHIP_PAYOUT_STAGGER_MS);
+  });
+
+  it('waits for the tabled hands to land before paying', () => {
+    const events = payoutEvents({ ...showdown, winners: [{ playerId: 'a', amount: 100 }] });
+    expect(events[0]!.delayMs).toBeGreaterThan(2000);
+  });
+
+  it('pays nobody a side pot of nothing', () => {
+    const events = payoutEvents({
+      ...showdown,
+      winners: [{ playerId: 'a', amount: 100 }, { playerId: 'b', amount: 0 }],
+    });
+    expect(events.map((e) => e.playerId)).toEqual(['a']);
+  });
+
+  it('pays nothing before the hand is over', () => {
+    expect(payoutEvents({ ...showdown, street: 'river', winners: [{ playerId: 'a', amount: 100 }] })).toEqual([]);
+  });
+
+  it('pays once, on arriving at the showdown, not on every render after it', () => {
+    const river = { ...showdown, street: 'river' as const, winners: [] };
+    const paid = { ...showdown, winners: [{ playerId: 'a', amount: 100 }] };
+    expect(chipMotionEvents(river, paid).some((e) => e.phase === 'payout')).toBe(true);
+    expect(chipMotionEvents(paid, paid).some((e) => e.phase === 'payout')).toBe(false);
+  });
+
+  /*
+   * The regression this locks down: paying out replaced the sweep, so the
+   * player watched the pot be handed over without ever seeing it collected.
+   */
+  it('collects the last bets before handing the pot over', () => {
+    const prev = {
+      handNumber: 4,
+      street: 'river' as const,
+      contributions: { a: 40, b: 40 },
+      pots: [{ amount: 80 }],
+      players: [{ id: 'a', currentBet: 40 }, { id: 'b', currentBet: 40 }],
+    };
+    const next = { ...prev, street: 'showdown' as const, winners: [{ playerId: 'a', amount: 80 }] };
+    const phases = chipMotionEvents(prev, next).map((e) => e.phase);
+    expect(phases).toContain('sweep');
+    expect(phases).toContain('payout');
+    expect(phases.indexOf('sweep')).toBeLessThan(phases.indexOf('payout'));
+  });
+
+  it('runs the chips from the pot back to the seat', () => {
+    const seat = { x: 10, y: 20 };
+    const bet = { x: 30, y: 40 };
+    const pot = { x: 50, y: 60 };
+    expect(chipMotionPath('payout', seat, bet, pot)).toEqual({ from: pot, to: seat });
   });
 });

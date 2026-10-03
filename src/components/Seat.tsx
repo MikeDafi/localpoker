@@ -175,7 +175,10 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
         {/* On the dark felt a dimmed pod alone reads as "not rendered" rather
             than "out of the hand", so say it explicitly. */}
         {player.folded && (
-          <View style={styles.foldedChip}><Text style={styles.foldedChipText}>Folded</Text></View>
+          /* Folding already shows: the whole pod greys out and the cards go.
+             The word was a second way of saying the same thing, and it said
+             it in the row the community cards were trying to use. */
+          null
         )}
       </View>
     );

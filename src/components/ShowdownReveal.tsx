@@ -19,7 +19,9 @@ export interface ShowdownRevealProps {
   /** Size the cards sit at beside the avatar, and the size they grow to. */
   smallSize: number;
   bigSize: number;
-  /** Whether each card is part of the winning five. */
+  /** Gold for a hand that took the pot, red for one that was beaten. */
+  tone: 'won' | 'lost';
+  /** Whether each card is part of the winning five. Only read for a winner. */
   highlight: boolean[];
   /** Off when animations are disabled, cards are simply placed, face up. */
   animate?: boolean;
@@ -55,6 +57,7 @@ export function ShowdownReveal({
   to,
   smallSize,
   bigSize,
+  tone,
   highlight,
   animate = true,
   revealKey,
@@ -69,6 +72,7 @@ export function ShowdownReveal({
           to={to[i] ?? { x: from.x, y: from.y }}
           smallSize={smallSize}
           bigSize={bigSize}
+          tone={tone}
           highlight={!!highlight[i]}
           animate={animate}
           index={i}
@@ -84,6 +88,7 @@ function RevealedCard({
   to,
   smallSize,
   bigSize,
+  tone,
   highlight,
   animate,
   index,
@@ -93,6 +98,7 @@ function RevealedCard({
   to: { x: number; y: number };
   smallSize: number;
   bigSize: number;
+  tone: 'won' | 'lost';
   highlight: boolean;
   animate: boolean;
   index: number;
@@ -162,17 +168,28 @@ function RevealedCard({
   }));
   const faceStyle = useAnimatedStyle(() => ({ opacity: flip.value >= 0.5 ? 1 : 0 }));
   const backStyle = useAnimatedStyle(() => ({ opacity: flip.value >= 0.5 ? 0 : 1 }));
-  const ringStyle = useAnimatedStyle(() => ({ opacity: highlight ? ring.value : 0 }));
+  /*
+   * A beaten hand is ringed whole.
+   *
+   * For a winner the ring still marks only the cards that make the best five,
+   * because that is the answer to "why did it win". A loser has no best five
+   * to point at, and ringing one of their cards and not the other would be
+   * claiming something about a hand that simply lost, so both are ringed and
+   * neither is dimmed.
+   */
+  const lost = tone === 'lost';
+  const ringed = lost || highlight;
+  const ringStyle = useAnimatedStyle(() => ({ opacity: ringed ? ring.value : 0 }));
   const dimStyle = useAnimatedStyle(() => ({
     // Cards outside the best five fade back once the ring lands on the others.
-    opacity: highlight ? 1 : 1 - 0.55 * ring.value,
+    opacity: ringed ? 1 : 1 - 0.55 * ring.value,
   }));
 
   return (
     <Animated.View style={[styles.card, { width: bigSize, height: h }, moveStyle]}>
       <Animated.View style={[{ width: bigSize, height: h }, flipStyle]}>
         <Animated.View
-          style={[styles.ring, { borderRadius: radii.sm + 2 }, ringStyle]}
+          style={[styles.ring, lost && styles.ringLost, { borderRadius: radii.sm + 2 }, ringStyle]}
           pointerEvents="none"
         />
         <Animated.View style={[styles.stack, backStyle]}>
@@ -200,4 +217,5 @@ const styles = StyleSheet.create({
     borderColor: colors.gold,
     backgroundColor: 'rgba(214,180,92,0.16)',
   },
+  ringLost: { borderColor: colors.red, backgroundColor: 'rgba(238,81,64,0.16)' },
 });

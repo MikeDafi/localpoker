@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
-import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands, showdownLabel } from '../game/showdownLayout';
+import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
@@ -26,6 +26,7 @@ import { FlyingChipStack } from '../components/FlyingChipStack';
 import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
+import { chipSoundsFor, chipsCommitted } from '../game/betSound';
 import { captureError } from '../services/telemetry';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
@@ -578,9 +579,10 @@ export function TableScreen({ navigation, route }: Props) {
       localPlayerId: human.id,
       localCardsShown: humanCardsShown,
       label: (w) => handName(w.hand!.category),
+      contested: contestedShowdown,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown]);
+  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -593,11 +595,27 @@ export function TableScreen({ navigation, route }: Props) {
    * gets its own rising run of chips. Calling keeps the plain clack, because a
    * call really is the small version of the same act.
    */
-  const actionSound = (action: PlayerAction) => {
-    if (action === 'fold') sound.play('fold');
-    else if (action === 'check') sound.play('check');
-    else if (action === 'bet' || action === 'raise' || action === 'allin') sound.play('raise');
-    else sound.play('chip');
+  /**
+   * What an action sounds like.
+   *
+   * Folding and checking have their own cue, and checking is a knock on the
+   * table, which is what checking is. Everything else moves money, so it
+   * sounds like money: one chip per doubling of the bet measured against the
+   * big blind, so a call of the blind is a single click and a shove is a
+   * fistful, and the difference is the same at 2/5 as at 100/200.
+   */
+  const actionSound = (action: PlayerAction, amount?: number, actorId?: string) => {
+    if (action === 'fold') { sound.play('fold'); return; }
+    if (action === 'check') { sound.play('check'); return; }
+    const actor = state.players.find((p) => p.id === (actorId ?? state.players[state.currentPlayerIndex]?.id));
+    const chips = chipsCommitted({
+      action,
+      amount,
+      playerBet: actor?.currentBet ?? 0,
+      playerChips: actor?.chips ?? 0,
+      tableBet: state.currentBet,
+    });
+    sound.playChips(chipSoundsFor(chips, settings.bigBlind));
   };
 
   /**
@@ -634,7 +652,7 @@ export function TableScreen({ navigation, route }: Props) {
     if (settings.hapticsEnabled) {
       Haptics.impactAsync(action === 'fold' ? Haptics.ImpactFeedbackStyle.Rigid : Haptics.ImpactFeedbackStyle.Medium);
     }
-    actionSound(action);
+    actionSound(action, amount, human.id);
 
     // Only count the hand toward VPIP/PFR once the action has actually landed.
     // Online the write can be refused (a stale sequence, a lost connection), and
@@ -947,6 +965,9 @@ export function TableScreen({ navigation, route }: Props) {
    * actually left, which is what makes the timer pick up where it was.
    */
   useEffect(() => () => {
+    // Chips are played on a stagger, so leaving mid-rattle would otherwise
+    // carry the sound onto whatever screen comes next.
+    sound.stopChips();
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const s = snapshot.current;
     if (!s.shouldSaveLocalState) return;
@@ -976,7 +997,7 @@ export function TableScreen({ navigation, route }: Props) {
     const delayMs = botSpeedMs + actionReadDelayMs(animsOff, lastAction.current);
     botTimer.current = setTimeout(() => {
       const decision = decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
-      actionSound(decision.action);
+      actionSound(decision.action, decision.amount, actor.id);
       // Occasionally a bot reacts, so the table feels alive both ways.
       const emoteRoll = randomFloat(`${String(seed)}:emote:${state.handNumber}:${actor.id}:${state.log.length}`);
       if (emoteRoll > 0.9) {
@@ -1436,7 +1457,6 @@ export function TableScreen({ navigation, route }: Props) {
   /** The gold win ring, top and bottom, which a card carries at every size. */
   const CARD_FRAME = 4;
   const POT_BLOCK_H = 40; // pot pill plus the gap above it
-  const PILL_BLOCK_H = 28; // winning-hand pill plus the gap below it
   const REVEAL_GAP = 8; // breathing room between the board and the hands below it
   /*
    * The winning hands sit smaller than the board. They are the supporting
@@ -1454,7 +1474,17 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const HERO_SHOWDOWN_H = 50;
   const laneH = Math.max(0, stageH - laneTop - laneBottom);
-  const boardTopFor = (showdown: boolean) => laneTop + (showdown ? PILL_BLOCK_H : 0);
+  /*
+   * At a showdown the board sits at the very top of the lane.
+   *
+   * It used to start 28pt lower, under a pill naming the winning hand. That
+   * pill said what the result panel underneath already says, and it was
+   * charging the one row that cannot afford it: everything below the board
+   * has to clear the hero's pod, and the hands being tabled were landing on
+   * top of it. The felt says who won now, in gold and red, so the words were
+   * the cheapest thing to give up.
+   */
+  const boardTopFor = (_showdown: boolean) => laneTop;
   /*
    * How tall a board card may be.
    *
@@ -1698,15 +1728,6 @@ export function TableScreen({ navigation, route }: Props) {
           ]}
           pointerEvents="box-none"
         >
-          {/* The street is already obvious from the board itself, so naming it
-              only cost the lane a row. The winning hand still gets announced,
-              because that is the one thing the cards do not tell you. */}
-          {showdownHands.length > 0 && (
-            <View style={styles.handNamePill}>
-              <Text style={styles.handNameText}>{showdownLabel(showdownHands)}</Text>
-            </View>
-          )}
-
           <View style={styles.board} onLayout={(e) => setBoardBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y, w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
             {Array.from({ length: BOARD_CELLS }).map((_, i) => {
               const card = felt.board[i];
@@ -1762,6 +1783,7 @@ export function TableScreen({ navigation, route }: Props) {
               to={placed.targets}
               smallSize={18}
               bigSize={placed.size}
+              tone={hand.outcome}
               highlight={highlightFor(hand)}
               animate={!animsOff}
             />
@@ -1970,31 +1992,6 @@ export function TableScreen({ navigation, route }: Props) {
               </View>
             )}
 
-            {/* Mucking is the default, so this is a single opt-in toggle
-                rather than a two-button choice. A round icon rather than a
-                line of text: the panel is the one thing tall enough to reach
-                the hole cards above it, so the row it costs matters, and
-                "turn these over" is a picture before it is a sentence. */}
-            <View style={styles.muckRow}>
-              <Pressable
-                onPress={() => {
-                  sound.play('tap');
-                  const next = humanCardsShown ? 'muck' : 'show';
-                  setReveal(next);
-                  // Showing is only meaningful if the others see it. Voided:
-                  // a failed publish must not block the local reveal.
-                  if (next === 'show' && roomCode && firebaseOnline) void revealOwnHand(roomCode);
-                }}
-                style={[styles.muckBtn, humanCardsShown && styles.muckBtnActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: humanCardsShown }}
-                accessibilityLabel={humanCardsShown ? 'Showing your cards, tap to muck' : 'Cards mucked, tap to show'}
-                accessibilityHint="Turns your hole cards face up for the rest of the table"
-              >
-                <CardFlipIcon size={24} color={humanCardsShown ? colors.blueLight : colors.onDarkMuted} />
-              </Pressable>
-            </View>
-
             {/* The countdown rides on the button rather than taking a line of
                 its own: this panel is the one thing tall enough to reach the
                 hole cards above it, and every row added here is a row that
@@ -2019,14 +2016,40 @@ export function TableScreen({ navigation, route }: Props) {
             {/* Keyed off being in a room rather than on `firebaseOnline`,
                 which is a configuration check rather than a connection
                 state and so cannot answer the question being asked here. */}
-            <WiiButton
-              label={roomCode && !isOnlineHost ? 'Waiting for host…' : 'Next Hand'}
-              variant="green"
-              size="lg"
-              fullWidth
-              disabled={!!roomCode && !isOnlineHost}
-              onPress={nextHand}
-            />
+            {/* The flip toggle rides beside Next Hand rather than taking a
+                row of its own. Mucking is the default, so this is a single
+                opt-in rather than a two-button choice, and a round icon says
+                "turn these over" without spending the width a label needs.
+                This panel is the one thing tall enough to reach the hole
+                cards above it, so every row it does not take is a row the
+                cards keep. */}
+            <View style={styles.nextRow}>
+              <WiiButton
+                label={roomCode && !isOnlineHost ? 'Waiting for host…' : 'Next Hand'}
+                variant="green"
+                size="lg"
+                style={styles.nextBtn}
+                disabled={!!roomCode && !isOnlineHost}
+                onPress={nextHand}
+              />
+              <Pressable
+                onPress={() => {
+                  sound.play('tap');
+                  const next = humanCardsShown ? 'muck' : 'show';
+                  setReveal(next);
+                  // Showing is only meaningful if the others see it. Voided:
+                  // a failed publish must not block the local reveal.
+                  if (next === 'show' && roomCode && firebaseOnline) void revealOwnHand(roomCode);
+                }}
+                style={[styles.muckBtn, humanCardsShown && styles.muckBtnActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: humanCardsShown }}
+                accessibilityLabel={humanCardsShown ? 'Showing your cards, tap to muck' : 'Cards mucked, tap to show'}
+                accessibilityHint="Turns your hole cards face up for the rest of the table"
+              >
+                <CardFlipIcon size={26} color={humanCardsShown ? colors.blueLight : colors.onDarkMuted} />
+              </Pressable>
+            </View>
           </Animated.View>
         ) : legal && isHumanTurn ? (
           <View>
@@ -2125,8 +2148,6 @@ const styles = StyleSheet.create({
   // streets are dealt. The empty ones therefore have to be *visible*, as shallow
   // recesses in the cloth, or a 3- or 4-card board reads as being off-centre.
   cardSlot: { borderRadius: radii.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', backgroundColor: 'rgba(0,0,0,0.22)' },
-  handNamePill: { backgroundColor: 'rgba(214,180,92,0.18)', borderWidth: 1, borderColor: colors.gold, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  handNameText: { ...type.label, color: colors.gold },
   // A peeled card swings well outside its own bounds, so this row has to sit
   // above the controls or the action bar paints over the lifted corner.
   humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.sm, minHeight: 142, zIndex: 41 },
@@ -2150,10 +2171,11 @@ const styles = StyleSheet.create({
   coin: { width: 17, height: 17, borderRadius: 8.5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.goldDeep },
   coinT: { fontFamily: fonts.bold, color: '#2A2210', fontSize: 11 },
   coinEarned: { fontFamily: fonts.bold, fontSize: 13, color: colors.gold, ...numeric },
-  muckRow: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.sm },
+  nextRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  nextBtn: { flex: 1 },
   // 44pt because that is the smallest target iOS considers reachable, and the
   // button is now a circle with no words to widen it.
-  muckBtn: { width: 44, height: 44, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  muckBtn: { width: 62, height: 62, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   muckBtnActive: { borderColor: colors.blue, backgroundColor: 'rgba(47,159,212,0.16)' },
   adWrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.xs },
 });

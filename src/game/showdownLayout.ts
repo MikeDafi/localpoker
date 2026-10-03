@@ -66,6 +66,64 @@ export interface ShowdownWinnerHand {
   name: string;
   hole: Card[];
   label: string;
+  /** Gold or red: did this hand take a share of the pot? */
+  outcome: 'won' | 'lost';
+}
+
+/**
+ * Pick the hands worth laying out: every hand that was tabled, not just the
+ * winning ones.
+ *
+ * Showing only the winner answered "who won" and left "why" on the table. A
+ * showdown is the one moment where the losing hand is the interesting part,
+ * because it is the only thing that explains the size of the pot, and the
+ * player who just lost it has the most reason to want to see it. So both go
+ * on the felt, and the ring colour carries the verdict.
+ *
+ * Winners come first so the eye lands on them, then everyone beaten. A winner
+ * who took the pot uncontested is skipped by the caller passing
+ * `contested: false`, because nobody showed anything. The local player's own
+ * cards are withheld until they choose to table them, which is the one case
+ * where showing is a decision rather than a consequence.
+ */
+export function selectShowdownHands<T extends { playerId: string; hand?: { cards?: unknown[] } | null }>(
+  winners: readonly T[],
+  players: readonly { id: string; name: string; holeCards: Card[]; folded?: boolean; sittingOut?: boolean }[],
+  options: {
+    localPlayerId: string;
+    localCardsShown: boolean;
+    label: (winner: T) => string;
+    /** False when the pot was taken without a showdown, so nothing is tabled. */
+    contested?: boolean;
+  },
+): ShowdownWinnerHand[] {
+  const rows: ShowdownWinnerHand[] = [];
+  const taken = new Set<string>();
+
+  const tabled = (p: { id: string; holeCards: Card[] }): boolean =>
+    p.holeCards.length >= 2 && (p.id !== options.localPlayerId || options.localCardsShown);
+
+  for (const w of winners) {
+    if (!w.hand?.cards?.length) continue;
+    const p = players.find((pp) => pp.id === w.playerId);
+    if (!p || !tabled(p) || taken.has(p.id)) continue;
+    taken.add(p.id);
+    rows.push({ playerId: p.id, name: p.name, hole: p.holeCards.slice(0, 2), label: options.label(w), outcome: 'won' });
+    if (rows.length >= MAX_REVEAL_HANDS) return rows;
+  }
+
+  // Only a contested pot has losers to show. Everybody folding is not a
+  // showdown, and turning the folded hands face up would expose cards their
+  // owners paid to keep.
+  if (options.contested === false || rows.length === 0) return rows;
+
+  for (const p of players) {
+    if (taken.has(p.id) || p.folded || p.sittingOut || !tabled(p)) continue;
+    taken.add(p.id);
+    rows.push({ playerId: p.id, name: p.name, hole: p.holeCards.slice(0, 2), label: '', outcome: 'lost' });
+    if (rows.length >= MAX_REVEAL_HANDS) break;
+  }
+  return rows;
 }
 
 export interface RevealHand {
@@ -76,36 +134,6 @@ export interface RevealHand {
   size: number;
 }
 
-/**
- * Pick the hands worth laying out.
- *
- * Returns every winner holding cards, not just the first, so a split pot shows
- * both. A winner who won uncontested is skipped by the caller supplying no
- * hand for them, and the local player's own cards are withheld until they
- * choose to table them, which is the one case where showing is a decision
- * rather than a consequence.
- */
-export function selectShowdownHands<T extends { playerId: string; hand?: { cards?: unknown[] } | null }>(
-  winners: readonly T[],
-  players: readonly { id: string; name: string; holeCards: Card[] }[],
-  options: { localPlayerId: string; localCardsShown: boolean; label: (winner: T) => string },
-): ShowdownWinnerHand[] {
-  const rows: ShowdownWinnerHand[] = [];
-  for (const w of winners) {
-    if (!w.hand?.cards?.length) continue;
-    const p = players.find((pp) => pp.id === w.playerId);
-    if (!p || p.holeCards.length < 2) continue;
-    if (p.id === options.localPlayerId && !options.localCardsShown) continue;
-    rows.push({
-      playerId: p.id,
-      name: p.name,
-      hole: p.holeCards.slice(0, 2),
-      label: options.label(w),
-    });
-    if (rows.length >= MAX_REVEAL_HANDS) break;
-  }
-  return rows;
-}
 
 /**
  * Place every winning hand in one row beneath the board.

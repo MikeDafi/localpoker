@@ -32,36 +32,77 @@ const pick = (
   players: ReturnType<typeof player>[],
   localPlayerId = 'nobody',
   localCardsShown = false,
+  contested = true,
 ) =>
   selectShowdownHands(winners, players, {
     localPlayerId,
     localCardsShown,
     label: (w) => w.label,
+    contested,
   });
 
 describe('selectShowdownHands', () => {
   const alice = player('alice', [card(14, 's'), card(13, 's')]);
   const bob = player('bob', [card(14, 'h'), card(13, 'h')]);
 
-  it('lays out the one winner of an ordinary pot', () => {
+  it('lays out the winner and the hand it beat', () => {
     const hands = pick([winner('alice', 'Flush')], [alice, bob]);
-    expect(hands).toHaveLength(1);
-    expect(hands[0]!.playerId).toBe('alice');
+    expect(hands.map((h) => [h.playerId, h.outcome])).toEqual([['alice', 'won'], ['bob', 'lost']]);
     expect(hands[0]!.hole).toHaveLength(2);
+  });
+
+  /*
+   * The point of showing the losers at all: the beaten hand is the only thing
+   * that explains the size of the pot, and the player who just lost it has
+   * the most reason to want to see it.
+   */
+  it('puts every winner before anybody beaten', () => {
+    const carol = player('carol', [card(9, 'c'), card(9, 'd')]);
+    const hands = pick([winner('bob', 'Straight')], [alice, bob, carol]);
+    expect(hands[0]!.outcome).toBe('won');
+    expect(hands.slice(1).every((h) => h.outcome === 'lost')).toBe(true);
+    expect(hands.map((h) => h.playerId)).toEqual(['bob', 'alice', 'carol']);
+  });
+
+  it('does not show a folded hand, which was paid for to stay hidden', () => {
+    const folded = { ...player('carol', [card(9, 'c'), card(9, 'd')]), folded: true };
+    const hands = pick([winner('alice', 'Flush')], [alice, bob, folded]);
+    expect(hands.map((h) => h.playerId)).toEqual(['alice', 'bob']);
+  });
+
+  it('does not show somebody sitting the hand out', () => {
+    const out = { ...player('carol', [card(9, 'c'), card(9, 'd')]), sittingOut: true };
+    const hands = pick([winner('alice', 'Flush')], [alice, bob, out]);
+    expect(hands.map((h) => h.playerId)).toEqual(['alice', 'bob']);
+  });
+
+  /*
+   * Everybody folding is not a showdown. Nothing was tabled, so nothing is
+   * turned face up.
+   */
+  it('shows nothing of an uncontested pot', () => {
+    const hands = pick([winner('alice', 'Flush')], [alice, bob], 'nobody', false, false);
+    expect(hands.map((h) => h.playerId)).toEqual(['alice']);
+  });
+
+  it('withholds the local losing hand too', () => {
+    const hands = pick([winner('alice', 'Flush')], [alice, bob], 'bob', false);
+    expect(hands.map((h) => h.playerId)).toEqual(['alice']);
   });
 
   it('lays out both hands of a split pot, which used to drop one', () => {
     const hands = pick([winner('alice', 'Straight'), winner('bob', 'Straight')], [alice, bob]);
     expect(hands.map((h) => h.playerId)).toEqual(['alice', 'bob']);
+    expect(hands.every((h) => h.outcome === 'won')).toBe(true);
   });
 
-  it('skips a winner who took the pot without showing', () => {
-    const folded = { playerId: 'bob', hand: null, label: '' };
-    const hands = pick([winner('alice', 'Flush'), folded as never], [alice, bob]);
-    expect(hands.map((h) => h.playerId)).toEqual(['alice']);
+  it('does not credit a win to a winner who tabled nothing', () => {
+    const noHand = { playerId: 'bob', hand: null, label: '' };
+    const hands = pick([winner('alice', 'Flush'), noHand as never], [alice, bob]);
+    expect(hands.map((h) => [h.playerId, h.outcome])).toEqual([['alice', 'won'], ['bob', 'lost']]);
   });
 
-  it('skips a winner holding no cards, which the rules refuse to publish', () => {
+  it('skips anyone holding no cards, which the rules refuse to publish', () => {
     const busted = player('bob', []);
     const hands = pick([winner('alice', 'Flush'), winner('bob', 'Flush')], [alice, busted]);
     expect(hands.map((h) => h.playerId)).toEqual(['alice']);
@@ -69,9 +110,9 @@ describe('selectShowdownHands', () => {
 
   it('withholds the local hand until its owner tables it', () => {
     const hidden = pick([winner('alice', 'Flush')], [alice, bob], 'alice', false);
-    expect(hidden).toHaveLength(0);
+    expect(hidden.map((h) => h.playerId)).toEqual([]);
     const shown = pick([winner('alice', 'Flush')], [alice, bob], 'alice', true);
-    expect(shown).toHaveLength(1);
+    expect(shown.map((h) => h.playerId)).toEqual(['alice', 'bob']);
   });
 
   it('still shows the other half of a split the local player is in', () => {
@@ -92,6 +133,7 @@ describe('selectShowdownHands', () => {
     const many = ['a', 'b', 'c', 'd'].map((id) => player(id, [card(2, 's'), card(3, 's')]));
     const hands = pick(many.map((p) => winner(p.id, 'Two pair')), many);
     expect(hands.map((h) => h.playerId)).toEqual(['a', 'b', 'c', 'd']);
+    expect(hands.every((h) => h.outcome === 'won')).toBe(true);
   });
 
   it('caps at a full table, which is as many hands as a board that plays can split', () => {
@@ -312,7 +354,8 @@ describe('handGapFor', () => {
 });
 
 describe('showdownLabel', () => {
-  const hand = (playerId: string, label: string) => ({ playerId, name: playerId, hole: [], label });
+  const hand = (playerId: string, label: string) =>
+    ({ playerId, name: playerId, hole: [], label, outcome: 'won' as const });
 
   it('names the hand when one player wins', () => {
     expect(showdownLabel([hand('a', 'Flush')])).toBe('Flush');
