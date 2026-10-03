@@ -18,8 +18,13 @@ three jobs that have repeatedly cost time:
 |---|---|
 | Public repo | `github.com/MikeDafi/localpoker`, remote **`localpoker`**, branch `main` |
 | Bundle id | `com.mike0264.localpoker` |
-| Checks | `npx tsc --noEmit`, `npm test` (472 tests), `npx eslint src --ext .ts,.tsx` |
+| Checks | `npx tsc --noEmit`, `npm test`, and **`npx eslint . --max-warnings 60`** |
 | Rules tests | `npm run test:rules`, needs the Firebase emulator on port 9015 |
+
+**Lint the way CI does, or it will fail after the tests pass.** CI runs
+`npx eslint . --max-warnings 60`: the whole repository, not `src`, and with a
+warning *budget*. `npx eslint src` reports zero errors while the repo sits at
+63 warnings and the build dies at the lint step forty minutes in.
 
 **`origin` is not this project.** It points at an unrelated private repository.
 Pushing to `origin` pushes a poker app into somebody else's codebase. Always

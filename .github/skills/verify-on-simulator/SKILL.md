@@ -107,6 +107,8 @@ git checkout App.tsx                     # drop the harness
 xcrun simctl shutdown $SIM && xcrun simctl delete $SIM
 ```
 
-Then `npx tsc --noEmit`, `npm test` and `npx eslint src --ext .ts,.tsx` before
-committing. Keep the screenshots outside the repo; they are evidence, not
+Then `npx tsc --noEmit`, `npm test` and `npx eslint . --max-warnings 60`
+before committing. That last one is the command CI runs: it covers the whole
+repository rather than `src`, and it enforces a warning budget, so linting
+`src` alone can pass while the build fails. Keep the screenshots outside the repo; they are evidence, not
 source.

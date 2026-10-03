@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -22,7 +22,6 @@ import { CoinIcon } from '../components/Icons';
 import { colors, fonts, spacing, radii, shadows } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
-import { captureError } from '../services/telemetry';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Store'>;
@@ -51,11 +50,6 @@ type CosmeticCategory = {
   emoji: string;
   description: string;
   items: CosmeticItem[];
-};
-
-type CosmeticsState = {
-  ownedCosmeticIds: string[];
-  equippedByCategory: Partial<Record<CosmeticCategoryId, string>>;
 };
 
 
@@ -299,48 +293,6 @@ const COSMETIC_CATEGORIES: CosmeticCategory[] = [
   },
 ];
 
-const KNOWN_COSMETIC_IDS = new Set(COSMETIC_CATEGORIES.flatMap((category) => category.items.map((item) => item.id)));
-
-function makeDefaultCosmeticsState(): CosmeticsState {
-  return { ownedCosmeticIds: [], equippedByCategory: {} };
-}
-
-function isCosmeticCategoryId(value: string): value is CosmeticCategoryId {
-  return CATEGORY_IDS.includes(value as CosmeticCategoryId);
-}
-
-function parseCosmeticsState(raw: string | null): CosmeticsState {
-  if (!raw) return makeDefaultCosmeticsState();
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<CosmeticsState>;
-    const ownedCosmeticIds = Array.isArray(parsed.ownedCosmeticIds)
-      ? Array.from(
-          new Set(
-            parsed.ownedCosmeticIds.filter(
-              (id): id is string => typeof id === 'string' && KNOWN_COSMETIC_IDS.has(id),
-            ),
-          ),
-        )
-      : [];
-    const ownedSet = new Set(ownedCosmeticIds);
-    const equippedByCategory: Partial<Record<CosmeticCategoryId, string>> = {};
-    const equippedCandidate = parsed.equippedByCategory;
-
-    if (equippedCandidate && typeof equippedCandidate === 'object') {
-      Object.entries(equippedCandidate as Record<string, unknown>).forEach(([categoryId, itemId]) => {
-        if (isCosmeticCategoryId(categoryId) && typeof itemId === 'string' && ownedSet.has(itemId)) {
-          equippedByCategory[categoryId] = itemId;
-        }
-      });
-    }
-
-    return { ownedCosmeticIds, equippedByCategory };
-  } catch {
-    return makeDefaultCosmeticsState();
-  }
-}
-
 function formatCoins(amount: number): string {
   return amount.toLocaleString();
 }
@@ -375,7 +327,7 @@ export function StoreScreen({ navigation }: Props) {
         equippedByCategory: { ...current.equippedByCategory, [item.category]: item.id },
       };
     });
-  }, []);
+  }, [setCosmetics]);
 
   const buyCosmetic = useCallback(
     (item: CosmeticItem) => {
@@ -399,7 +351,7 @@ export function StoreScreen({ navigation }: Props) {
       sound.play('coins');
       showAlert('Cosmetic unlocked', item.name + ' is now owned and equipped.');
     },
-    [addCoins, equipCosmetic, ownedCosmetics, profile.coins],
+    [addCoins, equipCosmetic, ownedCosmetics, profile.coins, setCosmetics],
   );
 
   return (
