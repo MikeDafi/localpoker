@@ -230,6 +230,8 @@ export interface SavedGame {
   savedAt: number;
   /** Wall-clock time the current turn's countdown began, so resume can carry over remaining time. */
   turnStartedAt?: number;
+  /** Host-published start time for tournament blind levels. */
+  tournamentStartedAt?: number;
 }
 
 interface AppContextValue {

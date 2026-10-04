@@ -16,6 +16,7 @@ import { sendPush } from './push';
 import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRunVote, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
+import { blindsForMode, isTournamentMode } from '../../game/gameMode';
 import {
   hasExposedHoleCard,
   normalizeHoleCardExposure,
@@ -549,6 +550,7 @@ export const createRoom = async (
         const updates: Record<string, unknown> = {
           [publicRoomPath(roomCode)]: null,
           [`${roomPath(roomCode)}/settingsJson`]: settingsJson,
+          [`${roomPath(roomCode)}/tournamentStartedAt`]: null,
           [`${roomPath(roomCode)}/visibility`]: visibility,
           [`${roomPath(roomCode)}/hostName`]: host.name,
           [`${roomPath(roomCode)}/invited`]: invitedMap,
@@ -620,6 +622,7 @@ export const createRoom = async (
       status: 'lobby',
       createdAt: serverTimestamp() as unknown as number,
       settingsJson,
+      tournamentStartedAt: null,
       visibility,
       hostName: host.name,
       players: {
@@ -979,9 +982,7 @@ const settingsFromRoom = (room: Partial<RoomState> | null): GameSettings => {
 };
 
 const gameConfigFromSettings = (settings: GameSettings, playerCount: number): GameConfig => ({
-  smallBlind: settings.smallBlind,
-  bigBlind: settings.bigBlind,
-  ante: settings.ante,
+  ...blindsForMode(settings.gameMode, settings),
   startingStack: settings.startingStack,
   maxPlayers: Math.max(playerCount, settings.maxPlayers),
   turnTimerSec: settings.turnTimerSec,
@@ -1152,6 +1153,8 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
       return { ok: false, reason: 'Room has ended.' };
     }
 
+    const settings = settingsFromRoom(room);
+    const tournamentStartedAt = isTournamentMode(settings.gameMode) ? Date.now() : null;
     const state = buildHostGame(room, `${roomCode}:${hostId}:${Date.now()}`);
     if (!state) {
       return { ok: false, reason: 'At least two connected players are required to start.' };
@@ -1169,6 +1172,7 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
       // advert left a friend's invite pointing at a table that would refuse
       // them, which is what made Join Table look like it did nothing.
       ...discoveryTeardown(room, roomCode),
+      [`${roomPath(roomCode)}/tournamentStartedAt`]: tournamentStartedAt,
       [`${roomPath(roomCode)}/publicState`]: publicState,
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/actionSeq`]: 0,

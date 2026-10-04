@@ -9,6 +9,8 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
+import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
+import { blindsForMode, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
 import { HoleCards } from '../components/HoleCards';
@@ -167,6 +169,11 @@ export function TableScreen({ navigation, route }: Props) {
   const settings = resuming && savedGame ? savedGame.settings : route.params.settings;
   const seed = resuming && savedGame ? savedGame.seed : route.params.seed;
   const roomCode = resuming && savedGame ? savedGame.roomCode : route.params.roomCode;
+  const tournament = isTournamentMode(settings.gameMode);
+  const [localTournamentStartedAt] = useState(() =>
+    resuming && savedGame?.tournamentStartedAt && isTournamentMode(savedGame.settings.gameMode)
+      ? savedGame.tournamentStartedAt
+      : Date.now());
   const isFriends = !!roomCode;
   const firebaseOnline = isFriends && isFirebaseConfigured();
   const [room, setRoom] = useState<RoomState | null>(null);
@@ -175,6 +182,9 @@ export function TableScreen({ navigation, route }: Props) {
   const authRoomId = onlinePlayerId ?? getAuthUid();
   const isOnlineHost = !!firebaseOnline && !!room && !!authRoomId && room.hostId === authRoomId;
   const hasOnlinePublicState = !!firebaseOnline && !!room?.publicState;
+  const tournamentStartedAt = tournament
+    ? (roomCode ? room?.tournamentStartedAt ?? null : localTournamentStartedAt)
+    : null;
   /*
    * Synced means the table has arrived, not that you personally hold cards.
    *
@@ -246,11 +256,10 @@ export function TableScreen({ navigation, route }: Props) {
      * effect below turns into a plain "Table over".
      */
     try {
+      const openingBlinds = blindsForMode(settings.gameMode, settings);
       const game = createGame(
         {
-          smallBlind: settings.smallBlind,
-          bigBlind: settings.bigBlind,
-          ante: settings.ante,
+          ...openingBlinds,
           startingStack: settings.startingStack,
           maxPlayers: Math.max(settings.numOpponents + 1, settings.maxPlayers),
           turnTimerSec: settings.turnTimerSec,
@@ -296,16 +305,22 @@ export function TableScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (state.handNumber !== 0 || announcedDeadTable.current) return;
     announcedDeadTable.current = true;
-    showAlert('Table over', 'There are not enough players with chips to deal a hand.', [
-      {
-        text: 'Back to menu',
-        onPress: () => {
-          clearSavedGame();
-          navigation.replace('Home');
+    showAlert(
+      tournament ? 'Tournament over' : 'Table over',
+      tournament
+        ? 'There are not enough players with chips to start this tournament.'
+        : 'There are not enough players with chips to deal a hand.',
+      [
+        {
+          text: 'Back to menu',
+          onPress: () => {
+            clearSavedGame();
+            navigation.replace('Home');
+          },
         },
-      },
-    ]);
-  }, [state.handNumber, navigation, clearSavedGame]);
+      ],
+    );
+  }, [state.handNumber, navigation, clearSavedGame, tournament]);
 
   useEffect(() => {
     if (!roomCode || !firebaseOnline) {
@@ -1211,6 +1226,11 @@ export function TableScreen({ navigation, route }: Props) {
       : undefined;
 
   const rebuy = () => {
+    if (tournament) {
+      showAlert('No rebuy', 'Tournament players are eliminated when they run out of chips.');
+      return;
+    }
+
     if (roomCode && firebaseOnline && !isOnlineHost) {
       requestRebuy(roomCode)
         .then((result) => {
@@ -1338,8 +1358,8 @@ export function TableScreen({ navigation, route }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The latest snapshot, so the unmount flush below writes current data without
   // re-subscribing the effect on every state change.
-  const snapshot = useRef({ state, settings, seed, roomCode, turnStartedAt, shouldSaveLocalState });
-  snapshot.current = { state, settings, seed, roomCode, turnStartedAt, shouldSaveLocalState };
+  const snapshot = useRef({ state, settings, seed, roomCode, turnStartedAt, shouldSaveLocalState, tournamentStartedAt });
+  snapshot.current = { state, settings, seed, roomCode, turnStartedAt, shouldSaveLocalState, tournamentStartedAt };
   useEffect(() => {
     if (!shouldSaveLocalState) return undefined;
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -1352,12 +1372,13 @@ export function TableScreen({ navigation, route }: Props) {
         handNumber: state.handNumber,
         savedAt: Date.now(),
         turnStartedAt,
+        ...(tournamentStartedAt !== null ? { tournamentStartedAt } : {}),
       });
     }, 600);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [state, turnStartedAt, shouldSaveLocalState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state, turnStartedAt, shouldSaveLocalState, tournamentStartedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Flush a save the moment the table goes away.
@@ -1383,6 +1404,7 @@ export function TableScreen({ navigation, route }: Props) {
       handNumber: s.state.handNumber,
       savedAt: Date.now(),
       turnStartedAt: s.turnStartedAt,
+      ...(s.tournamentStartedAt !== null ? { tournamentStartedAt: s.tournamentStartedAt } : {}),
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1490,13 +1512,13 @@ export function TableScreen({ navigation, route }: Props) {
 
     const active = state.players.filter((p) => p.chips > 0 && !p.sittingOut);
     const roomSeated = Object.keys(room?.players ?? {}).length;
-    const endTable = (title: string, message: string) => {
+    const endTable = (title: string, message: string, roomReason = message) => {
       showAlert(title, message, [
         {
           text: 'Back to menu',
           onPress: () => {
             if (roomCode && firebaseOnline && isOnlineHost) {
-              endRoom(roomCode, 'Not enough players to continue.').catch(() => {});
+              endRoom(roomCode, roomReason).catch(() => {});
             }
             clearSavedGame();
             navigation.replace('Home');
@@ -1505,13 +1527,35 @@ export function TableScreen({ navigation, route }: Props) {
       ]);
     };
 
+    if (tournamentWinnerId) {
+      const name = tournamentWinnerPlayer?.name ?? 'A player';
+      endTable(
+        'Tournament over',
+        tournamentWinnerId === human.id
+          ? 'You won the tournament! 🎉'
+          : `${name} won the tournament.`,
+        `${name} won the tournament.`,
+      );
+      return;
+    }
+    if (humanEliminated && !isOnlineHost) {
+      showAlert('Out of tournament', 'You are out of chips, so your tournament is over.', [
+        { text: 'Back to menu', onPress: () => { clearSavedGame(); navigation.replace('Home'); } },
+      ]);
+      return;
+    }
     if (active.length < 2 && (!roomCode || roomSeated < 2)) {
       /*
        * Who actually ran out matters. This said "Everyone else is out" to a
        * player who had just busted with chips still in front of the opponent,
        * which is the exact opposite of what had happened.
        */
-      endTable('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.');
+      endTable(
+        tournament ? 'Tournament over' : 'Table over',
+        tournament
+          ? 'The tournament cannot continue because fewer than two players have chips.'
+          : human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.',
+      );
       return;
     }
     /*
@@ -1525,14 +1569,16 @@ export function TableScreen({ navigation, route }: Props) {
      */
     if (!canStartHand(state)) {
       endTable(
-        'Table over',
-        human.chips > 0
-          ? 'Everyone else is out of chips.'
-          : 'You are out of chips.',
+        tournament ? 'Tournament over' : 'Table over',
+        tournament
+          ? 'The tournament cannot continue because fewer than two players have chips.'
+          : human.chips > 0
+            ? 'Everyone else is out of chips.'
+            : 'You are out of chips.',
       );
       return;
     }
-    if (human.chips <= 0) {
+    if (!tournament && human.chips <= 0) {
       showAlert('Out of chips', 'Rebuy for free and keep playing?', [
         { text: 'Back to menu', style: 'cancel', onPress: () => { clearSavedGame(); navigation.replace('Home'); } },
         { text: 'Rebuy (free)', onPress: () => { rebuy(); startNext(); } },
@@ -1555,10 +1601,18 @@ export function TableScreen({ navigation, route }: Props) {
        * guards in nextHand catch the situations a table actually reaches; if
        * one is ever missed, hold the current hand rather than crash.
        */
-      if (!canStartHand(prev)) return prev;
+      const dueLevel = tournamentLevelForMode({
+        mode: settings.gameMode,
+        startedAt: tournamentStartedAt,
+        now: Date.now(),
+      });
+      const ready = dueLevel && blindsDue(prev.config, dueLevel.level)
+        ? applyBlindLevel(prev, dueLevel.level)
+        : prev;
+      if (!canStartHand(ready)) return prev;
       let next: GameState;
       try {
-        next = startHand(prev);
+        next = startHand(ready);
       } catch (error) {
         captureError(error, { tags: { area: 'table', operation: 'start-next-hand' } });
         return prev;
@@ -1643,7 +1697,28 @@ export function TableScreen({ navigation, route }: Props) {
     equippedId: cosmetics.equippedByCategory.cardBacks,
     owned: cosmetics.ownedCosmeticIds,
   });
-  const lowChips = human.chips < settings.bigBlind * 5;
+  const [tournamentNow, setTournamentNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!tournament || tournamentStartedAt === null) return undefined;
+    const timer = setInterval(() => setTournamentNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [tournament, tournamentStartedAt]);
+  const tournamentStatus = useMemo(
+    () => tournamentTableStatus({
+      mode: settings.gameMode,
+      startedAt: tournamentStartedAt,
+      now: tournamentNow,
+      currentBlinds: state.config,
+    }),
+    [settings.gameMode, tournamentStartedAt, state.config, tournamentNow],
+  );
+  const tournamentStatusText = tournamentStatus ? formatTournamentStatus(tournamentStatus) : null;
+  const tournamentWinnerId = tournament ? tournamentWinner(state.players) : null;
+  const tournamentWinnerPlayer = tournamentWinnerId
+    ? state.players.find((p) => p.id === tournamentWinnerId)
+    : null;
+  const humanEliminated = tournament && isEliminated(human, true) && (handOver || human.holeCards.length === 0);
+  const lowChips = !tournament && human.chips < state.config.bigBlind * 5;
 
   /*
    * Waiting on a rebuy, with a clock on it.
@@ -1660,7 +1735,7 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const [rebuyOpenedAt, setRebuyOpenedAt] = useState<number | null>(null);
   const [rebuyTick, setRebuyTick] = useState(0);
-  const tableBlocked = handOver && !canDealHand(state.players);
+  const tableBlocked = !tournament && handOver && !canDealHand(state.players);
 
   useEffect(() => {
     if (!tableBlocked) {
@@ -1678,10 +1753,10 @@ export function TableScreen({ navigation, route }: Props) {
   }, [tableBlocked, rebuyOpenedAt]);
 
   const rebuyState = useMemo(
-    () => rebuyPhase({ players: state.players, openedAt: rebuyOpenedAt, now: Date.now() }),
+    () => rebuyPhase({ players: state.players, openedAt: rebuyOpenedAt, now: Date.now(), tournament }),
     // rebuyTick is the clock: it exists only to re-evaluate this on the second.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.players, rebuyOpenedAt, rebuyTick],
+    [state.players, rebuyOpenedAt, rebuyTick, tournament],
   );
   const rebuyMessage = rebuyNotice(rebuyState, human.id);
   const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
@@ -1707,6 +1782,7 @@ export function TableScreen({ navigation, route }: Props) {
         windowOpen: currentState.street === 'showdown' && !canDealHand(currentState.players),
         openedAt: rebuyOpenedAt,
         now: Date.now(),
+        tournament,
       });
 
       if (decision.status === 'applied') {
@@ -1731,7 +1807,7 @@ export function TableScreen({ navigation, route }: Props) {
         clearHandledRequest();
       }
     });
-  }, [firebaseOnline, isOnlineHost, noteSync, rebuyOpenedAt, roomCode]);
+  }, [firebaseOnline, isOnlineHost, noteSync, rebuyOpenedAt, roomCode, tournament]);
 
   /*
    * The window closed.
@@ -1761,7 +1837,7 @@ export function TableScreen({ navigation, route }: Props) {
     }
 
     if (roomCode && firebaseOnline && isOnlineHost) {
-      for (const p of playersToEvict(state.players)) {
+      for (const p of playersToEvict(state.players, tournament)) {
         removePlayerFromRoom(roomCode, p.id).catch((error: unknown) => {
           captureError(error, { tags: { area: 'firebase-room-sync', operation: 'evict-no-rebuy' } });
         });
@@ -2239,6 +2315,11 @@ export function TableScreen({ navigation, route }: Props) {
             <Text style={styles.roomText}>{`#${roomCode}`}</Text>
           </View>
         ) : null}
+        {tournamentStatusText ? (
+          <View style={[styles.roomPill, styles.tournamentPill]}>
+            <Text style={styles.roomText} numberOfLines={1}>{tournamentStatusText}</Text>
+          </View>
+        ) : null}
         {/* The red "!" that used to sit here asked the player to pick someone
             from a list before it could do anything, which is the wrong way
             round: you already know who you mean, you are looking at them.
@@ -2587,7 +2668,11 @@ export function TableScreen({ navigation, route }: Props) {
                 line of your own hand you cannot see. */}
             <View style={styles.resultHead}>
               <Text style={styles.resultTitle} numberOfLines={1}>
-                {humanWon ? '🎉 You win!' : remainingAtEnd === 1 && !human.folded ? 'You take it!' : 'Hand over'}
+                {tournamentWinnerId
+                  ? tournamentWinnerId === human.id ? '🎉 Tournament champion!' : 'Tournament over'
+                  : humanEliminated ? 'Out of tournament'
+                    : humanWon ? '🎉 You win!'
+                      : remainingAtEnd === 1 && !human.folded ? 'You take it!' : 'Hand over'}
               </Text>
               {earned !== 0 && (
                 <View style={styles.coinRow}>
@@ -2598,6 +2683,17 @@ export function TableScreen({ navigation, route }: Props) {
                 </View>
               )}
             </View>
+            {tournamentWinnerId ? (
+              <Text style={styles.resultLine} numberOfLines={1}>
+                {tournamentWinnerId === human.id
+                  ? 'You hold every chip.'
+                  : `${tournamentWinnerPlayer?.name ?? 'A player'} holds every chip.`}
+              </Text>
+            ) : humanEliminated ? (
+              <Text style={styles.resultLine} numberOfLines={1}>
+                No rebuys in tournament play.
+              </Text>
+            ) : null}
             {state.winners.map((w) => {
               const p = state.players.find((pp) => pp.id === w.playerId);
               const name = p ? visiblePlayer(p).name : 'Player';
@@ -2677,7 +2773,9 @@ export function TableScreen({ navigation, route }: Props) {
                    */
                   rebuyState.phase === 'waiting'
                     ? 'Waiting for players…'
-                    : roomCode && !isOnlineHost
+                    : tournamentWinnerId
+                      ? 'Finish Tournament'
+                      : roomCode && !isOnlineHost
                       ? 'Waiting for host…'
                       : 'Next Hand'
                 }
@@ -2730,7 +2828,7 @@ export function TableScreen({ navigation, route }: Props) {
               onExpire={onTimerExpire}
               warn
             />
-            <ActionBar legal={legal} potSize={wageringPot} step={settings.bigBlind} onAction={onHumanAction} />
+            <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
           </View>
         ) : (
           <View style={styles.waiting}>
@@ -2745,7 +2843,9 @@ export function TableScreen({ navigation, route }: Props) {
               />
             ) : null}
             <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText, !!rebuyMessage && styles.rebuyNotice]}>
-              {rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
+              {humanEliminated
+                ? 'You are out of the tournament.'
+                : rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
             </Text>
             {human.folded && !isShowdown && (
               <Text style={styles.foldedNote}>You folded this hand</Text>
@@ -2784,6 +2884,7 @@ const styles = StyleSheet.create({
   potCenterLabel: { ...type.label, color: colors.onDarkMuted },
   potCenterValue: { fontFamily: fonts.bold, fontSize: 26, color: colors.onDark, ...numeric },
   roomPill: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 44, alignItems: 'center' },
+  tournamentPill: { flexShrink: 1, maxWidth: '58%' },
   roomText: { ...type.label, color: colors.onDarkSoft },
   // The gold win ring must not change the board's geometry, or every card
   // visibly jumps outward the moment a hand is won. The border is therefore

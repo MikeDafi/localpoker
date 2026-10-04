@@ -11,7 +11,13 @@
  * to rebuy, the table says whose it is and how long is left, and when it runs
  * out whoever did not take it is shown the door rather than left occupying a
  * seat nobody can play against.
+ *
+ * Tournaments are the exception. No chips means eliminated there, not waiting
+ * to buy more, so every query takes the mode and asks the tournament helper
+ * rather than duplicating that rule at the table.
  */
+
+import { isEliminated } from './tournament';
 
 /**
  * How long a busted player has to decide.
@@ -49,8 +55,13 @@ export function canDealHand(players: readonly SeatedPlayer[]): boolean {
  * Sitting out is a choice and not the same as being broke, so somebody who
  * stepped away with chips in front of them is left alone.
  */
-export function bustedPlayers(players: readonly SeatedPlayer[]): SeatedPlayer[] {
-  return players.filter((p) => p.chips <= 0 && !p.sittingOut);
+export function bustedPlayers(players: readonly SeatedPlayer[], tournament = false): SeatedPlayer[] {
+  return players.filter((p) => p.chips <= 0 && !p.sittingOut && !isEliminated(p, tournament));
+}
+
+/** Players whose tournament is done rather than paused for a rebuy. */
+export function eliminatedPlayers(players: readonly SeatedPlayer[], tournament: boolean): SeatedPlayer[] {
+  return players.filter((p) => !p.sittingOut && isEliminated(p, tournament));
 }
 
 export type RebuyPhase =
@@ -72,9 +83,10 @@ export function rebuyPhase(input: {
   openedAt: number | null;
   now: number;
   windowMs?: number;
+  tournament?: boolean;
 }): RebuyPhase {
   const windowMs = input.windowMs ?? REBUY_WINDOW_MS;
-  const busted = bustedPlayers(input.players);
+  const busted = bustedPlayers(input.players, input.tournament ?? false);
 
   /*
    * Nobody is being waited on if the hand could be dealt regardless.
@@ -115,14 +127,14 @@ export function rebuyNotice(phase: RebuyPhase, localPlayerId: string): string | 
  * Everyone still holding nothing. A player who rebought is no longer busted,
  * so they simply are not in this list.
  */
-export function playersToEvict(players: readonly SeatedPlayer[]): SeatedPlayer[] {
-  return bustedPlayers(players);
+export function playersToEvict(players: readonly SeatedPlayer[], tournament = false): SeatedPlayer[] {
+  return tournament ? eliminatedPlayers(players, tournament) : bustedPlayers(players);
 }
 
 export type RebuyRequestDecision<T extends SeatedPlayer = SeatedPlayer> =
   | { status: 'applied'; playerId: string; chips: number; players: T[] }
   | { status: 'already-applied'; playerId: string; chips: number }
-  | { status: 'rejected'; reason: 'unknown-player' | 'invalid-starting-stack' | 'not-in-rebuy-window' };
+  | { status: 'rejected'; reason: 'unknown-player' | 'invalid-starting-stack' | 'not-in-rebuy-window' | 'eliminated' };
 
 /**
  * Settles a rebuy request on the host, never on the requesting device.
@@ -139,9 +151,14 @@ export function applyRebuyRequest<T extends SeatedPlayer>(input: {
   openedAt: number | null;
   now: number;
   windowMs?: number;
+  tournament?: boolean;
 }): RebuyRequestDecision<T> {
   const player = input.players.find((p) => p.id === input.playerId);
   if (!player) return { status: 'rejected', reason: 'unknown-player' };
+
+  if (isEliminated(player, input.tournament ?? false)) {
+    return { status: 'rejected', reason: 'eliminated' };
+  }
 
   if (!Number.isFinite(input.startingStack) || input.startingStack <= 0) {
     return { status: 'rejected', reason: 'invalid-starting-stack' };
@@ -160,6 +177,7 @@ export function applyRebuyRequest<T extends SeatedPlayer>(input: {
     openedAt: input.openedAt,
     now: input.now,
     windowMs: input.windowMs,
+    tournament: input.tournament,
   });
   if (phase.phase !== 'waiting' || !phase.players.some((p) => p.id === input.playerId)) {
     return { status: 'rejected', reason: 'not-in-rebuy-window' };

@@ -45,6 +45,9 @@
           "settingsJson": {
             ".validate": "newData.isString() && newData.val().length < 4000"
           },
+          "tournamentStartedAt": {
+            ".validate": "!newData.exists() || newData.isNumber()"
+          },
           "actionSeq": {
             ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists() && newData.isNumber() && newData.val() > data.val() && newData.val() <= data.val() + 100",
             ".validate": "newData.isNumber()"

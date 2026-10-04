@@ -59,6 +59,7 @@ export type RoomState = {
   status: RoomStatus;
   createdAt: number;
   settingsJson: string;
+  tournamentStartedAt?: number | null;
   visibility?: RoomVisibility;
   hostName?: string;
   players: Record<string, RoomPlayer>;

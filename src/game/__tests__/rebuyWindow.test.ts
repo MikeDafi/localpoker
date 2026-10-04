@@ -6,6 +6,7 @@ import {
   applyRebuyRequest,
   bustedPlayers,
   canDealHand,
+  eliminatedPlayers,
   localPlayerEvicted,
   playersAbleToDeal,
   playersToEvict,
@@ -54,6 +55,11 @@ describe('bustedPlayers', () => {
   it('treats a negative stack as busted, since it is certainly not playable', () => {
     expect(bustedPlayers([seat('bob', -5)]).map((p) => p.id)).toEqual(['bob']);
   });
+
+  it('does not offer a tournament rebuy to an eliminated player', () => {
+    expect(bustedPlayers([seat('bob', 0)], true)).toEqual([]);
+    expect(eliminatedPlayers([seat('bob', 0)], true).map((p) => p.id)).toEqual(['bob']);
+  });
 });
 
 describe('rebuyPhase', () => {
@@ -62,6 +68,11 @@ describe('rebuyPhase', () => {
 
   it('waits on nobody when everyone has chips', () => {
     const phase = rebuyPhase({ players: [seat('alice', 500), seat('bob', 500)], openedAt: now, now });
+    expect(phase.phase).toBe('none');
+  });
+
+  it('does not open a rebuy window in a tournament', () => {
+    const phase = rebuyPhase({ players: busted, openedAt: now, now, tournament: true });
     expect(phase.phase).toBe('none');
   });
 
@@ -175,6 +186,11 @@ describe('eviction', () => {
     expect(playersToEvict(table).map((p) => p.id)).toEqual(['cara']);
   });
 
+  it('evicts tournament eliminations immediately when a caller asks for them', () => {
+    const table = [seat('alice', 500), seat('bob', 0)];
+    expect(playersToEvict(table, true).map((p) => p.id)).toEqual(['bob']);
+  });
+
   it('tells the local player apart from everyone else', () => {
     const expired = { phase: 'expired' as const, players: [seat('bob', 0)] };
     expect(localPlayerEvicted(expired, 'bob')).toBe(true);
@@ -283,6 +299,20 @@ describe('applyRebuyRequest', () => {
     });
 
     expect(result).toEqual({ status: 'rejected', reason: 'not-in-rebuy-window' });
+  });
+
+  it('rejects a tournament rebuy for an eliminated player', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'bob',
+      startingStack: 2000,
+      windowOpen: true,
+      openedAt: now,
+      now,
+      tournament: true,
+    });
+
+    expect(result).toEqual({ status: 'rejected', reason: 'eliminated' });
   });
 
   it('rejects an invalid host starting stack instead of inventing one', () => {
