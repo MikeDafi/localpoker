@@ -22,6 +22,7 @@ import {
   type HoleCardIndex,
 } from '../../game/holeCardExposure';
 import { isEndedRoomReclaimable, planHostedRoomOpen } from '../../game/lobbyRoom';
+import { readConnection } from '../../game/connectionGrace';
 import {
   applyConnectionStatusToGameState,
   redactGameState,
@@ -30,6 +31,15 @@ import {
 } from '../../game/onlineSync';
 import { maskedPublicName } from '../../moderation/contentFilter';
 import { createGame, startHand, type GameConfig, type GameState, type PlayerInput } from '../../engine';
+
+/**
+ * When each player was first seen unreachable, keyed by room and player.
+ *
+ * Module level because the grace window has to survive the individual roster
+ * snapshots it is measured across; a value recomputed on every snapshot would
+ * restart the countdown every time and never close.
+ */
+const disconnectedSince = new Map<string, number>();
 
 type Result = { ok: boolean; reason?: string };
 type StartRoomGameResult = Result & { state?: GameState; publicState?: PublicGameState };
@@ -698,8 +708,25 @@ const reconcileHostPresence = async (roomCode: string, room: RoomState | null): 
       return;
     }
 
+    /*
+     * `=== true` used to live here, which turned a missing flag into a
+     * confident false and folded everybody the roster had not described yet.
+     * readConnection keeps unknown as unknown, and makes a real disconnection
+     * wait out a grace window so a phone blinking between cells does not cost
+     * somebody the hand they were in the middle of.
+     */
     const connectedByPlayerId = Object.fromEntries(
-      cached.players.map((player) => [player.id, room.players?.[player.id]?.connected === true]),
+      cached.players.map((player) => {
+        const key = `${roomCode}:${player.id}`;
+        const reading = readConnection({
+          raw: room.players?.[player.id]?.connected,
+          since: disconnectedSince.get(key),
+          now: Date.now(),
+        });
+        if (reading.since === undefined) disconnectedSince.delete(key);
+        else disconnectedSince.set(key, reading.since);
+        return [player.id, reading.connected];
+      }),
     );
     const result = applyConnectionStatusToGameState(cached, connectedByPlayerId);
     if (!result.changed) {
