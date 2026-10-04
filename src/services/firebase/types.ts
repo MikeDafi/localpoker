@@ -70,6 +70,8 @@ export type RoomState = {
   visibility?: RoomVisibility;
   hostName?: string;
   players: Record<string, RoomPlayer>;
+  /** Uids with deliberate invite records, so the host can withdraw them. */
+  invited?: Record<string, true>;
   actionSeq: number;
   publicState?: PublicGameState;
   shown?: Record<string, true>;

@@ -14,7 +14,7 @@ import { applyOutfit } from '../game/outfits';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
 import {
-  isFirebaseConfigured, createRoom, joinRoom, leaveRoom, subscribeRoom, setPlayerConnected, getAuthUid,
+  isFirebaseConfigured, createRoom, inviteFriendToRoom, joinRoom, leaveRoom, subscribeRoom, setPlayerConnected, getAuthUid,
   startRoomGame,
   getCachedHostGame,
   type RoomState, type RoomPlayer,
@@ -111,9 +111,6 @@ export function LobbyScreen({ navigation, route }: Props) {
       const res = host
         ? await createRoom(roomCode, me, roomSettingsJson(pinCosmetics(hostSettings ?? DEFAULT_GAME_SETTINGS, cosmetics)), {
             visibility: (hostSettings ?? DEFAULT_GAME_SETTINGS).roomVisibility,
-            // Friends are told about the table whether it is public or private;
-            // private means hidden from strangers, not from them.
-            friendUids: friends.map((f) => f.uid).filter((uid): uid is string => !!uid),
           })
         : await joinRoom(roomCode, me);
       if (cancelled) return;
@@ -221,9 +218,9 @@ export function LobbyScreen({ navigation, route }: Props) {
   const [invited, setInvited] = useState<Record<string, boolean>>({});
 
   /*
-   * Inviting moved here from Create Room, because this is the first point at
-   * which the code opens a table that exists. Everyone is listed, whoever is
-   * online first: an absent friend is the normal case and gets a notification.
+   * Creating the room is silent. This button is the deliberate per-person
+   * invite, and it writes the in-app invite list instead of opening the share
+   * sheet and hoping the friend sees a separate message.
    */
   const invitableFriends = useMemo(() => {
     // Someone already at the table is not someone to invite to it. They were
@@ -237,7 +234,17 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   const inviteFriend = async (id: string, name: string) => {
     setInvited((prev) => ({ ...prev, [id]: true }));
-    try { await Share.share({ message: `${name}, join my LocalPoker table! Room code: ${roomCode}` }); } catch {}
+    const res = await inviteFriendToRoom(roomCode, id);
+    if (!res.ok) {
+      setInvited((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      showAlert('Could not invite', res.reason || 'Try again in a moment.');
+      return;
+    }
+    showAlert('Invite sent', `${name} will see it in LocalPoker.`);
   };
 
   /**
@@ -316,7 +323,7 @@ export function LobbyScreen({ navigation, route }: Props) {
                   variant={invited[f.id] ? 'white' : 'blue'}
                   size="sm"
                   disabled={invited[f.id]}
-                  onPress={() => inviteFriend(f.id, f.name)}
+                  onPress={() => inviteFriend(f.uid ?? f.id, f.name)}
                 />
               </View>
             ))

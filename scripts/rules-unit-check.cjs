@@ -455,6 +455,21 @@ function logOk(message) {
     }));
     logOk('and then advertise it to that friend');
 
+    /*
+     * Invite is a patch now, not part of creation. The host records the
+     * invitee on a room that already exists, and the create-with-the-field-set
+     * case passing above does not prove this shape passes: a refused patch
+     * would make the Invite button silently do nothing.
+     */
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/roomInvites/player/FLOW1': {
+        code: 'FLOW1', hostUid: 'host', hostName: 'Host',
+        visibility: 'private', status: 'lobby', updatedAt: 82,
+      },
+      'localpoker/rooms/FLOW1/invited/player': true,
+    }));
+    logOk('and can record a later invite on a room that already exists');
+
     const invite = await get(ref(playerDb, 'localpoker/roomInvites/player/FLOW1'));
     if (!invite.exists()) throw new Error('the invited friend cannot see the invite');
     logOk('the friend can see the invite');

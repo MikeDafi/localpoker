@@ -18,6 +18,9 @@ const writes: { path: string; value: unknown }[] = [];
 const disconnectWrites: { path: string; value: unknown }[] = [];
 const valueHandlers: ((snapshot: { val: () => unknown }) => void)[] = [];
 const ensureSignedIn = vi.fn<() => Promise<string | null>>(async () => AUTH_UID);
+const { sendPush } = vi.hoisted(() => ({
+  sendPush: vi.fn(),
+}));
 const readValues = new Map<string, unknown>();
 let updateError: Error | null = null;
 
@@ -35,9 +38,7 @@ vi.mock('../../telemetry', () => ({
   captureError: vi.fn(),
 }));
 
-vi.mock('../push', () => ({
-  sendPush: vi.fn(),
-}));
+vi.mock('../push', () => ({ sendPush }));
 
 vi.mock('firebase/database', () => ({
   ref: (_db: unknown, path?: string) => ({ path: path ?? '' }),
@@ -105,6 +106,7 @@ describe('room writes are keyed by auth.uid', () => {
     updateError = null;
     ensureSignedIn.mockClear();
     ensureSignedIn.mockResolvedValue(AUTH_UID);
+    sendPush.mockClear();
   });
 
   it('creates a room with hostId set to the auth uid, not the local profile id', async () => {
@@ -157,6 +159,22 @@ describe('room writes are keyed by auth.uid', () => {
     expect(writes).toHaveLength(0);
   });
 
+  it('does not treat creating a room as an invite to every friend', async () => {
+    const { createRoom } = await import('../roomSync');
+
+    const result = await createRoom('ROOM12', player, '{}', {
+      visibility: 'private',
+      friendUids: ['friend1', 'friend2'],
+    });
+
+    expect(result.ok).toBe(true);
+    const room = writtenValueAt('localpoker/rooms/ROOM12') as { invited?: Record<string, true> };
+    expect(room.invited).toBeUndefined();
+    expect(writtenValueAt('localpoker/roomInvites/friend1/ROOM12')).toBeUndefined();
+    expect(writtenValueAt('localpoker/roomInvites/friend2/ROOM12')).toBeUndefined();
+    expect(sendPush).not.toHaveBeenCalled();
+  });
+
   it('re-enters an existing host lobby by seating the host and refreshing discovery', async () => {
     readValues.set('localpoker/rooms/ROOM12', {
       code: 'ROOM12',
@@ -191,10 +209,10 @@ describe('room writes are keyed by auth.uid', () => {
       role: 'host',
       updatedAt: expect.any(Number),
     });
-    expect(updates['localpoker/rooms/ROOM12/invited']).toEqual({ newfriend: true });
     expect(updates['localpoker/publicRooms/ROOM12']).toBeNull();
-    expect(writtenValueAt('localpoker/roomInvites/oldfriend/ROOM12')).toBeNull();
-    expect(updates['localpoker/roomInvites/newfriend/ROOM12']).toMatchObject({
+    expect(updates['localpoker/rooms/ROOM12/invited']).toBeUndefined();
+    expect(updates['localpoker/roomInvites/newfriend/ROOM12']).toBeUndefined();
+    expect(updates['localpoker/roomInvites/oldfriend/ROOM12']).toMatchObject({
       code: 'ROOM12',
       hostUid: AUTH_UID,
       status: 'lobby',
@@ -205,6 +223,38 @@ describe('room writes are keyed by auth.uid', () => {
     });
   });
 
+  it('writes one in-app invite only when the host invites that friend', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'lobby',
+      settingsJson: '{"smallBlind":10,"bigBlind":20,"startingStack":3000}',
+      visibility: 'private',
+      hostName: 'Sneaky Ace',
+      players: { [AUTH_UID]: player },
+      actionSeq: 0,
+    });
+    readValues.set('localpoker/presence/friend1/online', true);
+    const { inviteFriendToRoom } = await import('../roomSync');
+
+    const result = await inviteFriendToRoom('ROOM12', 'friend1');
+
+    expect(result.ok).toBe(true);
+    const updates = mergedRootUpdates();
+    expect(updates['localpoker/rooms/ROOM12/invited/friend1']).toBe(true);
+    expect(updates['localpoker/roomInvites/friend1/ROOM12']).toMatchObject({
+      code: 'ROOM12',
+      hostUid: AUTH_UID,
+      status: 'lobby',
+      visibility: 'private',
+      smallBlind: 10,
+      bigBlind: 20,
+      startingStack: 3000,
+    });
+    expect(updates['localpoker/roomInvites/friend2/ROOM12']).toBeUndefined();
+    expect(sendPush).not.toHaveBeenCalled();
+  });
+
   it('can recover this host lobby after the settings route ended it', async () => {
     readValues.set('localpoker/rooms/ROOM12', {
       code: 'ROOM12',
@@ -213,7 +263,11 @@ describe('room writes are keyed by auth.uid', () => {
       endedReason: 'Host left the room.',
       endedAt: 123,
       settingsJson: '{}',
-      players: {},
+      players: {
+        [AUTH_UID]: { ...player, id: AUTH_UID, connected: false },
+        staleguest: { ...player, id: 'staleguest', name: 'Stale Guest', isHost: false },
+      },
+      invited: { staleguest: true },
       actionSeq: 0,
     });
     const { createRoom } = await import('../roomSync');
@@ -225,7 +279,11 @@ describe('room writes are keyed by auth.uid', () => {
     expect(updates['localpoker/rooms/ROOM12/status']).toBe('lobby');
     expect(updates['localpoker/rooms/ROOM12/endedReason']).toBeNull();
     expect(updates['localpoker/rooms/ROOM12/endedAt']).toBeNull();
-    expect(updates[`localpoker/rooms/ROOM12/players/${AUTH_UID}`]).toMatchObject({
+    expect(updates['localpoker/rooms/ROOM12/invited']).toBeNull();
+    expect(writtenValueAt('localpoker/roomInvites/staleguest/ROOM12')).toBeNull();
+    const players = updates['localpoker/rooms/ROOM12/players'] as Record<string, { id: string; connected: boolean; isHost: boolean }>;
+    expect(Object.keys(players)).toEqual([AUTH_UID]);
+    expect(players[AUTH_UID]).toMatchObject({
       id: AUTH_UID,
       connected: true,
       isHost: true,

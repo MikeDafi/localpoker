@@ -43,6 +43,7 @@ export {
   clearRebuyRequest,
   endRoom,
   getCachedHostGame,
+  inviteFriendToRoom,
   joinRoom,
   leaveRoom,
   removePlayerFromRoom,

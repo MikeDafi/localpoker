@@ -2,8 +2,10 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { Linking } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { showAlert } from '../components/alertBus';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
+import { friendRequestAlertKeys, freshFriendRequestForAlert } from '../game/friendRequestAlert';
 import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
 import { emptyCosmetics, migrateCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
 import { randomName } from '../game/playerName';
@@ -301,6 +303,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const activeAccount = useRef<string>(GUEST_ACCOUNT);
+  const seenFriendRequestAlerts = useRef<Set<string>>(new Set());
+  const friendRequestAlertsPrimed = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -566,10 +570,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready || !auth.loggedIn || !isFirebaseConfigured()) {
+      seenFriendRequestAlerts.current = new Set();
+      friendRequestAlertsPrimed.current = false;
       return undefined;
     }
 
     return subscribeSocialGraph((snapshot) => {
+      const alertKeys = friendRequestAlertKeys(snapshot);
+      if (friendRequestAlertsPrimed.current) {
+        const request = freshFriendRequestForAlert(snapshot, seenFriendRequestAlerts.current);
+        if (request) {
+          showAlert('New friend request', `@${request.fromHandle} wants to play poker with you.`);
+        }
+      } else {
+        friendRequestAlertsPrimed.current = true;
+      }
+      seenFriendRequestAlerts.current = alertKeys;
+
       const nextBlocked = snapshot.blocked.map(blockedFromRecord);
       persist(BLOCKS_KEY, nextBlocked);
       setBlockedUsers(nextBlocked);

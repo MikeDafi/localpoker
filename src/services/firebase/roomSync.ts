@@ -13,7 +13,7 @@ import {
 import { getDb, isFirebaseConfigured } from './config';
 import { ensureSignedIn } from './auth';
 import { sendPush } from './push';
-import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRunVote, RoomState, RoomSummary, RoomVisibility } from './types';
+import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRunVote, RoomState, RoomStatus, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
 import { blindsForMode, isTournamentMode } from '../../game/gameMode';
@@ -91,7 +91,7 @@ const userRoomPath = (playerId: string, code: string): string => `localpoker/use
  * in it, so a browse list cannot be built from it without opening every private
  * game to the world. These two nodes carry a summary instead: `publicRooms` is
  * the open lobby anyone may read, and `roomInvites/$friendUid` is a per-friend
- * inbox, so a private table is discoverable by your friends and by nobody else.
+ * inbox used only after the host deliberately taps Invite.
  */
 const publicRoomPath = (code: string): string => `localpoker/publicRooms/${code}`;
 const roomInvitePath = (friendUid: string, code: string): string =>
@@ -393,14 +393,14 @@ export const isRoomCodeTaken = async (code: string): Promise<boolean> => {
  *
  * Deliberately separate from the room write and deliberately allowed to fail:
  * these are hints. A room missing them is harder to find, not broken, so a
- * refused invite must never read to the host as a refused table.
+ * refused listing must never read to the host as a refused table.
  */
 const publishDiscovery = async (
   db: Database,
   roomCode: string,
   hostId: string,
   hostName: string,
-  options: { visibility?: RoomVisibility; friendUids?: readonly string[] },
+  options: { visibility?: RoomVisibility },
   status: string,
   settingsJson: string,
 ): Promise<void> => {
@@ -411,11 +411,6 @@ const publishDiscovery = async (
   );
   const discovery: Record<string, unknown> = {};
   if (visibility === 'public') discovery[publicRoomPath(roomCode)] = summary;
-  // Friends get told about the table either way: a private room is private
-  // from strangers, not from the people it is for.
-  for (const friendUid of options.friendUids ?? []) {
-    if (friendUid && friendUid !== hostId) discovery[roomInvitePath(friendUid, roomCode)] = summary;
-  }
   if (Object.keys(discovery).length === 0) return;
   try {
     await update(ref(db), discovery);
@@ -426,43 +421,125 @@ const publishDiscovery = async (
      * Removing them when the host's connection dropped seemed like the tidy
      * way to clean up after a client that had gone for good. It is not: iOS
      * closes the socket within seconds of the app being backgrounded, so the
-     * host switching apps to send someone the code deleted the very invite
-     * they were about to talk about, and the friend opened the app to find
-     * nothing there.
+     * host switching apps to send someone the code deleted the public listing,
+     * and the friend opened the app to find nothing there.
      *
      * A dropped connection is not an intent to withdraw anything, which is
-     * the same reason it no longer ends the room. Invites are withdrawn
-     * explicitly when the table starts or ends, the invitee deletes one that
-     * turns out to lead nowhere, and an abandoned room is swept after ten
-     * minutes.
+     * the same reason it no longer ends the room. Listings are withdrawn
+     * explicitly when the table starts or ends, and an abandoned room is swept
+     * after ten minutes.
      */
 
-    /*
-     * Notify the friends who are not already looking at the app.
-     *
-     * Someone online sees the invite arrive in their Join Room list, so a push
-     * on top of that is just a second copy of the same news. Someone away has
-     * no other way of hearing about it, which is the case the notification
-     * exists for. Presence is read rather than assumed, and a failed read
-     * falls through to sending, because a missed invite is worse than a
-     * duplicate one.
-     */
-    for (const friendUid of options.friendUids ?? []) {
-      if (!friendUid || friendUid === hostId) continue;
-      void (async () => {
-        let away = true;
-        try {
-          const snap = await get(ref(db, `localpoker/presence/${friendUid}/online`));
-          away = snap.val() !== true;
-        } catch {
-          // Unreadable presence is not a reason to stay silent.
-        }
-        if (away) void sendPush(friendUid, 'room-invite', hostName, roomCode);
-      })();
-    }
   } catch (error) {
     reportFirebaseError('create-room-discovery', error);
-    console.warn('Room created but could not publish invites.', error);
+    console.warn('Room created but could not publish discovery.', error);
+  }
+};
+
+const sendRoomInvitePushIfAway = async (
+  db: Database,
+  friendUid: string,
+  hostId: string,
+  hostName: string,
+  roomCode: string,
+): Promise<void> => {
+  if (!friendUid || friendUid === hostId) return;
+  let away = true;
+  try {
+    const snap = await get(ref(db, `localpoker/presence/${friendUid}/online`));
+    away = snap.val() !== true;
+  } catch {
+    // Unreadable presence is not a reason to stay silent about an explicit invite.
+  }
+  if (away) void sendPush(friendUid, 'room-invite', hostName, roomCode);
+};
+
+const refreshRoomInviteSummaries = async (
+  db: Database,
+  roomCode: string,
+  hostId: string,
+  hostName: string,
+  visibility: RoomVisibility,
+  status: RoomStatus,
+  settingsJson: string,
+  friendUids: readonly string[],
+): Promise<void> => {
+  const summary = roomSummaryOf({ code: roomCode, status }, settingsJson, hostId, hostName, visibility);
+  const updates: Record<string, unknown> = {};
+  for (const rawUid of friendUids) {
+    const uid = cleanKey(rawUid);
+    if (uid && uid !== hostId) updates[roomInvitePath(uid, roomCode)] = summary;
+  }
+  if (Object.keys(updates).length === 0) return;
+  try {
+    await update(ref(db), updates);
+  } catch (error) {
+    /*
+     * Existing invites are hints. A failed refresh must not turn a settings
+     * edit into a dead lobby, because the room itself already has the truth.
+     */
+    reportFirebaseError('refresh-room-invite-summaries', error);
+  }
+};
+
+export const inviteFriendToRoom = async (
+  code: string,
+  friendUid: string,
+): Promise<Result> => {
+  const db = getConfiguredDb();
+  if (!db) {
+    return unavailableResult();
+  }
+
+  const roomCode = cleanKey(code);
+  const invitee = cleanKey(friendUid);
+  if (!roomCode || !invitee) {
+    return { ok: false, reason: 'Invite target must be valid.' };
+  }
+
+  const hostId = await authedPlayerId();
+  if (!hostId) {
+    return notSignedInResult();
+  }
+  if (invitee === hostId) {
+    return { ok: false, reason: "You're already at this table." };
+  }
+
+  try {
+    const snapshot = await get(ref(db, roomPath(roomCode)));
+    if (!snapshot.exists()) {
+      return { ok: false, reason: 'Room does not exist.' };
+    }
+
+    const room = snapshot.val() as Partial<RoomState> | null;
+    if (room?.hostId !== hostId) {
+      return { ok: false, reason: 'Only the host can invite friends.' };
+    }
+    if (room.status !== 'lobby') {
+      return { ok: false, reason: 'Invite before the first hand starts.' };
+    }
+
+    const settingsJson = typeof room.settingsJson === 'string' ? room.settingsJson : '{}';
+    const visibility: RoomVisibility = room.visibility === 'public' ? 'public' : 'private';
+    const hostName = room.hostName || 'Host';
+    const summary = roomSummaryOf(
+      { code: roomCode, status: 'lobby' },
+      settingsJson,
+      hostId,
+      hostName,
+      visibility,
+    );
+
+    await update(ref(db), {
+      [roomInvitePath(invitee, roomCode)]: summary,
+      [`${roomPath(roomCode)}/invited/${invitee}`]: true,
+    });
+    void sendRoomInvitePushIfAway(db, invitee, hostId, hostName, roomCode);
+    return { ok: true };
+  } catch (error) {
+    reportFirebaseError('invite-room-friend', error);
+    console.warn('Unable to invite friend to Firebase room.', error);
+    return { ok: false, reason: getErrorMessage(error) };
   }
 };
 
@@ -470,9 +547,9 @@ const publishDiscovery = async (
  * How many tables one person may have open at once.
  *
  * Without a cap a host accumulates rooms every time they set one up and walk
- * away, each one advertising itself to their friends until it is swept, so
- * the Join Room list fills with tables belonging to one person who is not at
- * any of them.
+ * away, and public rooms keep advertising themselves until they are swept.
+ * The Join Room list should not fill with tables belonging to one person who
+ * is not at any of them.
  */
 export const MAX_ROOMS_PER_HOST = 3;
 
@@ -529,10 +606,11 @@ export const createRoom = async (
 
   const visibility: RoomVisibility = options.visibility === 'public' ? 'public' : 'private';
   const hostPlayer = toDbPlayer(host, { id: hostId, connected: true, isHost: true });
-  const invitedUids = (options.friendUids ?? []).filter((uid) => uid && uid !== hostId);
-  const invitedMap = invitedUids.length
-    ? Object.fromEntries(invitedUids.map((uid) => [uid, true]))
-    : null;
+  /*
+   * Older callers passed the whole friends list here so creation could fan out
+   * invite records. Creation is not consent to notify everyone, so friendUids
+   * is tolerated for compatibility but deliberate invites use inviteFriendToRoom.
+   */
 
   try {
     const roomRef = ref(db, roomPath(roomCode));
@@ -541,8 +619,8 @@ export const createRoom = async (
       const existingRoom = existing.val() as Partial<RoomState> | null;
       const plan = planHostedRoomOpen(existingRoom, hostId);
       if (plan.type === 'attach') {
-        const nextInvitedUids = new Set(invitedUids);
-        const staleInviteUids = invitedUidsOf(existingRoom).filter((uid) => !nextInvitedUids.has(uid));
+        const existingInvitedUids = invitedUidsOf(existingRoom);
+        const staleInviteUids = plan.reopenEnded ? existingInvitedUids : [];
         /*
          * A settings edit returns through the host path for the same table.
          * Refresh it in place, including the host's seat and discovery hints,
@@ -554,8 +632,6 @@ export const createRoom = async (
           [`${roomPath(roomCode)}/tournamentStartedAt`]: null,
           [`${roomPath(roomCode)}/visibility`]: visibility,
           [`${roomPath(roomCode)}/hostName`]: host.name,
-          [`${roomPath(roomCode)}/invited`]: invitedMap,
-          [playerPath(roomCode, hostId)]: hostPlayer,
           [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
         };
         if (plan.reopenEnded) {
@@ -567,6 +643,10 @@ export const createRoom = async (
           updates[`${roomPath(roomCode)}/shown`] = null;
           updates[`${roomPath(roomCode)}/exposed`] = null;
           updates[`${roomPath(roomCode)}/runVotes`] = null;
+          updates[`${roomPath(roomCode)}/invited`] = null;
+          updates[playersPath(roomCode)] = { [hostId]: hostPlayer };
+        } else {
+          updates[playerPath(roomCode, hostId)] = hostPlayer;
         }
         await update(ref(db), updates);
         for (const uid of staleInviteUids) {
@@ -581,6 +661,18 @@ export const createRoom = async (
           }
         }
         await publishDiscovery(db, roomCode, hostId, host.name, options, 'lobby', settingsJson);
+        if (!plan.reopenEnded) {
+          await refreshRoomInviteSummaries(
+            db,
+            roomCode,
+            hostId,
+            host.name,
+            visibility,
+            'lobby',
+            settingsJson,
+            existingInvitedUids,
+          );
+        }
         await registerDisconnect(db, roomCode, hostId, true);
         return { ok: true };
       }
@@ -630,23 +722,18 @@ export const createRoom = async (
         [hostId]: hostPlayer,
       },
       actionSeq: 0,
-      // Who this table advertised itself to. Without it the host cannot
-      // withdraw its own invites later, which is exactly why a friend's Join
-      // Table kept opening a room that had already started or gone.
-      ...(invitedMap ? { invited: invitedMap } : {}),
     };
 
     // The room has to land before its discovery entries, and this cannot be one
     // atomic write.
     //
-    // The rules on `publicRooms/$code` and `roomInvites/$uid/$code` both check
+    // The rule on `publicRooms/$code` checks
     // `root.../rooms/$code/hostId === auth.uid` to prove the writer hosts the
     // room. `root` is the database *before* the write, so during creation that
     // lookup sees nothing and the check fails. Because a multi-path update is
-    // atomic, that rejected the entire write: no room, no invites, no listing,
-    // just PERMISSION_DENIED. It only bit when the write actually included
-    // those paths, which is to say whenever the host had friends or ticked
-    // public, which is every real "play with friends" table.
+    // atomic, that rejected the entire write: no room, no listing, just
+    // PERMISSION_DENIED. It only bit when the write actually included the
+    // public path, which is to say whenever the host ticked Public.
     //
     // Rules cannot see a sibling path's `newData`, so the cross-reference
     // cannot simply be rewritten to look at the pending room. Writing in two
