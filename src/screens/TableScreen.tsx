@@ -1809,6 +1809,13 @@ export function TableScreen({ navigation, route }: Props) {
    * top of it. The felt says who won now, in gold and red, so the words were
    * the cheapest thing to give up.
    */
+  /**
+   * How far below the lane's top the board sits while a hand is being played.
+   *
+   * A small, fixed inset rather than a centred position, so the row is in the
+   * same place on every street no matter what else on the table changed size.
+   */
+  const BOARD_PIN_TOP = 10;
   const boardTopFor = (_showdown: boolean) => laneTop;
   /*
    * How tall a board card may be.
@@ -1838,8 +1845,17 @@ export function TableScreen({ navigation, route }: Props) {
   const boardRowBottom = (size: number) => {
     const h = size * CARD_ASPECT + CARD_FRAME;
     if (layingOut) return boardTopFor(true) + h;
-    const block = h + 6 + POT_BLOCK_H;
-    return laneTop + Math.max(0, (laneH - block) / 2) + h;
+    /*
+     * Pinned, not centred.
+     *
+     * This used to centre the board in the lane, and the lane is measured up
+     * from the hero's pod, so anything that changed the pod's height slid the
+     * board with it. The pod no longer resizes mid hand, but centring would
+     * still move the row for any other reason the lane changed. Putting the
+     * five cards at a fixed offset means laying hands underneath them is the
+     * only thing that ever moves them, which is the one time it should.
+     */
+    return laneTop + BOARD_PIN_TOP + h;
   };
   const sdCardSize = fitBoardCard({
     cells: BOARD_CELLS,

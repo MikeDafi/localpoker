@@ -66,6 +66,15 @@ export interface SeatProps {
 }
 
 /** A player pod around the felt: animated Pal, name, stack, status, and cards. */
+/**
+ * How tall the bet row is, with or without a pill in it.
+ *
+ * A constant rather than a measurement, because the entire point is that it
+ * never changes: the pod's height is what the lane and the board are measured
+ * from, so anything that can resize it moves the whole table.
+ */
+const BET_SLOT_H = 22;
+
 export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
@@ -168,9 +177,21 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
           <Text style={styles.cChips}>{player.chips.toLocaleString()}</Text>
         </View>
         {player.allIn && <View style={styles.allIn}><Text style={styles.allInText}>ALL IN</Text></View>}
-        {showBet && player.currentBet > 0 && !player.sittingOut && (
-          <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
-        )}
+        {/*
+          * The slot is always here, the pill is not.
+          *
+          * Rendering the pill only when there were chips in front of somebody
+          * made the pod taller the moment they bet and shorter again when the
+          * pot was swept. The avatar and the name tag jumped every street, and
+          * because the whole table is measured down from the pod, the board
+          * slid with it. Reserving the row costs a few points of felt once and
+          * holds everything still.
+          */}
+        <View style={styles.betSlot}>
+          {showBet && player.currentBet > 0 && !player.sittingOut && (
+            <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
+          )}
+        </View>
       </View>
     );
   }
@@ -208,9 +229,13 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
         </View>
       </View>
 
-      {showBet && player.currentBet > 0 && !player.sittingOut && (
-        <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
-      )}
+      {/* Reserved whether or not there are chips out, so the pod never
+          changes height mid hand. See the note on the compact seat above. */}
+      <View style={styles.betSlot}>
+        {showBet && player.currentBet > 0 && !player.sittingOut && (
+          <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
+        )}
+      </View>
     </View>
   );
 }
@@ -302,6 +327,8 @@ const styles = StyleSheet.create({
   /* Bumped from 13. These are the numbers a decision is made on, and they
      were the smallest text on the felt. */
   chips: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark, ...numeric },
+  /** Height of the bet row, held constant so the pod cannot resize. */
+  betSlot: { height: BET_SLOT_H, justifyContent: 'flex-start', alignItems: 'center' },
   bet: { marginTop: spacing.xs, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   betText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, ...numeric },
 
