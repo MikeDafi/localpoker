@@ -77,7 +77,7 @@ measure and render; it should not decide.
 ## Store state
 
 1.0.0 was **rejected** under guideline 2.3.6 and has not shipped. TestFlight is
-unaffected: build 31 is live for internal testers and behind a public link.
+unaffected: build 32 is live for internal testers and behind a public link.
 `docs/store/SUBMISSION-CHECKLIST.md` has the open items.
 
 ## Cosmetics
