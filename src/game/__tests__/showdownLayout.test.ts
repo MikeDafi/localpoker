@@ -265,17 +265,18 @@ describe('layoutRevealHands', () => {
   });
 
   /*
-   * The legibility floor used to be applied against width alone, so a row
-   * with less room than `MIN_REVEAL_CARD` needs still drew itself at that
-   * size and ran out the bottom. On a phone the thing immediately below is
-   * the hero's own pod, so the tabled hands printed over their name and
-   * chips. Height has to be able to win the argument too.
+   * Height shrinks the row, but it is not allowed to erase it.
+   *
+   * `availableH` going to almost nothing is a real state: a short phone where
+   * the board, the tabled hands and the hero's pod do not all fit in the lane.
+   * Letting height win outright there produced a card a few points tall, which
+   * is strictly worse than the overlap it was avoiding. The floor holds.
    */
-  it('shrinks below the legibility floor rather than running past the room below', () => {
-    const squeezed = layoutRevealHands({ ...base, count: 1, availableH: 20, playerIds: ['a'] });
-    const size = squeezed[0]!.size;
-    expect(size).toBeLessThan(MIN_REVEAL_CARD);
-    expect(size * CARD_ASPECT).toBeLessThanOrEqual(20 + 0.001);
+  it('shrinks the row to the room below the board, but never out of sight', () => {
+    const roomy = layoutRevealHands({ ...base, count: 1, availableH: 60, playerIds: ['a'] })[0]!.size;
+    const squeezed = layoutRevealHands({ ...base, count: 1, availableH: 20, playerIds: ['a'] })[0]!.size;
+    expect(roomy).toBeLessThan(base.preferredSize);
+    expect(squeezed).toBe(MIN_REVEAL_CARD);
   });
 
   it('shrinks the cards only once the extra hands no longer fit', () => {

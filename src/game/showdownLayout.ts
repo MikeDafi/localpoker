@@ -222,18 +222,23 @@ export function layoutRevealHands(input: {
   const byHeight = Math.max(1, Math.floor(input.availableH / CARD_ASPECT));
   const fits = Math.min(input.preferredSize, byWidth, byHeight);
   /*
-   * The legibility floor is a preference, not a promise.
+   * The legibility floor is a preference, not a promise, and width is the one
+   * thing that can overrule it.
    *
    * Holding every card at `MIN_REVEAL_CARD` regardless is how a six-way split
    * ran a row 340pt wide across 320pt of felt, putting cards off the table
    * entirely. A card too small to read is a poor outcome; a card drawn over
    * the rail is a broken one, so width wins when the two disagree.
    *
-   * Height is held to the same bargain. It used not to be, so a row with no
-   * room beneath the board still drew itself at the floor and ran through
-   * whatever was there, which on a phone is the hero's own pod.
+   * Height deliberately does not get the same veto. It constrains `fits`, so
+   * the row shrinks to the room below the board in every ordinary case, but a
+   * lane with almost nothing left in it, a short phone where the board, two
+   * hands and the hero's pod genuinely do not all fit, must not be allowed to
+   * drive this to a card a few points tall. Nobody is helped by a hand they
+   * cannot see at all. A readable row slightly over the pod is the better of
+   * two bad outcomes, and the caller's budget is what keeps it from happening.
    */
-  const size = Math.max(fits, Math.min(MIN_REVEAL_CARD, byWidth, byHeight));
+  const size = Math.max(fits, Math.min(MIN_REVEAL_CARD, byWidth));
 
   const handW = 2 * size + CARD_GAP;
   const totalW = hands * handW + (hands - 1) * handGap;
