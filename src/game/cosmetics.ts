@@ -55,6 +55,9 @@ export interface CardBackPalette {
 export const CLASSIC_FELT = 'classic';
 export const CLASSIC_CHIPS = 'classic';
 export const CLASSIC_CARD_BACK = 'blue';
+export const STARTER_FELTS = [CLASSIC_FELT] as const;
+export const STARTER_CHIPS = [CLASSIC_CHIPS] as const;
+export const STARTER_CARD_BACKS = [CLASSIC_CARD_BACK, 'red'] as const;
 
 /**
  * Keyed by the store item id, so a purchase and its palette cannot drift
@@ -117,7 +120,7 @@ export const CHIP_PALETTES: Record<string, ChipPalette> = {
 };
 
 /**
- * Every card back, the five the game shipped with and the five the store
+ * Every card back, the two new players start with and the rest the store
  * sells. Keyed by id for the same reason as the felts: a back on sale with no
  * entry here would take someone's coins and change nothing.
  *
@@ -170,8 +173,6 @@ export const CARD_BACK_PALETTES: Record<string, CardBackPalette> = {
     line: 'rgba(92,58,20,0.34)',
     glyph: '♦',
   },
-
-  // The store's five.
   'card-sunrise': {
     gradient: ['#FFD8A8', '#FB923C', '#C2410C'],
     rim: 'rgba(90,40,8,0.42)',
@@ -241,7 +242,7 @@ export function resolveFelt(input: {
   equippedId?: string;
   owned?: readonly string[];
 }): FeltPalette {
-  return FELT_PALETTES[pickStyle(input, FELT_PALETTES, CLASSIC_FELT)]!;
+  return FELT_PALETTES[pickStyle(input, FELT_PALETTES, CLASSIC_FELT, STARTER_FELTS)]!;
 }
 
 export function resolveChips(input: {
@@ -249,7 +250,7 @@ export function resolveChips(input: {
   equippedId?: string;
   owned?: readonly string[];
 }): ChipPalette {
-  return CHIP_PALETTES[pickStyle(input, CHIP_PALETTES, CLASSIC_CHIPS)]!;
+  return CHIP_PALETTES[pickStyle(input, CHIP_PALETTES, CLASSIC_CHIPS, STARTER_CHIPS)]!;
 }
 
 /**
@@ -263,7 +264,7 @@ export function resolveCardBack(input: {
   equippedId?: string;
   owned?: readonly string[];
 }): string {
-  return pickStyle(input, CARD_BACK_PALETTES, CLASSIC_CARD_BACK);
+  return pickStyle(input, CARD_BACK_PALETTES, CLASSIC_CARD_BACK, STARTER_CARD_BACKS);
 }
 
 /** The id a table settles on, exported so the host can publish it to a room. */
@@ -271,10 +272,12 @@ export function pickStyle(
   input: { setting?: string; equippedId?: string; owned?: readonly string[] },
   known: Record<string, unknown>,
   fallback: string,
+  freeIds: readonly string[] = [fallback],
 ): string {
   const ownedSet = new Set(input.owned ?? []);
+  const freeSet = new Set([fallback, ...freeIds]);
   const usable = (id?: string): id is string =>
-    !!id && id !== 'equipped' && id in known && (id === fallback || ownedSet.has(id));
+    !!id && id !== 'equipped' && id in known && (freeSet.has(id) || ownedSet.has(id));
 
   if (input.setting && input.setting !== 'equipped') {
     return usable(input.setting) ? input.setting : fallback;
@@ -348,6 +351,7 @@ export function pinCosmetics<
       { setting: settings.cardBack, equippedId: equipped.cardBacks, owned },
       CARD_BACK_PALETTES,
       CLASSIC_CARD_BACK,
+      STARTER_CARD_BACKS,
     ),
   };
 }

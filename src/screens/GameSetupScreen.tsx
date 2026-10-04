@@ -11,6 +11,7 @@ import {
   DEVICE_ONLY_SETTINGS,
   SETTINGS_SCHEMA,
   DEFAULT_GAME_SETTINGS,
+  availableSettingOptions,
   normalizeSettings,
   type GameSettings,
   type SettingsSection,
@@ -36,7 +37,7 @@ const DIFFICULTY_OPTIONS = [
 ] satisfies { value: GameSettings['difficulty']; label: string; hint: string }[];
 
 export function GameSetupScreen({ navigation, route }: Props) {
-  const { settings, updateSettings } = useApp();
+  const { settings, updateSettings, cosmetics } = useApp();
   const { width } = useWindowDimensions();
   const isFriends = route.params.mode === 'friends';
   const [local, setLocal] = useState<GameSettings>(() => ({ ...settings }));
@@ -251,6 +252,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
                   key={String(field.key)}
                   field={field}
                   value={local[field.key]}
+                  ownedCosmeticIds={cosmetics.ownedCosmeticIds}
                   compact={compact}
                   isLast={index === visibleFields.length - 1}
                   onBooleanChange={handleBooleanChange}
@@ -305,6 +307,7 @@ function SectionTab({ section, active, count, onPress }: {
 function SettingRow({
   field,
   value,
+  ownedCosmeticIds,
   compact,
   isLast,
   onBooleanChange,
@@ -313,6 +316,7 @@ function SettingRow({
 }: {
   field: SettingField;
   value: SettingValue;
+  ownedCosmeticIds: readonly string[];
   compact: boolean;
   isLast: boolean;
   onBooleanChange: (field: SettingField, value: boolean) => void;
@@ -329,6 +333,7 @@ function SettingRow({
         <FieldControl
           field={field}
           value={value}
+          ownedCosmeticIds={ownedCosmeticIds}
           onBooleanChange={onBooleanChange}
           onNumberChange={onNumberChange}
           onSelectChange={onSelectChange}
@@ -341,12 +346,14 @@ function SettingRow({
 function FieldControl({
   field,
   value,
+  ownedCosmeticIds,
   onBooleanChange,
   onNumberChange,
   onSelectChange,
 }: {
   field: SettingField;
   value: SettingValue;
+  ownedCosmeticIds: readonly string[];
   onBooleanChange: (field: SettingField, value: boolean) => void;
   onNumberChange: (field: SettingField, value: number) => void;
   onSelectChange: (field: SettingField, value: string | number) => void;
@@ -368,9 +375,10 @@ function FieldControl({
   }
 
   if (field.type === 'select') {
+    const options = availableSettingOptions(field, ownedCosmeticIds);
     return (
       <View style={styles.optionGroup}>
-        {(field.options ?? []).map((option) => {
+        {options.map((option) => {
           const active = option.value === value;
           return (
             <Pressable

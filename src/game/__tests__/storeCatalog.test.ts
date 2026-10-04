@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { COSMETIC_CATEGORIES, type CosmeticItem } from '../storeCatalog';
-import { CARD_BACK_PALETTES, CHIP_PALETTES, FELT_PALETTES } from '../cosmetics';
+import {
+  CARD_BACK_PALETTES,
+  CHIP_PALETTES,
+  FELT_PALETTES,
+  STARTER_CARD_BACKS,
+  STARTER_CHIPS,
+  STARTER_FELTS,
+} from '../cosmetics';
 
 const itemsIn = (category: string): CosmeticItem[] =>
   COSMETIC_CATEGORIES.find((c) => c.id === category)?.items ?? [];
@@ -15,13 +22,13 @@ const itemsIn = (category: string): CosmeticItem[] =>
  * only way a new item cannot repeat it.
  */
 describe('everything on sale actually does something', () => {
-  const cases: [string, Record<string, unknown>][] = [
-    ['cardBacks', CARD_BACK_PALETTES],
-    ['tables', FELT_PALETTES],
-    ['chips', CHIP_PALETTES],
+  const cases: [string, Record<string, unknown>, readonly string[]][] = [
+    ['cardBacks', CARD_BACK_PALETTES, STARTER_CARD_BACKS],
+    ['tables', FELT_PALETTES, STARTER_FELTS],
+    ['chips', CHIP_PALETTES, STARTER_CHIPS],
   ];
 
-  for (const [category, palettes] of cases) {
+  for (const [category, palettes, builtInIds] of cases) {
     it(`gives every ${category} item a palette`, () => {
       const items = itemsIn(category);
       expect(items.length).toBeGreaterThan(0);
@@ -34,7 +41,7 @@ describe('everything on sale actually does something', () => {
       // A palette nobody can buy and nobody starts with is dead weight: it
       // cannot be reached from the store or from settings.
       const forSale = new Set(itemsIn(category).map((i) => i.id));
-      const builtIn = new Set(['classic', 'blue', 'red', 'black', 'holo', 'retro']);
+      const builtIn = new Set(builtInIds);
       for (const id of Object.keys(palettes)) {
         expect(
           forSale.has(id) || builtIn.has(id),

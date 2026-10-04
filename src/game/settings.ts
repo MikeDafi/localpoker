@@ -1,4 +1,12 @@
 import type { Difficulty } from '../engine/bot';
+import {
+  CARD_BACK_PALETTES,
+  CHIP_PALETTES,
+  CLASSIC_CHIPS,
+  CLASSIC_FELT,
+  FELT_PALETTES,
+  STARTER_CARD_BACKS,
+} from './cosmetics';
 
 /**
  * Comprehensive, schema-driven game settings.
@@ -28,6 +36,8 @@ export interface SettingsSection {
   icon: string;
   fields: SettingField[];
 }
+
+type SettingOption = NonNullable<SettingField['options']>[number];
 
 export interface GameSettings {
   // Blinds & stakes
@@ -208,6 +218,30 @@ export function normalizeSettings(s?: Partial<GameSettings> | null): GameSetting
   merged.numOpponents = Math.max(1, Math.min(8, merged.numOpponents));
   merged.maxPlayers = Math.max(merged.numOpponents + 1, merged.maxPlayers);
   return merged;
+}
+
+const COSMETIC_SETTING_ACCESS: Partial<Record<keyof GameSettings, {
+  known: Record<string, unknown>;
+  freeIds: readonly string[];
+}>> = {
+  cardBack: { known: CARD_BACK_PALETTES, freeIds: STARTER_CARD_BACKS },
+  feltStyle: { known: FELT_PALETTES, freeIds: [CLASSIC_FELT] },
+  chipStyle: { known: CHIP_PALETTES, freeIds: [CLASSIC_CHIPS] },
+};
+
+export function availableSettingOptions(
+  field: SettingField,
+  ownedCosmeticIds: readonly string[] = [],
+): readonly SettingOption[] {
+  const options = field.options ?? [];
+  const access = COSMETIC_SETTING_ACCESS[field.key];
+  if (!access) return options;
+
+  const usable = new Set(['equipped', ...access.freeIds]);
+  for (const id of ownedCosmeticIds) {
+    if (id in access.known) usable.add(id);
+  }
+  return options.filter((option) => typeof option.value !== 'string' || usable.has(option.value));
 }
 
 /**

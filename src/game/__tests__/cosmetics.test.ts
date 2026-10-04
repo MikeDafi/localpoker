@@ -6,6 +6,7 @@ import {
   CLASSIC_CHIPS,
   CLASSIC_FELT,
   FELT_PALETTES,
+  STARTER_CARD_BACKS,
   resolveCardBack,
   resolveChips,
   resolveFelt,
@@ -155,6 +156,9 @@ describe('card backs', () => {
    */
   it('has a palette for every card back the store sells', () => {
     for (const id of [
+      'black',
+      'retro',
+      'holo',
       'card-sunrise',
       'card-nebula',
       'card-royal-holo',
@@ -165,9 +169,10 @@ describe('card backs', () => {
     }
   });
 
-  it('keeps the five backs the game shipped with', () => {
-    for (const id of ['blue', 'red', 'black', 'holo', 'retro']) {
-      expect(CARD_BACK_PALETTES[id], `lost built-in back ${id}`).toBeDefined();
+  it('keeps the two backs a new player starts with', () => {
+    expect([...STARTER_CARD_BACKS]).toEqual(['blue', 'red']);
+    for (const id of STARTER_CARD_BACKS) {
+      expect(CARD_BACK_PALETTES[id], `lost starter back ${id}`).toBeDefined();
     }
   });
 
@@ -191,12 +196,19 @@ describe('card backs', () => {
   });
 
   it('refuses a back that was never bought', () => {
+    expect(resolveCardBack({ setting: 'black', owned: [] })).toBe(CLASSIC_CARD_BACK);
     expect(resolveCardBack({ setting: 'card-midnight', owned: [] })).toBe(CLASSIC_CARD_BACK);
     expect(resolveCardBack({ equippedId: 'card-midnight', owned: [] })).toBe(CLASSIC_CARD_BACK);
   });
 
+  it('always allows the two starter backs', () => {
+    expect(resolveCardBack({ setting: 'blue', owned: [] })).toBe('blue');
+    expect(resolveCardBack({ setting: 'red', owned: [] })).toBe('red');
+  });
+
   it('uses a bought back, whether pinned or merely equipped', () => {
-    const owned = ['card-midnight'];
+    const owned = ['black', 'card-midnight'];
+    expect(resolveCardBack({ setting: 'black', owned })).toBe('black');
     expect(resolveCardBack({ setting: 'card-midnight', owned })).toBe('card-midnight');
     expect(resolveCardBack({ equippedId: 'card-midnight', owned })).toBe('card-midnight');
   });

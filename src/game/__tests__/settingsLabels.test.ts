@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_GAME_SETTINGS, DEVICE_ONLY_SETTINGS, SETTINGS_SCHEMA } from '../settings';
+import {
+  DEFAULT_GAME_SETTINGS,
+  DEVICE_ONLY_SETTINGS,
+  SETTINGS_SCHEMA,
+  availableSettingOptions,
+} from '../settings';
 
 /**
  * Guards the fix for a label that broke mid-word.
@@ -146,5 +151,43 @@ describe('what Game Setup is allowed to show', () => {
     for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
       expect(all, `${deviceOnly} must still be changeable somewhere`).toContain(deviceOnly);
     }
+  });
+});
+
+describe('cosmetic setting options', () => {
+  const field = (key: string) => {
+    const found = SETTINGS_SCHEMA
+      .flatMap((section) => section.fields)
+      .find((candidate) => String(candidate.key) === key);
+    expect(found, `${key} field`).toBeDefined();
+    return found!;
+  };
+  const values = (key: string, owned: readonly string[] = []) =>
+    availableSettingOptions(field(key), owned).map((option) => option.value);
+
+  it('starts players with one felt, two backs, and one chip set', () => {
+    expect(values('feltStyle')).toEqual(['equipped', 'classic']);
+    expect(values('cardBack')).toEqual(['equipped', 'blue', 'red']);
+    expect(values('chipStyle')).toEqual(['equipped', 'classic']);
+  });
+
+  it('adds bought card backs to Settings without offering unowned ones', () => {
+    expect(values('cardBack', ['black', 'card-midnight'])).toEqual([
+      'equipped',
+      'blue',
+      'red',
+      'black',
+      'card-midnight',
+    ]);
+  });
+
+  it('adds only owned table and chip styles', () => {
+    expect(values('feltStyle', ['table-miami', 'table-lunar'])).toEqual([
+      'equipped',
+      'classic',
+      'table-miami',
+      'table-lunar',
+    ]);
+    expect(values('chipStyle', ['chips-candy'])).toEqual(['equipped', 'classic', 'chips-candy']);
   });
 });

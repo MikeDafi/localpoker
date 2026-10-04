@@ -109,6 +109,33 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
     description: 'Turn every deal into a flex with premium card art.',
     items: [
       {
+        id: 'black',
+        category: 'cardBacks',
+        name: 'Black Club',
+        price: 300,
+        description: 'Slate club back with low-key table presence.',
+        emoji: '♣',
+        swatches: ['#4A4F58', '#282C33', '#14171B'],
+      },
+      {
+        id: 'retro',
+        category: 'cardBacks',
+        name: 'Retro Diamond',
+        price: 500,
+        description: 'Warm vintage paper with diamond line work.',
+        emoji: '♦',
+        swatches: ['#F3DCAE', '#E0B978', '#B9844A'],
+      },
+      {
+        id: 'holo',
+        category: 'cardBacks',
+        name: 'Holo Prism',
+        price: 650,
+        description: 'A glossy prism back from the original deck.',
+        emoji: '◆',
+        swatches: ['#6ED8D0', '#7A5CE0', '#2C1B6B'],
+      },
+      {
         id: 'card-sunrise',
         category: 'cardBacks',
         name: 'Sunrise Felt',

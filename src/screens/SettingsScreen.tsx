@@ -22,6 +22,7 @@ import {
 } from '../components/Icons';
 import {
   SETTINGS_SCHEMA,
+  availableSettingOptions,
   type GameSettings,
   type SettingField,
   type SettingsSection,
@@ -56,7 +57,7 @@ const APP_SECTION_ICONS: Record<AppPreferenceSectionId, IconComponent> = {
 };
 
 export function SettingsScreen({ navigation }: Props) {
-  const { settings, updateSettings, auth, logout, resetStats, profile, deleteAccount } = useApp();
+  const { settings, updateSettings, auth, logout, resetStats, profile, deleteAccount, cosmetics } = useApp();
   const { width } = useWindowDimensions();
   const compact = width < 430;
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -120,6 +121,7 @@ export function SettingsScreen({ navigation }: Props) {
             key={section.id}
             section={section}
             settings={settings}
+            ownedCosmeticIds={cosmetics.ownedCosmeticIds}
             compact={compact}
             onSetField={setField}
           />
@@ -144,11 +146,13 @@ export function SettingsScreen({ navigation }: Props) {
 function SettingsSectionCard({
   section,
   settings,
+  ownedCosmeticIds,
   compact,
   onSetField,
 }: {
   section: SettingsSection;
   settings: GameSettings;
+  ownedCosmeticIds: readonly string[];
   compact: boolean;
   onSetField: SetField;
 }) {
@@ -169,6 +173,7 @@ function SettingsSectionCard({
           key={String(field.key)}
           field={field}
           value={settings[field.key]}
+          ownedCosmeticIds={ownedCosmeticIds}
           compact={compact}
           isLast={index === section.fields.length - 1}
           onSetField={onSetField}
@@ -181,12 +186,14 @@ function SettingsSectionCard({
 function SettingRow({
   field,
   value,
+  ownedCosmeticIds,
   compact,
   isLast,
   onSetField,
 }: {
   field: SettingField;
   value: SettingValue;
+  ownedCosmeticIds: readonly string[];
   compact: boolean;
   isLast: boolean;
   onSetField: SetField;
@@ -200,7 +207,12 @@ function SettingRow({
         {field.help ? <Text style={styles.settingHelp}>{field.help}</Text> : null}
       </View>
       <View style={[isToggle ? styles.toggleSlot : styles.controlSlot, rowCompact && styles.controlSlotCompact]}>
-        <FieldControl field={field} value={value} onSetField={onSetField} />
+        <FieldControl
+          field={field}
+          value={value}
+          ownedCosmeticIds={ownedCosmeticIds}
+          onSetField={onSetField}
+        />
       </View>
     </View>
   );
@@ -209,10 +221,12 @@ function SettingRow({
 function FieldControl({
   field,
   value,
+  ownedCosmeticIds,
   onSetField,
 }: {
   field: SettingField;
   value: SettingValue;
+  ownedCosmeticIds: readonly string[];
   onSetField: SetField;
 }) {
   if (field.type === 'toggle') {
@@ -229,6 +243,7 @@ function FieldControl({
   }
 
   if (field.type === 'select') {
+    const options = availableSettingOptions(field, ownedCosmeticIds);
     return (
       <ScrollView
         horizontal
@@ -236,7 +251,7 @@ function FieldControl({
         contentContainerStyle={styles.optionGroup}
         style={styles.optionScroller}
       >
-        {(field.options ?? []).map((option) => {
+        {options.map((option) => {
           const active = option.value === value;
           return (
             <Pressable
