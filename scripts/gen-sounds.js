@@ -72,10 +72,6 @@ function tone(freq, dur, { type = 'sine', vol = 0.5, decay = 1, sweep = 0 } = {}
   return out;
 }
 
-/** A gap, so a double knock reads as two taps rather than one long one. */
-function silence(dur) {
-  return new Float32Array(Math.floor(SR * dur));
-}
 
 /**
  * Knuckles on a table.
@@ -88,25 +84,6 @@ function silence(dur) {
  * sound in the first few milliseconds and leaves a tick. The shaping is done
  * with short durations and modest exponents instead.
  */
-/*
- * Knuckles on a wooden table.
- *
- * Wood is lossy, so it does not ring: the contact is loud and broadband, the
- * body under it is low and already gone inside a tenth of a second. The old
- * one carried a partial at five times the body, which is the sort of overtone
- * a struck metal bar has and a table does not, and it was the thing making
- * this read as a chime rather than a rap.
- */
-function knock(body, vol) {
-  return mix(
-    // The knuckle itself. Short, wide, and the loudest part of the event.
-    tone(2600, 0.009, { type: 'noise', vol: vol * 0.85, decay: 2.2 }),
-    tone(900, 0.016, { type: 'noise', vol: vol * 0.5, decay: 2.6 }),
-    // The table answering. Low, and damped hard so nothing hangs over.
-    tone(body, 0.085, { type: 'sine', vol: vol, decay: 3.4 }),
-    tone(body * 1.6, 0.045, { type: 'sine', vol: vol * 0.3, decay: 4.0 }),
-  );
-}
 
 /**
  * One clay chip landing on a stack.
@@ -131,34 +108,6 @@ function knock(body, vol) {
  * has to outlast the gap between coins so a handful overlaps into a cascade
  * instead of a stutter.
  */
-/*
- * One clay chip landing on a stack.
- *
- * A composition chip is mostly clay and chalk. It is damped, so the sound is
- * almost all contact and almost no tone: a dry broadband tick with a short
- * low knock under it, over inside about fifty milliseconds.
- *
- * The previous version was built the way you build a bell, with sine partials
- * at 2.76 and 5.40 times a 2.3kHz fundamental and a slow decay. That is the
- * recipe for struck metal, which is exactly what it sounded like. Chips do
- * not ring, so there are no sustained partials here at all.
- */
-function chipHit(pitch, vol) {
-  return mix(
-    // Contact. Short and wide: two clay edges meeting.
-    tone(3800 * pitch, 0.006, { type: 'noise', vol: vol * 0.8, decay: 2.6 }),
-    // The clack. This is the band a clay chip is recognised by, and leaving
-    // it out was what made the last attempt read as a dull tap rather than as
-    // a chip: it went straight from a broadband tick down to a low thud with
-    // nothing in between.
-    tone(1650 * pitch, 0.022, { type: 'noise', vol: vol * 0.7, decay: 3.2 }),
-    tone(1180 * pitch, 0.026, { type: 'sine', vol: vol * 0.42, decay: 3.8 }),
-    // The disc and the stack under it. Damped to nothing almost at once,
-    // because clay does not ring.
-    tone(560 * pitch, 0.034, { type: 'sine', vol: vol * 0.4, decay: 4.4 }),
-    tone(300 * pitch, 0.042, { type: 'sine', vol: vol * 0.26, decay: 4.8 }),
-  );
-}
 
 function mix(...arrs) {
   const n = Math.max(...arrs.map((a) => a.length));
@@ -178,20 +127,18 @@ writeWav('tap.wav', tone(660, 0.08, { type: 'tri', vol: 0.4, decay: 2 }));
 writeWav('select.wav', seq(tone(520, 0.05, { type: 'tri', vol: 0.35, decay: 2 }), tone(720, 0.06, { type: 'tri', vol: 0.35, decay: 2 })));
 writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }), tone(300, 0.05, { type: 'tri', vol: 0.2, decay: 3 })));
 /*
- * The screen decides how many to play from the size of the bet relative to
- * the pot (see `chipSoundsFor`), so this has to be a single clean hit that
- * stacks well rather than a finished phrase.
- */
-writeWav('chip.wav', chipHit(1, 0.42));
-
-/*
- * Checking is knocking on the table, so it sounds like knocking on a table.
+ * chip.wav and check.wav are NOT generated here any more.
  *
- * It used to be a 400Hz triangle beep, which is the one sound at this table
- * that has a real-world original everybody already knows. Two raps, the
- * second softer and a touch lower, because nobody knocks twice identically.
+ * They are real recordings now, a clay chip and knuckles on wood, because
+ * three attempts at synthesising them were rejected and the third was right
+ * to be: a chip and a knock are broadband physical events with a texture that
+ * additive synthesis of a few partials does not reach. Their provenance and
+ * licences are in assets/textures/CREDITS.md.
+ *
+ * Nothing below may write those two filenames. This script is run by hand to
+ * regenerate the rest, and doing so used to overwrite them silently, which
+ * would have put the synthesised versions back without anybody noticing.
  */
-writeWav('check.wav', seq(knock(210, 0.33), silence(0.055), knock(196, 0.23)));
 /*
  * Raising no longer has a cue of its own.
  *
