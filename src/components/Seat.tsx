@@ -82,6 +82,9 @@ export interface SeatProps {
  */
 const BET_SLOT_H = 28;
 
+/** How big an opponent's hole card is while it is still face down. */
+const SEAT_CARD = 26;
+
 export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
@@ -118,6 +121,9 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
   const cardsToDisplay = displayCards ?? player.holeCards;
   const hasHoleCardsToDisplay = cardsToDisplay.some(Boolean);
   const cardFaceUp = (index: number): boolean => !!showCards || shownCards?.[index] === true;
+  /** Turned over by its owner mid hand, rather than tabled at a showdown. */
+  const deliberatelyShown = (index: number): boolean => !showCards && shownCards?.[index] === true;
+  const seatCardSize = (index: number): number => (deliberatelyShown(index) ? SEAT_CARD * 2 : SEAT_CARD);
 
   // The ring is the avatar plus a fixed border allowance.
   const ringSize = avatarSize + 10;
@@ -212,8 +218,34 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
       {emote && <EmoteBubble emote={emote} />}
       {!isHuman && hasHoleCardsToDisplay && (
         <View style={styles.cards}>
-          <PlayingCard faceDown={!cardFaceUp(0)} rank={cardsToDisplay[0]?.rank} suit={cardsToDisplay[0]?.suit as any} size={26} dimmed={dimmed} back={back} />
-          <PlayingCard faceDown={!cardFaceUp(1)} rank={cardsToDisplay[1]?.rank} suit={cardsToDisplay[1]?.suit as any} size={26} dimmed={dimmed} back={back} style={{ marginLeft: -10 }} />
+          {/*
+            * A card somebody turned over on purpose is drawn at twice size.
+            *
+            * An opponent's cards are 26 points, which is enough to say "two
+            * cards, face down" and nowhere near enough to read a rank across
+            * the table. Turning one over is a deliberate act aimed at the
+            * other players, so if they cannot actually see it the act does
+            * nothing. Only mid hand: at a showdown every hand is face up and
+            * enlarging all of them would crowd the felt.
+            */}
+          <PlayingCard
+            faceDown={!cardFaceUp(0)}
+            rank={cardsToDisplay[0]?.rank}
+            suit={cardsToDisplay[0]?.suit as any}
+            size={seatCardSize(0)}
+            dimmed={dimmed}
+            back={back}
+            style={deliberatelyShown(0) ? styles.liftedCard : undefined}
+          />
+          <PlayingCard
+            faceDown={!cardFaceUp(1)}
+            rank={cardsToDisplay[1]?.rank}
+            suit={cardsToDisplay[1]?.suit as any}
+            size={seatCardSize(1)}
+            dimmed={dimmed}
+            back={back}
+            style={[{ marginLeft: -10 }, deliberatelyShown(1) ? styles.liftedCard : null]}
+          />
         </View>
       )}
 
@@ -339,6 +371,8 @@ const styles = StyleSheet.create({
      were the smallest text on the felt. */
   chips: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark, ...numeric },
   /** Height of the bet row, held constant so the pod cannot resize. */
+  /** Lifted clear so the enlarged card is not clipped by its neighbour. */
+  liftedCard: { zIndex: 3 },
   betSlot: { height: BET_SLOT_H, justifyContent: 'flex-start', alignItems: 'center' },
   bet: { marginTop: spacing.xs, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   betText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, ...numeric },
