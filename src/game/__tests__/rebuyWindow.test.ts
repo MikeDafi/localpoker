@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   MIN_PLAYERS_TO_DEAL,
   REBUY_WINDOW_MS,
+  applyRebuyRequest,
   bustedPlayers,
   canDealHand,
   localPlayerEvicted,
@@ -183,5 +184,117 @@ describe('eviction', () => {
   it('never claims an eviction while the clock is still running', () => {
     const waiting = rebuyPhase({ players: [seat('alice', 500), seat('bob', 0)], openedAt: 0, now: 1 });
     expect(localPlayerEvicted(waiting, 'bob')).toBe(false);
+  });
+});
+
+describe('applyRebuyRequest', () => {
+  const now = 5_000;
+
+  it('restores a busted player to the host starting stack', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'bob',
+      startingStack: 1500,
+      windowOpen: true,
+      openedAt: now,
+      now: now + 1000,
+    });
+
+    expect(result.status).toBe('applied');
+    if (result.status !== 'applied') throw new Error('expected rebuy to apply');
+    expect(result.chips).toBe(1500);
+    expect(result.players.find((p) => p.id === 'bob')?.chips).toBe(1500);
+  });
+
+  it('clears sitting out when the rebuy is accepted', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'bob',
+      startingStack: 2000,
+      windowOpen: true,
+      openedAt: null,
+      now,
+    });
+
+    if (result.status !== 'applied') throw new Error('expected rebuy to apply');
+    expect(result.players.find((p) => p.id === 'bob')?.sittingOut).toBe(false);
+  });
+
+  it('reports a duplicate request after the stack was restored', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 2000)],
+      playerId: 'bob',
+      startingStack: 2000,
+      windowOpen: false,
+      openedAt: now,
+      now,
+    });
+
+    expect(result).toEqual({ status: 'already-applied', playerId: 'bob', chips: 2000 });
+  });
+
+  it('rejects a request for an unknown seat', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'mallory',
+      startingStack: 2000,
+      windowOpen: true,
+      openedAt: now,
+      now,
+    });
+
+    expect(result).toEqual({ status: 'rejected', reason: 'unknown-player' });
+  });
+
+  it('rejects a request before the rebuy window opens', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'bob',
+      startingStack: 2000,
+      windowOpen: false,
+      openedAt: null,
+      now,
+    });
+
+    expect(result).toEqual({ status: 'rejected', reason: 'not-in-rebuy-window' });
+  });
+
+  it('rejects a request after the rebuy window expires', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'bob',
+      startingStack: 2000,
+      windowOpen: true,
+      openedAt: now,
+      now: now + REBUY_WINDOW_MS,
+    });
+
+    expect(result).toEqual({ status: 'rejected', reason: 'not-in-rebuy-window' });
+  });
+
+  it('rejects top offs while another hand can be dealt', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 100), seat('cara', 500)],
+      playerId: 'bob',
+      startingStack: 2000,
+      windowOpen: true,
+      openedAt: now,
+      now,
+    });
+
+    expect(result).toEqual({ status: 'rejected', reason: 'not-in-rebuy-window' });
+  });
+
+  it('rejects an invalid host starting stack instead of inventing one', () => {
+    const result = applyRebuyRequest({
+      players: [seat('alice', 500), seat('bob', 0)],
+      playerId: 'bob',
+      startingStack: 0,
+      windowOpen: true,
+      openedAt: now,
+      now,
+    });
+
+    expect(result).toEqual({ status: 'rejected', reason: 'invalid-starting-stack' });
   });
 });

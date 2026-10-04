@@ -119,6 +119,64 @@ export function playersToEvict(players: readonly SeatedPlayer[]): SeatedPlayer[]
   return bustedPlayers(players);
 }
 
+export type RebuyRequestDecision<T extends SeatedPlayer = SeatedPlayer> =
+  | { status: 'applied'; playerId: string; chips: number; players: T[] }
+  | { status: 'already-applied'; playerId: string; chips: number }
+  | { status: 'rejected'; reason: 'unknown-player' | 'invalid-starting-stack' | 'not-in-rebuy-window' };
+
+/**
+ * Settles a rebuy request on the host, never on the requesting device.
+ *
+ * The request is only a signal that a player tapped the button. The stack
+ * size comes from the table config held by the host, because taking a number
+ * from a guest would let a modified client print chips.
+ */
+export function applyRebuyRequest<T extends SeatedPlayer>(input: {
+  players: readonly T[];
+  playerId: string;
+  startingStack: number;
+  windowOpen: boolean;
+  openedAt: number | null;
+  now: number;
+  windowMs?: number;
+}): RebuyRequestDecision<T> {
+  const player = input.players.find((p) => p.id === input.playerId);
+  if (!player) return { status: 'rejected', reason: 'unknown-player' };
+
+  if (!Number.isFinite(input.startingStack) || input.startingStack <= 0) {
+    return { status: 'rejected', reason: 'invalid-starting-stack' };
+  }
+
+  if (player.chips >= input.startingStack && !player.sittingOut) {
+    return { status: 'already-applied', playerId: input.playerId, chips: player.chips };
+  }
+
+  if (!input.windowOpen) {
+    return { status: 'rejected', reason: 'not-in-rebuy-window' };
+  }
+
+  const phase = rebuyPhase({
+    players: input.players,
+    openedAt: input.openedAt,
+    now: input.now,
+    windowMs: input.windowMs,
+  });
+  if (phase.phase !== 'waiting' || !phase.players.some((p) => p.id === input.playerId)) {
+    return { status: 'rejected', reason: 'not-in-rebuy-window' };
+  }
+
+  return {
+    status: 'applied',
+    playerId: input.playerId,
+    chips: input.startingStack,
+    players: input.players.map((p) => (
+      p.id === input.playerId
+        ? { ...p, chips: input.startingStack, sittingOut: false } as T
+        : p
+    )),
+  };
+}
+
 /**
  * Whether the local player is the one being shown the door.
  *

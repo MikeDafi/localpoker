@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
-import { canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
+import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
 import { HoleCards } from '../components/HoleCards';
@@ -66,6 +66,7 @@ import {
 } from '../engine';
 import {
   endRoom,
+  clearRebuyRequest,
   removePlayerFromRoom,
   getAuthUid,
   getCachedHostGame,
@@ -73,7 +74,9 @@ import {
   leaveRoom,
   publishHostGameState,
   pushAction,
+  requestRebuy,
   subscribeActions,
+  subscribeRebuyRequests,
   sendEmoteToRoom,
   subscribeEmotes,
   revealOwnHand,
@@ -1034,6 +1037,22 @@ export function TableScreen({ navigation, route }: Props) {
       : undefined;
 
   const rebuy = () => {
+    if (roomCode && firebaseOnline && !isOnlineHost) {
+      requestRebuy(roomCode)
+        .then((result) => {
+          if (result.ok) {
+            sound.play('coins');
+            return;
+          }
+          showAlert('Rebuy not sent', result.reason ?? 'Your rebuy request could not be sent. Check your connection and try again.');
+        })
+        .catch((error) => {
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'request-rebuy' } });
+          showAlert('Rebuy not sent', 'Your rebuy request could not be sent. Check your connection and try again.');
+        });
+      return;
+    }
+
     sound.play('coins');
     setState((prev) => {
       const next: GameState = JSON.parse(JSON.stringify(prev));
@@ -1473,6 +1492,53 @@ export function TableScreen({ navigation, route }: Props) {
   );
   const rebuyMessage = rebuyNotice(rebuyState, human.id);
   const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
+
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !isOnlineHost) {
+      return undefined;
+    }
+
+    return subscribeRebuyRequests(roomCode, (request) => {
+      const currentState = getCachedHostGame(roomCode) ?? stateRef.current;
+      if (!currentState) return;
+      const clearHandledRequest = () => {
+        clearRebuyRequest(roomCode, request.playerId).catch((error: unknown) => {
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'clear-rebuy-request' } });
+        });
+      };
+
+      const decision = applyRebuyRequest({
+        players: currentState.players,
+        playerId: request.playerId,
+        startingStack: currentState.config.startingStack,
+        windowOpen: currentState.street === 'showdown' && !canDealHand(currentState.players),
+        openedAt: rebuyOpenedAt,
+        now: Date.now(),
+      });
+
+      if (decision.status === 'applied') {
+        const next = { ...currentState, players: decision.players };
+        stateRef.current = next;
+        setState(next);
+        publishHostGameState(roomCode, next)
+          .then((r) => {
+            noteSync(r.ok);
+            if (r.ok) clearHandledRequest();
+          })
+          .catch((error) => {
+            noteSync(false);
+            captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-rebuy' } });
+          });
+      } else if (decision.status === 'rejected') {
+        captureError(new Error(`rebuy-request-${decision.reason}`), {
+          tags: { area: 'firebase-room-sync', operation: 'reject-rebuy-request' },
+        });
+        clearHandledRequest();
+      } else {
+        clearHandledRequest();
+      }
+    });
+  }, [firebaseOnline, isOnlineHost, noteSync, rebuyOpenedAt, roomCode]);
 
   /*
    * The window closed.

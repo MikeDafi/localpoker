@@ -60,7 +60,7 @@
           },
           "players": {
             "$uid": {
-              ".write": "auth != null && auth.uid === $uid && (!newData.exists() || newData.parent().parent().child('hostId').val() === auth.uid || (data.exists() && root.child('localpoker').child('rooms').child($code).child('status').val() !== 'ended') || (!data.exists() && root.child('localpoker').child('rooms').child($code).child('status').val() === 'lobby' && !root.child('localpoker').child('blocks').child(newData.parent().parent().child('hostId').val()).child(auth.uid).exists()))",
+              ".write": "auth != null && auth.uid === $uid && (!newData.exists() || newData.parent().parent().child('hostId').val() === auth.uid || (data.exists() && root.child('localpoker').child('rooms').child($code).child('status').val() !== 'ended' && newData.child('id').val() === data.child('id').val() && newData.child('isHost').val() === data.child('isHost').val() && newData.child('seatIndex').val() === data.child('seatIndex').val() && newData.child('chips').val() === data.child('chips').val()) || (!data.exists() && root.child('localpoker').child('rooms').child($code).child('status').val() === 'lobby' && !root.child('localpoker').child('blocks').child(newData.parent().parent().child('hostId').val()).child(auth.uid).exists()))",
               ".validate": "!newData.exists() || (newData.hasChildren(['id','name']) && newData.child('id').val() === auth.uid && newData.child('isHost').val() === (newData.parent().parent().child('hostId').val() === auth.uid))",
               "name": {
                 ".validate": "newData.isString() && newData.val().length <= 24 && !(newData.val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/))"
@@ -227,6 +227,20 @@
             "$playerId": {
               ".write": "auth != null && ((auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
               ".validate": "!newData.exists() || newData.isBoolean()"
+            }
+          },
+          /*
+           * Rebuy requests. One node per seat, written by that player and
+           * cleared by the host after handling. It carries no amount, because
+           * the host must derive the stack from the table config.
+           */
+          "rebuys": {
+            "$playerId": {
+              ".write": "auth != null && ((auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['playerId','ts']) && newData.child('playerId').val() === auth.uid && newData.child('ts').isNumber())",
+              "playerId": { ".validate": "newData.isString() && newData.val() === $playerId" },
+              "ts": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
             }
           },
           "emotes": {

@@ -563,6 +563,32 @@ function logOk(message) {
     await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown'), null));
     logOk('a player cannot clear the table\'s shown hands wholesale');
 
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/rebuys/player'), {
+      playerId: 'player', ts: 65,
+    }));
+    logOk('a seated player can request their own rebuy');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/rebuys/host'), {
+      playerId: 'host', ts: 66,
+    }));
+    logOk('but cannot request a rebuy for somebody else');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/rebuys/stranger'), {
+      playerId: 'stranger', ts: 67,
+    }));
+    logOk('and someone not at the table cannot request a rebuy');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/rebuys/player'), {
+      playerId: 'player', ts: 68, amount: 1000000,
+    }));
+    logOk('a rebuy request cannot carry a client chosen amount');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/players/player/chips'), 5000));
+    logOk('a player cannot hand themselves chips through their room entry');
+
+    await assertSucceeds(set(ref(hostDb, 'localpoker/rooms/PLAY1/rebuys/player'), null));
+    logOk('the host can clear a handled rebuy request');
+
     /*
      * The host clearing a seat, and withdrawing the adverts.
      *

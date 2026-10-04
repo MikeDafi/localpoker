@@ -40,6 +40,7 @@ export type {
 } from './friends';
 export {
   createRoom,
+  clearRebuyRequest,
   endRoom,
   getCachedHostGame,
   joinRoom,
@@ -47,8 +48,10 @@ export {
   removePlayerFromRoom,
   publishHostGameState,
   pushAction,
+  requestRebuy,
   setPlayerConnected,
   subscribeActions,
+  subscribeRebuyRequests,
   sendEmoteToRoom,
   subscribeEmotes,
   revealOwnHand,
@@ -60,4 +63,4 @@ export {
   subscribeRoom,
   startRoomGame,
 } from './roomSync';
-export type { RoomAction, RoomPlayer, RoomPrivateView, RoomState, RoomStatus } from './types';
+export type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomState, RoomStatus } from './types';

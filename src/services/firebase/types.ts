@@ -69,4 +69,9 @@ export type RoomAction = {
   ts: number;
 };
 
+export type RoomRebuyRequest = {
+  playerId: string;
+  ts: number;
+};
+
 export type RoomPrivateView = PrivatePlayerView;

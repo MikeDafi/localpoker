@@ -13,7 +13,7 @@ import {
 import { getDb, isFirebaseConfigured } from './config';
 import { ensureSignedIn } from './auth';
 import { sendPush } from './push';
-import type { RoomAction, RoomPlayer, RoomPrivateView, RoomState, RoomSummary, RoomVisibility } from './types';
+import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
 import { isEndedRoomReclaimable, planHostedRoomOpen } from '../../game/lobbyRoom';
@@ -28,6 +28,7 @@ import { createGame, startHand, type GameConfig, type GameState, type PlayerInpu
 type Result = { ok: boolean; reason?: string };
 type StartRoomGameResult = Result & { state?: GameState; publicState?: PublicGameState };
 type PushActionResult = Result & { action?: RoomAction };
+type RebuyRequestResult = Result & { request?: RoomRebuyRequest };
 
 const NOT_CONFIGURED_REASON =
   'Firebase is not configured. Set EXPO_PUBLIC_FIREBASE_* variables to enable online play.';
@@ -56,6 +57,8 @@ const playerConnectedPath = (code: string, playerId: string): string =>
   `${playerPath(code, playerId)}/connected`;
 const actionsPath = (code: string): string => `${roomPath(code)}/actions`;
 const actionSeqPath = (code: string): string => `${roomPath(code)}/actionSeq`;
+const rebuysPath = (code: string): string => `${roomPath(code)}/rebuys`;
+const rebuyPath = (code: string, playerId: string): string => `${rebuysPath(code)}/${playerId}`;
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
 const emotePath = (code: string, playerId: string): string => `${roomPath(code)}/emotes/${playerId}`;
 const shownPath = (code: string, playerId: string): string => `${roomPath(code)}/shown/${playerId}`;
@@ -105,6 +108,11 @@ const toDbAction = (action: RoomAction, seq: number): RoomAction => ({
   type: action.type,
   ...(typeof action.amount === 'number' ? { amount: action.amount } : {}),
   ts: Number.isFinite(action.ts) && action.ts > 0 ? action.ts : (serverTimestamp() as unknown as number),
+});
+
+const toDbRebuyRequest = (playerId: string): RoomRebuyRequest => ({
+  playerId,
+  ts: Date.now(),
 });
 
 const nextActionSeq = (roomSeq: unknown): Result & { seq?: number } => {
@@ -170,6 +178,20 @@ const isRoomAction = (value: unknown): value is RoomAction => {
     typeof action.playerId === 'string' &&
     typeof action.type === 'string' &&
     typeof action.ts === 'number'
+  );
+};
+
+const isRoomRebuyRequest = (playerId: string, value: unknown): value is RoomRebuyRequest => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const request = value as Partial<RoomRebuyRequest>;
+  return (
+    request.playerId === playerId &&
+    typeof request.ts === 'number' &&
+    Number.isFinite(request.ts) &&
+    request.ts > 0
   );
 };
 
@@ -1378,6 +1400,77 @@ export const subscribeShownHands = (
     });
   } catch (error) {
     reportFirebaseError('subscribe-shown-hands', error);
+    return noop;
+  }
+};
+
+/**
+ * Ask the host to rebuy this seat.
+ *
+ * A guest cannot mutate the game state that matters. The node carries no chip
+ * amount on purpose: the host derives that from its table config when it
+ * handles the request.
+ */
+export const requestRebuy = async (code: string): Promise<RebuyRequestResult> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return unavailableResult();
+
+  const playerId = await authedPlayerId();
+  if (!playerId) return notSignedInResult();
+
+  const request = toDbRebuyRequest(playerId);
+  try {
+    await set(ref(db, rebuyPath(roomCode, playerId)), request);
+    return { ok: true, request };
+  } catch (error) {
+    reportFirebaseError('request-rebuy', error);
+    console.warn('Unable to request Firebase rebuy.', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+/** Clears a rebuy request after the host has handled it. */
+export const clearRebuyRequest = async (code: string, playerId: string): Promise<void> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  const cleanPlayerId = cleanKey(playerId);
+  if (!db || !roomCode || !cleanPlayerId) return;
+
+  try {
+    await set(ref(db, rebuyPath(roomCode, cleanPlayerId)), null);
+  } catch (error) {
+    reportFirebaseError('clear-rebuy-request', error);
+  }
+};
+
+/** Rebuy requests from seated players, delivered to the host. */
+export const subscribeRebuyRequests = (
+  code: string,
+  cb: (request: RoomRebuyRequest) => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return noop;
+
+  const seen = new Map<string, number>();
+  try {
+    return onValue(ref(db, rebuysPath(roomCode)), (snapshot) => {
+      const value = snapshot.val() as Record<string, unknown> | null;
+      if (!value) return;
+      for (const [playerId, raw] of Object.entries(value)) {
+        if (!isRoomRebuyRequest(playerId, raw)) continue;
+        if ((seen.get(playerId) ?? 0) >= raw.ts) continue;
+        seen.set(playerId, raw.ts);
+        cb(raw);
+      }
+    }, (error) => {
+      reportFirebaseError('rebuy-subscription-callback', error);
+      console.warn('Firebase rebuy subscription failed.', error);
+    });
+  } catch (error) {
+    reportFirebaseError('subscribe-rebuy-requests', error);
+    console.warn('Unable to subscribe to Firebase rebuy requests.', error);
     return noop;
   }
 };
