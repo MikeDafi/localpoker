@@ -625,6 +625,25 @@ export const reportUser = async (
         createdAt: serverTimestamp() as unknown as number,
         ...(roomCode ? { roomCode: roomCode.slice(0, 12) } : {}),
       } satisfies ReportRecord,
+      /*
+       * Reporting someone also cuts the line between you.
+       *
+       * Filing the report alone left them able to notify you, because a push
+       * token is readable by a friend or by anyone with a pending request,
+       * and reporting changed neither. Somebody you have just reported for
+       * offensive content should not still be able to put a message on your
+       * lock screen.
+       *
+       * Done by removing the edges rather than by a client-side filter,
+       * because a push arrives from Expo without passing through the app, so
+       * the only thing that can actually stop it is losing the ability to
+       * read the token. The security rules then enforce it rather than this
+       * code promising it.
+       */
+      [friendPath(uid, reportedUid)]: null,
+      [friendPath(reportedUid, uid)]: null,
+      [requestPath(uid, reportedUid)]: null,
+      [requestPath(reportedUid, uid)]: null,
     });
     return { ok: true };
   } catch (error) {

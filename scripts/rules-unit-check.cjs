@@ -1035,6 +1035,35 @@ function logOk(message) {
     }));
     logOk('blocked user cannot send a friend request to blocker');
 
+    /*
+     * Blocking and reporting have to actually stop notifications.
+     *
+     * A push arrives from Expo without passing through the app, so no client
+     * side filter can stop one. The only thing that can is losing the ability
+     * to read the recipient's push token, which `pushTokens/$uid` grants to
+     * the owner, to a friend, or to someone with a pending request. Blocking
+     * and reporting both clear every one of those edges, so these two checks
+     * are what make "no notifications from someone you blocked" a property of
+     * the rules rather than a promise in a comment.
+     */
+    await assertSucceeds(set(ref(playerDb, 'localpoker/pushTokens/player'), {
+      token: 'ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]',
+      updatedAt: 7,
+    }));
+    logOk('a player can publish their own push token');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/pushTokens/player')));
+    logOk('and somebody they blocked cannot read it, so cannot notify them');
+
+    /*
+     * The other half of the same fact: a *current* friend can read it. That
+     * is the capability, and it is why blocking and reporting both clear the
+     * friend edges rather than writing a flag somewhere. Take the edge away
+     * and the read above is what the blocked user gets.
+     */
+    await assertSucceeds(get(ref(hostDb, 'localpoker/pushTokens/player')));
+    logOk('while a current friend can, which is the edge blocking removes');
+
     await assertSucceeds(set(ref(playerDb, 'localpoker/reports/report1'), {
       reporterUid: 'player',
       reportedUid: 'host',

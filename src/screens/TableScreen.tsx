@@ -1943,7 +1943,13 @@ export function TableScreen({ navigation, route }: Props) {
 
   const reportTablePlayer = async (player: GameState['players'][number]) => {
     const result = await reportUser(player.id, player.name, 'table', roomCode);
-    showAlert(result.ok ? 'Report sent' : 'Could not report', result.reason || 'Thanks. We will review this player.');
+    showAlert(
+      result.ok ? 'Report sent' : 'Could not report',
+      // Says what reporting actually did. It also cuts the line between you,
+      // so they can no longer notify you, and someone should not have to
+      // guess at that.
+      result.reason || `Thanks. ${player.name} can no longer send you notifications.`,
+    );
   };
 
   const confirmBlockTablePlayer = (player: GameState['players'][number]) => {
