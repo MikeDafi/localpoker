@@ -2143,13 +2143,24 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const REVEAL_SHRINK = 0.76;
   /*
-   * What the hero's pod takes at a showdown, measured on an iPhone 17 Pro:
-   * avatar, name, chips and a badge come to about 46pt once the bets have
-   * been swept into the pot. `heroPodH` cannot answer this even now that it
-   * is measured, because it is still a high-water mark and a betting round
-   * leaves it carrying the hero's bet chip.
+   * What the hero's pod takes at a showdown.
+   *
+   * This was a hardcoded 50, on the reasoning that once the bets are swept
+   * the pill is only avatar, name and chips. The pill is indeed about 50pt,
+   * but it is not the bottom of the pod: a bet slot is reserved *beneath* it
+   * whether or not there is a bet, deliberately, so the pod never changes
+   * height mid hand. The pod is pinned by its bottom edge, so an empty slot
+   * does not give the row 28pt of room, it pushes the pill 28pt *up* into
+   * the felt the row wanted. Reserving 50 therefore ran the tabled hands
+   * straight through the hero's name and chips, measured at 28pt of overlap
+   * on an iPhone 17.
+   *
+   * `laneBottom` is the measured pod plus its margin, which is the only
+   * number that cannot be wrong about this. It is a high-water mark, which
+   * costs a few points when a bet chip has been out, and that is the correct
+   * direction to be wrong in.
    */
-  const HERO_SHOWDOWN_H = 50;
+  const heroShowdownH = laneBottom;
   const laneH = Math.max(0, stageH - laneTop - laneBottom);
   /*
    * At a showdown the board sits at the very top of the lane.
@@ -2180,7 +2191,7 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const boardMaxH = layingOut
     ? Math.max(28 * CARD_ASPECT,
-      (stageH - boardTopFor(true) - HERO_SHOWDOWN_H - REVEAL_GAP - CARD_FRAME) / (1 + REVEAL_SHRINK))
+      (stageH - boardTopFor(true) - heroShowdownH - REVEAL_GAP - CARD_FRAME) / (1 + REVEAL_SHRINK))
     : Math.max(28 * CARD_ASPECT, laneH - POT_BLOCK_H);
   /*
    * A touch smaller than a card is dealt at: the showdown board sits above a
@@ -2218,8 +2229,20 @@ export function TableScreen({ navigation, route }: Props) {
     widthAt: cloth,
   });
   const cellW = boardBox.w > 0 ? boardBox.w / BOARD_CELLS : sdCardSize + CELL_PAD;
-  const boardTop = laneTop + boardBox.y;
-  const boardBottom = boardTop + boardBox.h;
+  /*
+   * At a showdown the board's own geometry is derived, not measured.
+   *
+   * `boardBox` is a frame behind: the first render of a showdown still holds
+   * the mid-hand measurement, so the row below was told the board was taller
+   * and lower than it had just become, and the clamp, correctly, shrank the
+   * tabled hands to nothing for one frame. The showdown board is pinned to
+   * the top of the lane at a size this render already knows, so there is
+   * nothing to wait for a measurement to learn.
+   */
+  const boardTop = layingOut ? boardTopFor(true) : laneTop + boardBox.y;
+  const boardBottom = layingOut
+    ? boardTop + sdCardSize * CARD_ASPECT + CARD_FRAME
+    : boardTop + boardBox.h;
 
   /** Where a winner's cards start their journey: the middle of their pod. */
   const revealFrom = useCallback((playerId: string) => {
@@ -2261,8 +2284,17 @@ export function TableScreen({ navigation, route }: Props) {
       // narrowed by the time it gets down here, and giving the row the
       // board's width is what drew the outside hands over the rail.
       availableW: cloth(revealTop + (revealSize * CARD_ASPECT) / 2),
-      // The felt below the board, which the awarded pot has vacated.
-      availableH: Math.max(revealSize * CARD_ASPECT, stageH - revealTop - 8),
+      // The felt below the board, which the awarded pot has vacated, less the
+      // hero's own pod.
+      //
+      // Two faults, one line. It used to run to 8pt from the bottom of the
+      // stage, which is straight through the pod sitting there, and it was
+      // floored at `revealSize * CARD_ASPECT`, which guaranteed the height
+      // offered was at least the height wanted. So the clamp could never
+      // bind, and a backstop that cannot fire is not one. The budget above
+      // keeps this generous in the ordinary case; this is what catches the
+      // cases the budget did not foresee.
+      availableH: Math.max(0, stageH - revealTop - heroShowdownH),
       playerIds: showdownHands.map((h) => h.playerId),
     })
     : [];

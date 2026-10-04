@@ -219,7 +219,7 @@ export function layoutRevealHands(input: {
   const handGap = handGapFor(hands);
   const spacing = hands * CARD_GAP + (hands - 1) * handGap;
   const byWidth = Math.max(1, Math.floor((input.availableW - spacing) / (2 * hands)));
-  const byHeight = Math.floor(input.availableH / CARD_ASPECT);
+  const byHeight = Math.max(1, Math.floor(input.availableH / CARD_ASPECT));
   const fits = Math.min(input.preferredSize, byWidth, byHeight);
   /*
    * The legibility floor is a preference, not a promise.
@@ -228,8 +228,12 @@ export function layoutRevealHands(input: {
    * ran a row 340pt wide across 320pt of felt, putting cards off the table
    * entirely. A card too small to read is a poor outcome; a card drawn over
    * the rail is a broken one, so width wins when the two disagree.
+   *
+   * Height is held to the same bargain. It used not to be, so a row with no
+   * room beneath the board still drew itself at the floor and ran through
+   * whatever was there, which on a phone is the hero's own pod.
    */
-  const size = Math.max(fits, Math.min(MIN_REVEAL_CARD, byWidth));
+  const size = Math.max(fits, Math.min(MIN_REVEAL_CARD, byWidth, byHeight));
 
   const handW = 2 * size + CARD_GAP;
   const totalW = hands * handW + (hands - 1) * handGap;
