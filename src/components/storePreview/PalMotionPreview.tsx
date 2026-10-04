@@ -51,8 +51,8 @@ export function PalMotionPreview({ item, width }: StorePreviewProps) {
         <View style={[styles.largeRing, { width: largeSize + 16, height: largeSize + 16, borderRadius: (largeSize + 16) / 2 }]}>
           <PalMotion config={pal} motionId={motion.motionId} size={largeSize} loop />
         </View>
-        <Text style={styles.motionName}>{motion.name}</Text>
-        <Text style={styles.motionDescription}>{motion.description}</Text>
+        {/* The sheet above already prints the name and the description, so
+            repeating them here was the same two lines twice on one screen. */}
       </View>
 
       <View style={[styles.tablePanel, { width: panelWidth }]}>
@@ -105,19 +105,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     borderWidth: 2,
     borderColor: colors.surfaceBorderStrong,
-  },
-  motionName: {
-    marginTop: spacing.md,
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.onDark,
-  },
-  motionDescription: {
-    marginTop: 2,
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    color: colors.onDarkMuted,
-    textAlign: 'center',
   },
   tablePanel: {
     borderRadius: radii.lg,
