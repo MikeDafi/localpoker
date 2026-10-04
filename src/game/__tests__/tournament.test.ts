@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyBlindLevel,
+  blindsDue,
   isEliminated,
   levelAt,
   STANDARD_STRUCTURE,
@@ -130,5 +132,42 @@ describe('isEliminated', () => {
 
   it('does not eliminate anybody who still has chips', () => {
     expect(isEliminated({ chips: 1 }, true)).toBe(false);
+  });
+});
+
+describe('moving the blinds up', () => {
+  const game = (smallBlind: number, bigBlind: number, ante = 0) => ({
+    config: { smallBlind, bigBlind, ante, startingStack: 5000 },
+    players: [{ id: 'a', chips: 100 }],
+    handNumber: 7,
+  });
+
+  it('swaps the three numbers and leaves everything else alone', () => {
+    // Rebuilding the game instead would reset the stacks, the button and the
+    // deck, which is everything a tournament is keeping track of.
+    const before = game(10, 20);
+    const after = applyBlindLevel(before, { smallBlind: 25, bigBlind: 50, ante: 5 });
+    expect(after.config.smallBlind).toBe(25);
+    expect(after.config.bigBlind).toBe(50);
+    expect(after.config.ante).toBe(5);
+    expect(after.config.startingStack).toBe(5000);
+    expect(after.players).toEqual(before.players);
+    expect(after.handNumber).toBe(7);
+  });
+
+  it('hands back the very same object when nothing moved', () => {
+    const before = game(25, 50, 5);
+    expect(applyBlindLevel(before, { smallBlind: 25, bigBlind: 50, ante: 5 })).toBe(before);
+  });
+
+  it('knows when a level is actually due', () => {
+    expect(blindsDue({ smallBlind: 10, bigBlind: 20, ante: 0 }, { smallBlind: 10, bigBlind: 20, ante: 0 })).toBe(false);
+    expect(blindsDue({ smallBlind: 10, bigBlind: 20, ante: 0 }, { smallBlind: 15, bigBlind: 30, ante: 0 })).toBe(true);
+    // An ante arriving is a level change even when the blinds have not moved.
+    expect(blindsDue({ smallBlind: 50, bigBlind: 100, ante: 0 }, { smallBlind: 50, bigBlind: 100, ante: 10 })).toBe(true);
+  });
+
+  it('treats a missing ante as no ante', () => {
+    expect(blindsDue({ smallBlind: 10, bigBlind: 20 }, { smallBlind: 10, bigBlind: 20, ante: 0 })).toBe(false);
   });
 });

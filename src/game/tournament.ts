@@ -148,3 +148,51 @@ export function tournamentWinner(
 export function isEliminated(player: { chips: number }, tournament: boolean): boolean {
   return tournament && player.chips <= 0;
 }
+
+/**
+ * Put a level's blinds onto a game, between hands.
+ *
+ * Blinds live in the game's config, which `createGame` normalises once and
+ * nothing then changes. A tournament has to change them, so this is the one
+ * place that does it, and it is deliberately a pure swap of three numbers
+ * rather than a rebuild: rebuilding the game would reset the stacks, the
+ * button and the deck, which is every single thing a tournament is keeping
+ * track of.
+ *
+ * Only safe between hands. Applying it mid hand would move the blinds a
+ * player had already posted against, so the caller does it when a hand ends,
+ * not when the clock ticks.
+ */
+export function applyBlindLevel<T extends { config: { smallBlind: number; bigBlind: number; ante?: number } }>(
+  state: T,
+  level: BlindLevel,
+): T {
+  const { smallBlind, bigBlind, ante } = state.config;
+  if (smallBlind === level.smallBlind && bigBlind === level.bigBlind && (ante ?? 0) === level.ante) {
+    // Nothing moved, so hand back the same object and let React skip the work.
+    return state;
+  }
+  return {
+    ...state,
+    config: { ...state.config, smallBlind: level.smallBlind, bigBlind: level.bigBlind, ante: level.ante },
+  };
+}
+
+/**
+ * Whether the blinds are due to move before the next hand is dealt.
+ *
+ * Asked at the end of a hand rather than on a timer, because a level that
+ * arrived mid hand must wait: the players bet against the old blinds and the
+ * pot was built on them.
+ */
+export function blindsDue(
+  current: { smallBlind: number; bigBlind: number; ante?: number },
+  level: BlindLevel,
+): boolean {
+  return (
+    current.smallBlind !== level.smallBlind ||
+    current.bigBlind !== level.bigBlind ||
+    (current.ante ?? 0) !== level.ante
+  );
+}
+
