@@ -252,3 +252,12 @@ Company**, and the stock images of it are licensed, not free. Several decks on
 Wikimedia are CC0 for their *faces* only and have no back design at all.
 Generating the pattern sidesteps all of that, costs nothing at any resolution,
 and means a new back is a palette rather than an asset.
+
+### A note on levels
+
+`check.wav` was normalised from a peak of 0.348 to 0.88 after it was trimmed.
+The source take was recorded quietly, and next to the chip at 0.925 it was
+around eight decibels down, so checking would have sounded like a much smaller
+event than betting when at a real table it is not. The gain is a flat 2.53x
+with no limiting, and nothing clips. Normalising is not a change anyone needs
+permission for here: both files are public domain or CC0.
