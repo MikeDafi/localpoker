@@ -44,6 +44,12 @@ describe('cosmetic palettes', () => {
       }
     }
   });
+
+  it('keeps felt palettes limited to cloth colours', () => {
+    for (const [id, felt] of Object.entries(FELT_PALETTES)) {
+      expect(Object.keys(felt).sort(), id).toEqual(['base', 'deep', 'light']);
+    }
+  });
 });
 
 describe('resolveFelt', () => {

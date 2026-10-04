@@ -8,7 +8,7 @@ import { colors } from '../theme/theme';
  * stayed exactly the same green. This is the missing half, the part that says
  * what each of those names is in colours.
  *
- * It is deliberately data rather than components. A felt is five colours and
+ * It is deliberately data rather than components. A felt is three colours and
  * a chip set is six, so the renderers can stay dumb and the palettes can be
  * tested without one.
  */
@@ -18,9 +18,6 @@ export interface FeltPalette {
   light: string;
   base: string;
   deep: string;
-  /** The rail around it, and the top-lit sliver along its inside edge. */
-  rail: string;
-  railEdge: string;
 }
 
 export interface ChipPalette {
@@ -69,23 +66,21 @@ export const FELT_PALETTES: Record<string, FeltPalette> = {
     light: colors.feltLight,
     base: colors.felt,
     deep: colors.feltDeep,
-    rail: colors.feltRail,
-    railEdge: colors.feltRailEdge,
   },
   'table-emerald': {
-    light: '#2E6B4F', base: '#17533A', deep: '#0C3B28', rail: '#07271A', railEdge: '#3C8A68',
+    light: '#2E6B4F', base: '#17533A', deep: '#0C3B28',
   },
   'table-miami': {
-    light: '#1BA3B8', base: '#0E7E92', deep: '#07566A', rail: '#06303D', railEdge: '#2FC7D8',
+    light: '#1BA3B8', base: '#0E7E92', deep: '#07566A',
   },
   'table-velvet': {
-    light: '#5B2E8C', base: '#44206B', deep: '#2C1247', rail: '#190926', railEdge: '#8B5CC7',
+    light: '#5B2E8C', base: '#44206B', deep: '#2C1247',
   },
   'table-sakura': {
-    light: '#9C4472', base: '#7A2F58', deep: '#541C3B', rail: '#331122', railEdge: '#D881AC',
+    light: '#9C4472', base: '#7A2F58', deep: '#541C3B',
   },
   'table-lunar': {
-    light: '#2A3550', base: '#1B2238', deep: '#0F1423', rail: '#070A12', railEdge: '#5B6B96',
+    light: '#2A3550', base: '#1B2238', deep: '#0F1423',
   },
 };
 

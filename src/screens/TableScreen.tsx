@@ -2265,7 +2265,7 @@ export function TableScreen({ navigation, route }: Props) {
           colors={[feltPalette.light, feltPalette.base, feltPalette.deep]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={[styles.feltOval, shadows.raised, { borderColor: feltPalette.rail }]}
+          style={[styles.feltOval, shadows.raised]}
           pointerEvents="none"
         >
           {/* woven cloth + suit watermark (CC0 / MIT sources).
@@ -2273,9 +2273,9 @@ export function TableScreen({ navigation, route }: Props) {
               border sits inside that, so the cloth fills what's left (see
               `feltInnerW`). */}
           <FeltSurface width={clothOval.width} height={clothOval.height} />
-          <View style={[styles.railHighlight, { backgroundColor: feltPalette.railEdge }]} pointerEvents="none" />
+          <View style={styles.railHighlight} pointerEvents="none" />
           <View style={styles.feltInner} pointerEvents="none" />
-          <View style={[styles.feltGlow, { backgroundColor: feltPalette.light }]} pointerEvents="none" />
+          <View style={styles.feltGlow} pointerEvents="none" />
         </LinearGradient>
 
         {/* Community cards + pot, centred in the lane between the seat arc and
