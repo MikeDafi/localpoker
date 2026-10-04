@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -11,10 +11,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import {
   BG_STYLES,
+  BLUSH_STYLES,
   DEFAULT_PAL,
   EYEBROW_STYLES,
   EYE_STYLES,
   FACIAL_HAIR,
+  FRECKLE_STYLES,
   FEATURE_SPECS,
   GLASSES,
   HAIR_STYLES,
@@ -63,6 +65,8 @@ const OPTION_NAMES: Partial<Record<EditableNumericKey, readonly string[]>> = {
   eyeStyle: EYE_STYLES,
   noseStyle: NOSE_STYLES,
   mouthStyle: MOUTH_STYLES,
+  blushStyle: BLUSH_STYLES,
+  frecklesStyle: FRECKLE_STYLES,
   facialHair: FACIAL_HAIR,
   glasses: GLASSES,
   headwear: HEADWEAR,
@@ -96,10 +100,6 @@ export function PalDesignerScreen({ navigation }: Props) {
   const [activeGroup, setActiveGroup] = useState<FeatureGroup>('Face');
   const { width } = useWindowDimensions();
   const compactPreview = width < 370;
-
-  useEffect(() => {
-    setPalState(normalizePal(profile.pal));
-  }, [profile.pal]);
 
   const visibleSpecs = useMemo(
     () => EDITABLE_FEATURE_SPECS.filter((spec) => spec.group === activeGroup),
@@ -173,12 +173,9 @@ export function PalDesignerScreen({ navigation }: Props) {
                   <Text style={styles.liveText}>Live preview</Text>
                 </View>
                 <Text style={styles.previewTitle}>Design your table Pal</Text>
-                <Text style={styles.previewSubtitle}>
-                  Build a console-style avatar with smooth, instant updates.
-                </Text>
-                <Text style={[styles.dirtyText, isDirty && styles.dirtyTextActive]}>
-                  {isDirty ? 'Unsaved changes ready' : 'Matching saved profile'}
-                </Text>
+                {isDirty ? (
+                  <Text style={[styles.dirtyText, styles.dirtyTextActive]}>Unsaved changes</Text>
+                ) : null}
               </View>
             </View>
           </WiiPanel>

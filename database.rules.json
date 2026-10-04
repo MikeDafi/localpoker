@@ -292,7 +292,7 @@
           "emotes": {
             "$playerId": {
               ".write": "auth != null && auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
-              ".validate": "!newData.exists() || (newData.hasChildren(['type','value','ts']) && newData.child('type').isString() && (newData.child('type').val() === 'emoji' || newData.child('type').val() === 'text' || newData.child('type').val() === 'sticker' || newData.child('type').val() === 'gif') && newData.child('value').isString() && newData.child('value').val().length <= 64 && newData.child('ts').isNumber() && (!newData.child('anim').exists() || (newData.child('anim').isString() && newData.child('anim').val().length <= 12)))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['type','value','ts']) && newData.child('type').isString() && (newData.child('type').val() === 'emoji' || newData.child('type').val() === 'text' || newData.child('type').val() === 'sticker' || newData.child('type').val() === 'gif' || newData.child('type').val() === 'palMotion') && newData.child('value').isString() && newData.child('value').val().length <= 64 && newData.child('ts').isNumber() && (!newData.child('anim').exists() || (newData.child('anim').isString() && newData.child('anim').val().length <= 12)))",
               /*
                * Each field needs its own rule, not just a mention in the
                * validate string above. "$other": false rejects every named

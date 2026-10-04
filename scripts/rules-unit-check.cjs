@@ -534,6 +534,17 @@ function logOk(message) {
     logOk('and an unknown reaction kind is refused');
 
     /*
+     * Pal motions are a third kind of reaction alongside emoji and gifs. The
+     * rule whitelists reaction types, so a new kind is refused in production
+     * until it is added here AND deployed. Nothing deploys rules, see
+     * `npm run deploy:rules`.
+     */
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'palMotion', value: 'wave', ts: 65,
+    }));
+    logOk('a pal motion is an allowed reaction kind');
+
+    /*
      * Tabling your hand.
      *
      * Showing a bluff only means anything if the others see it, so the flag
@@ -622,6 +633,13 @@ function logOk(message) {
       choice: 2, ts: 70,
     }));
     logOk('but cannot vote for somebody else');
+
+    // The host is a player too, and is the one most likely to be all in when
+    // the question is asked, so their own vote has to be allowed.
+    await assertSucceeds(set(ref(hostDb, 'localpoker/rooms/PLAY1/runVotes/host'), {
+      choice: 2, ts: 71,
+    }));
+    logOk('the host can vote for themselves');
 
     await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/runVotes/stranger'), {
       choice: 2, ts: 71,

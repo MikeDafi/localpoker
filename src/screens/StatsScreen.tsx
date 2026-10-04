@@ -8,11 +8,19 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiPanel } from '../components/WiiPanel';
 import { WiiButton } from '../components/WiiButton';
 import { LineChart } from '../components/LineChart';
+import {
+  ChipHighlightCards,
+  HandSwingChart,
+  PlayingStyleChart,
+  RateGuideBars,
+  WinBreakdownChart,
+} from '../components/charts/StatsCharts';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { colors, fonts, spacing, easings } from '../theme/theme';
 import { useApp, derivedStats } from '../state/AppContext';
 import { InfoDot, InfoNote } from '../components/InfoDot';
 import { PROFILE_STAT_KEYS, STAT_HELP, statHelpText, type StatKey } from '../game/statHelp';
+import { buildStatsViz } from '../game/statsViz';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Stats'>;
@@ -20,6 +28,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Stats'>;
 export function StatsScreen({ navigation }: Props) {
   const { stats, resetStats } = useApp();
   const d = derivedStats(stats);
+  const viz = buildStatsViz(stats);
   const { width } = useWindowDimensions();
   const [openHelp, setOpenHelp] = useState<StatKey | null>(null);
   const chartW = width - spacing.lg * 2 - 32;
@@ -87,21 +96,34 @@ export function StatsScreen({ navigation }: Props) {
 
         <Animated.View entering={FadeInDown.delay(140).duration(400).easing(Easing.bezier(...easings.out))}>
           <WiiPanel>
-            <Text style={styles.section}>What the numbers mean</Text>
-            {PROFILE_STAT_KEYS.map((key) => (
-              <View key={key} style={styles.helpRow}>
-                <Text style={styles.helpKey}>{STAT_HELP[key].label}</Text>
-                <Text style={styles.helpText}>{statHelpText(key)}</Text>
-              </View>
-            ))}
+            <Text style={styles.section}>Win breakdown</Text>
+            <WinBreakdownChart breakdown={viz.winBreakdown} width={chartW} />
+            {viz.chipHighlights.hasData ? <ChipHighlightCards highlights={viz.chipHighlights} width={chartW} /> : null}
           </WiiPanel>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(210).duration(400).easing(Easing.bezier(...easings.out))}>
+          <WiiPanel>
+            <Text style={styles.section}>Playing style</Text>
+            <PlayingStyleChart map={viz.playingStyle} width={chartW} />
+            <View style={styles.chartSpacer}>
+              <RateGuideBars bars={viz.rateBars} width={chartW} />
+            </View>
+          </WiiPanel>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(280).duration(400).easing(Easing.bezier(...easings.out))}>
+          <WiiPanel>
+            <Text style={styles.section}>Recent swings</Text>
+            <HandSwingChart swings={viz.handSwings} width={chartW} />
+          </WiiPanel>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(350).duration(400).easing(Easing.bezier(...easings.out))}>
           <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onReset} />
         </Animated.View>
         {ADS_ENABLED ? (
-          <Animated.View entering={FadeInDown.delay(280).duration(400).easing(Easing.bezier(...easings.out))}>
+          <Animated.View entering={FadeInDown.delay(420).duration(400).easing(Easing.bezier(...easings.out))}>
             <AdBanner />
           </Animated.View>
         ) : null}
@@ -117,8 +139,6 @@ const styles = StyleSheet.create({
   value: { fontFamily: fonts.bold, fontSize: 22 },
   metric: { fontFamily: fonts.medium, fontSize: 12, color: colors.inkMuted },
   empty: { fontFamily: fonts.medium, fontSize: 14, color: colors.inkMuted, paddingVertical: spacing.lg, textAlign: 'center' },
-  helpRow: { flexDirection: 'row', marginBottom: spacing.sm },
   metricRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  helpKey: { fontFamily: fonts.bold, fontSize: 13, color: colors.blueDeep, width: 96 },
-  helpText: { fontFamily: fonts.regular, fontSize: 13, color: colors.inkSoft, flex: 1, lineHeight: 18 },
+  chartSpacer: { marginTop: spacing.lg },
 });

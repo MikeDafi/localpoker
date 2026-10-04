@@ -291,6 +291,7 @@ const roomSummaryOf = (
     smallBlind: settings.smallBlind,
     bigBlind: settings.bigBlind,
     startingStack: settings.startingStack,
+    gameMode: settings.gameMode,
     updatedAt: Date.now(),
   };
 };

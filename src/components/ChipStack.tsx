@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Ellipse, Path, Rect } from 'react-native-svg';
+import Svg, { Defs, Ellipse, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { colors, fonts } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { resolveChips, type ChipPalette } from '../game/cosmetics';
-import { compactChipCount } from '../game/chipStackLook';
+import { compactChipCount, shade, vivid } from '../game/chipStackLook';
 
 /**
  * Denominations, coloured by whichever chip set the table is using.
@@ -60,7 +60,7 @@ function breakdown(amount: number, palette: ChipPalette): { color: string; edge:
  */
 const CHIP_OVERLAP = 0.6;
 
-function Chip({ color, edge, size = 22 }: { color: string; edge: string; size?: number }) {
+function Chip({ color, edge, size = 22, index = 0 }: { color: string; edge: string; size?: number; index?: number }) {
   const rx = size / 2;
   const ry = size * 0.3;
   const wall = Math.max(2, size * 0.17);
@@ -72,12 +72,38 @@ function Chip({ color, edge, size = 22 }: { color: string; edge: string; size?: 
   const spots = [0.18, 0.4, 0.62, 0.84].map((t) => t * size);
   const spotW = Math.max(1.5, size * 0.11);
 
+  /*
+   * Every chip in a stack used to be painted identically, so a stack was one
+   * picture repeated rather than a column of separate objects. Alternating the
+   * face by a hair is what separates them, the same way real chips never sit
+   * perfectly flush.
+   */
+  const face = vivid(color, 0.32);
+  const faceTop = shade(face, index % 2 === 0 ? 0.26 : 0.2);
+  const faceBottom = shade(face, -0.16);
+  const wallLit = shade(edge, 0.1);
+  const wallDark = shade(edge, -0.42);
+  // Unique per rendered chip: two gradients with the same id in one tree make
+  // every chip take whichever was mounted last.
+  const uid = React.useId();
+
   return (
     <Svg width={size} height={h}>
+      <Defs>
+        <LinearGradient id={`face-${uid}`} x1="0.2" y1="0" x2="0.8" y2="1">
+          <Stop offset="0" stopColor={faceTop} />
+          <Stop offset="0.55" stopColor={face} />
+          <Stop offset="1" stopColor={faceBottom} />
+        </LinearGradient>
+        <LinearGradient id={`wall-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={wallLit} />
+          <Stop offset="1" stopColor={wallDark} />
+        </LinearGradient>
+      </Defs>
       {/* The wall, traced under the face and down to the base. */}
       <Path
         d={`M0,${ry} A${rx},${ry} 0 0 0 ${size},${ry} L${size},${ry + wall} A${rx},${ry} 0 0 1 0,${ry + wall} Z`}
-        fill={edge}
+        fill={`url(#wall-${uid})`}
       />
       {spots.map((x, i) => (
         <Rect
@@ -91,7 +117,15 @@ function Chip({ color, edge, size = 22 }: { color: string; edge: string; size?: 
         />
       ))}
       {/* The face, and the dashed ring every chip has printed round it. */}
-      <Ellipse cx={rx} cy={ry} rx={rx} ry={ry} fill={color} stroke={edge} strokeWidth={Math.max(0.6, size * 0.035)} />
+      <Ellipse
+        cx={rx}
+        cy={ry}
+        rx={rx}
+        ry={ry}
+        fill={`url(#face-${uid})`}
+        stroke={shade(edge, -0.2)}
+        strokeWidth={Math.max(0.6, size * 0.035)}
+      />
       <Ellipse
         cx={rx}
         cy={ry}
@@ -103,6 +137,15 @@ function Chip({ color, edge, size = 22 }: { color: string; edge: string; size?: 
         strokeDasharray={`${Math.max(1.4, size * 0.1)},${Math.max(1.4, size * 0.1)}`}
       />
       <Ellipse cx={rx} cy={ry} rx={rx * 0.52} ry={ry * 0.46} fill="rgba(255,255,255,0.1)" />
+      {/* The gloss. A clay chip is slightly domed, so the light lands as a
+          crescent up and left of centre rather than across the whole face. */}
+      <Ellipse
+        cx={rx * 0.74}
+        cy={ry * 0.56}
+        rx={rx * 0.56}
+        ry={ry * 0.42}
+        fill="rgba(255,255,255,0.3)"
+      />
     </Svg>
   );
 }
@@ -112,9 +155,17 @@ export interface ChipStackProps {
   size?: number;
   showLabel?: boolean;
   compact?: boolean;
+  /**
+   * Draw a specific chip set rather than the table's.
+   *
+   * Only the Store needs this, to show a set you have not bought and so
+   * cannot have equipped. The table never passes it, which is what keeps the
+   * guarantee below true for every chip drawn during a hand.
+   */
+  palette?: ChipPalette;
 }
 
-export function ChipStack({ amount, size = 26, showLabel = true, compact }: ChipStackProps) {
+export function ChipStack({ amount, size = 26, showLabel = true, compact, palette: override }: ChipStackProps) {
   /*
    * Read from the table's settings rather than taken as a prop.
    *
@@ -123,11 +174,12 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact }: Chip
    * chances for one of them to be missed and keep rendering the old colours.
    */
   const { settings, cosmetics } = useApp();
-  const palette = resolveChips({
+  const equipped = resolveChips({
     setting: settings.chipStyle,
     equippedId: cosmetics.equippedByCategory.chips,
     owned: cosmetics.ownedCosmeticIds,
   });
+  const palette = override ?? equipped;
   const stacks = breakdown(amount, palette);
   return (
     <View style={styles.row}>
@@ -136,7 +188,7 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact }: Chip
           <View key={i} style={styles.stack}>
             {Array.from({ length: s.count }).map((_, j) => (
               <View key={j} style={{ marginTop: j === 0 ? 0 : -CHIP_OVERLAP * size }}>
-                <Chip color={s.color} edge={s.edge} size={size} />
+                <Chip color={s.color} edge={s.edge} size={size} index={j} />
               </View>
             ))}
           </View>
@@ -154,7 +206,7 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact }: Chip
         <View style={styles.stack}>
           {Array.from({ length: compactChipCount(amount) }).map((_, j) => (
             <View key={j} style={{ marginTop: j === 0 ? 0 : -CHIP_OVERLAP * size }}>
-              <Chip color={stacks[0].color} edge={stacks[0].edge} size={size} />
+              <Chip color={stacks[0].color} edge={stacks[0].edge} size={size} index={j} />
             </View>
           ))}
         </View>

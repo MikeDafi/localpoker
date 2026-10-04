@@ -5,10 +5,20 @@ import { colors, fonts, radii, shadows, spacing, type, motion, easings } from '.
 import { sound } from '../services/sound';
 import { GIF_LIBRARY, gifUrl, gifThumbUrl } from '../services/gifs';
 import { shuffleForDay } from '../game/dailyShuffle';
-import { EMOJI_EMOTES, resolveEmojiEmotes, resolveGifEmotes } from '../game/cosmetics';
+import { EMOJI_EMOTES, resolveEmojiEmotes, resolveGifEmotes, resolvePalMotions } from '../game/cosmetics';
+import { DEFAULT_PAL, type PalConfig } from '../avatar/palConfig';
+import { PalMotion } from './PalMotion';
 
 export type EmoteAnim = 'bounce' | 'spin' | 'pulse' | 'shake' | 'burst';
-export type Emote = { type: 'emoji' | 'text' | 'sticker' | 'gif'; value: string; anim?: EmoteAnim };
+/**
+ * A reaction, in one of four kinds.
+ *
+ * `palMotion` carries the motion's short id in `value`, the way a `gif`
+ * carries a URL: the wire only moves `type`, `value` and `anim`, so the id is
+ * the whole payload and `palMotionByMotionId` turns it back into a gesture on
+ * the other side.
+ */
+export type Emote = { type: 'emoji' | 'text' | 'sticker' | 'gif' | 'palMotion'; value: string; anim?: EmoteAnim };
 
 /** Big, clear emoji reactions. */
 export const EMOJIS = Object.values(EMOJI_EMOTES).map((emoji) => emoji.emoji);
@@ -33,12 +43,23 @@ export { GIF_LIBRARY };
 
 const NO_OWNED_COSMETICS: readonly string[] = [];
 
+/**
+ * Pal size in a motion chip.
+ *
+ * Near the 42pt a Pal is drawn at on a seat, so the tray is an honest preview
+ * of what the rest of the table is about to see rather than a flattering one.
+ */
+const MOTION_CHIP_PAL = 46;
+
 export function EmoteBar({
   onEmote,
   ownedCosmeticIds = NO_OWNED_COSMETICS,
+  pal = DEFAULT_PAL,
 }: {
   onEmote: (emote: Emote) => void;
   ownedCosmeticIds?: readonly string[];
+  /** The player's own Pal, so the motion row shows the face that will do it. */
+  pal?: PalConfig;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -57,6 +78,12 @@ export function EmoteBar({
   );
   const emojis = useMemo(
     () => resolveEmojiEmotes({ owned: ownedCosmeticIds }),
+    [ownedCosmeticIds],
+  );
+  // Owned motions only, exactly as the GIF and emoji rows work. The wave is
+  // free, so the row is never empty and the feature is discoverable.
+  const motions = useMemo(
+    () => resolvePalMotions({ owned: ownedCosmeticIds }),
     [ownedCosmeticIds],
   );
 
@@ -127,8 +154,30 @@ export function EmoteBar({
                 )}
               />
 
-              <Text style={styles.sectionLabel}>Animated stickers</Text>
-              <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickerRow} keyboardShouldPersistTaps="handled">
+              {motions.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>Pal motions</Text>
+                  {/* Each chip plays the real thing rather than a picture of
+                      it, on the player's own Pal, so what is in the tray and
+                      what the table sees are the same gesture. */}
+                  <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.motionRow} keyboardShouldPersistTaps="handled">
+                    {motions.map((m) => (
+                      <Pressable
+                        key={m.id}
+                        style={styles.motionChip}
+                        onPress={() => send({ type: 'palMotion', value: m.motionId })}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Send ${m.name}`}
+                      >
+                        <PalMotion config={pal} motionId={m.motionId} size={MOTION_CHIP_PAL} loop />
+                        <Text style={styles.motionName} numberOfLines={1}>{m.name}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+
+              <Text style={styles.sectionLabel}>Animated stickers</Text>              <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickerRow} keyboardShouldPersistTaps="handled">
                 {STICKERS.map((s, i) => (
                   <Pressable key={i} style={styles.stickerChip} onPress={() => send(s)} accessibilityLabel={`Send animated ${s.value}`}>
                     <Text style={styles.stickerEmoji}>{s.value}</Text>
@@ -208,6 +257,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center',
   },
   stickerEmoji: { fontSize: 32 },
+  motionRow: { gap: 10, paddingVertical: 6, paddingRight: 8 },
+  motionChip: {
+    width: 84, paddingVertical: 8, borderRadius: radii.lg, backgroundColor: colors.surfaceAlt,
+    borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  motionName: { fontFamily: fonts.semibold, fontSize: 11, color: colors.onDarkSoft, maxWidth: 76 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
   emojiChip: {
     width: 52, height: 52, borderRadius: radii.md, backgroundColor: colors.surfaceAlt,

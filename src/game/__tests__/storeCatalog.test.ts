@@ -7,7 +7,9 @@ import {
   FELT_PALETTES,
   FREE_EMOJI_COSMETIC_IDS,
   FREE_GIF_COSMETIC_IDS,
+  FREE_PAL_MOTION_COSMETIC_IDS,
   GIF_EMOTES,
+  PAL_MOTIONS,
   STARTER_CARD_BACKS,
   STARTER_CHIPS,
   STARTER_FELTS,
@@ -32,6 +34,7 @@ describe('everything on sale actually does something', () => {
     ['chips', CHIP_PALETTES, STARTER_CHIPS],
     ['emotes', EMOJI_EMOTES, FREE_EMOJI_COSMETIC_IDS],
     ['gifs', GIF_EMOTES, FREE_GIF_COSMETIC_IDS],
+    ['palMotions', PAL_MOTIONS, FREE_PAL_MOTION_COSMETIC_IDS],
   ];
 
   for (const [category, palettes, builtInIds] of cases) {

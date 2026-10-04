@@ -2,6 +2,24 @@ import { colors } from '../theme/theme';
 import { GIF_LIBRARY } from '../services/gifs';
 
 /**
+ * Pal motions are cosmetics like any other, and they are described in their
+ * own file because a motion is a list of poses rather than a list of colours.
+ * Re-exported here so a caller that already imports the emote trays gets the
+ * third kind from the same place.
+ */
+export {
+  FREE_PAL_MOTION_COSMETIC_IDS,
+  PAL_MOTIONS,
+  PURCHASABLE_PAL_MOTIONS,
+  palMotionByCosmeticId,
+  palMotionByMotionId,
+  palMotionCosmeticId,
+  palMotionDuration,
+  resolvePalMotions,
+  type PalMotion,
+} from './palMotions';
+
+/**
  * What a bought felt or chip set actually changes.
  *
  * The store has sold tables and chip styles since it opened, and equipping

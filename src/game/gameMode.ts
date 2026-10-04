@@ -61,6 +61,44 @@ export function blindsForMode(
   };
 }
 
+/** A tournament wants real play in it, so the stack is sized in big blinds. */
+export const TOURNAMENT_STARTING_BIG_BLINDS = 100;
+
+/**
+ * What picking a mode does to the rest of the table.
+ *
+ * A tournament is not a cash game with a flag set on it: it has a published
+ * ladder, and the blinds it starts on are the first rung of that ladder rather
+ * than whatever the cash game happened to be playing. Choosing the mode and
+ * then leaving the table on 50/100 when the ladder starts at 10/20 would mean
+ * the first level was a lie.
+ *
+ * The stack moves with them. Blinds mean nothing on their own; what decides
+ * whether a tournament has any play in it is how many big blinds people sit
+ * down with, so a stack that would leave everyone nearly all in on level one
+ * is raised to a hundred big blinds. A deeper stack than that is left alone,
+ * because wanting a deep tournament is a reasonable thing to want.
+ *
+ * Switching back to cash deliberately changes nothing. The blinds are then
+ * the player's to choose, and quietly resetting them would throw away a table
+ * somebody had set up.
+ */
+export function settingsForMode<
+  T extends { gameMode: GameMode; smallBlind: number; bigBlind: number; ante: number; startingStack: number },
+>(settings: T, mode: GameMode): T {
+  const level = initialBlindLevelForMode(mode);
+  if (!level) return { ...settings, gameMode: mode };
+  const floor = level.bigBlind * TOURNAMENT_STARTING_BIG_BLINDS;
+  return {
+    ...settings,
+    gameMode: mode,
+    smallBlind: level.smallBlind,
+    bigBlind: level.bigBlind,
+    ante: level.ante,
+    startingStack: Math.max(settings.startingStack, floor),
+  };
+}
+
 export interface TournamentTableStatus {
   mode: GameMode;
   levelNumber: number;

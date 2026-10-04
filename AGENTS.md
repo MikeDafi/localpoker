@@ -101,6 +101,21 @@ A store preview must render the real component rather than an impression of
 one. The card back preview was a gradient with two plain views standing in for
 the pattern, so the thing on sale and the thing dealt were different pictures.
 
+## Security rules are not deployed by anything
+
+`database.rules.json` is the source of truth for the repo and for
+`npm run test:rules`, which runs against an emulator. **Nothing deploys it.**
+No CI step, no build step. The live database keeps whatever was last pushed by
+hand with `npm run deploy:rules`.
+
+This has already cost a release. Build 34 shipped guest rebuys, one card
+exposure and the run-it-twice vote, all three of which write to paths the
+deployed rules had never heard of, so all three failed with permission denied
+while the rules check passed locally. A green rules check says the file is
+right, not that the database agrees with it.
+
+**If you add or change a rule, run `npm run deploy:rules` before the build.**
+
 ## Do not
 
 - Trigger an EAS build by pushing. It is opt-in only, see

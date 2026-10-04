@@ -8,9 +8,16 @@
  * asserted against each other in tests instead of by eye.
  */
 import { colors } from '../theme/theme';
-import { PURCHASABLE_EMOJI_EMOTES, PURCHASABLE_GIF_EMOTES } from './cosmetics';
+import { PURCHASABLE_EMOJI_EMOTES, PURCHASABLE_GIF_EMOTES, PURCHASABLE_PAL_MOTIONS } from './cosmetics';
 
-export const CATEGORY_IDS = ['outfits', 'cardBacks', 'tables', 'chips', 'emotes', 'gifs'] as const;
+/**
+ * Reactions lead.
+ *
+ * They are the cheapest thing on sale, the only category you can use without
+ * leaving the hand you are in, and the one people actually buy. Outfits sit
+ * last because they are the weakest: see the note on `outfits` below.
+ */
+export const CATEGORY_IDS = ['gifs', 'emotes', 'palMotions', 'cardBacks', 'tables', 'chips', 'outfits'] as const;
 
 export type CosmeticCategoryId = (typeof CATEGORY_IDS)[number];
 
@@ -54,13 +61,23 @@ const EMOTE_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_EMOJI_EMOTES
   swatches: emoji.swatches,
 }));
 
-export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
+const PAL_MOTION_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_PAL_MOTIONS).map((motion) => ({
+  id: motion.id,
+  category: 'palMotions',
+  name: motion.name,
+  price: motion.price,
+  description: motion.description,
+  emoji: motion.emoji,
+  swatches: motion.swatches,
+}));
+
+const CATEGORY_DEFINITIONS: CosmeticCategory[] = [
   {
     id: 'outfits',
     label: 'Outfits & Accessories',
     shortLabel: 'Outfits',
     emoji: '🐾',
-    description: 'Dress up your Pal with table-ready hats, glasses, and signature looks.',
+    description: 'Hats, glasses and looks for your Pal.',
     items: [
       {
         id: 'pal-dealer-shades',
@@ -126,7 +143,7 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
     label: 'Card Backs',
     shortLabel: 'Cards',
     emoji: '🂠',
-    description: 'Turn every deal into a flex with premium card art.',
+    description: 'The back printed on every card.',
     items: [
       {
         id: 'black',
@@ -210,7 +227,7 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
     label: 'Table Themes',
     shortLabel: 'Tables',
     emoji: '🎲',
-    description: 'Refresh the room with premium felt, rails, and lounge lighting.',
+    description: 'Felt and rails for the table.',
     items: [
       {
         id: 'table-emerald',
@@ -267,7 +284,7 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
     label: 'Chip Styles',
     shortLabel: 'Chips',
     emoji: '🪙',
-    description: 'Upgrade the color and character of every bet.',
+    description: 'The chips every bet is made with.',
     items: [
       {
         id: 'chips-candy',
@@ -324,7 +341,7 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
     label: 'Emoji Emotes',
     shortLabel: 'Emotes',
     emoji: '😎',
-    description: 'Unlock novelty emoji reactions for the quick emote grid.',
+    description: 'Emoji reactions for the emote tray.',
     items: EMOTE_STORE_ITEMS,
   },
   {
@@ -332,7 +349,23 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
     label: 'Reaction GIFs',
     shortLabel: 'GIFs',
     emoji: '🎞️',
-    description: 'Unlock extra Giphy reactions for the table chat tray.',
+    description: 'Animated reactions for the emote tray.',
     items: GIF_STORE_ITEMS,
   },
+  {
+    id: 'palMotions',
+    label: 'Pal Motions',
+    shortLabel: 'Motions',
+    emoji: '👋',
+    description: 'Gestures your own Pal performs at the table.',
+    items: PAL_MOTION_STORE_ITEMS,
+  },
 ];
+
+/**
+ * Ordered by `CATEGORY_IDS`, so the tab order and the id list cannot drift
+ * apart. The definitions above stay grouped however they read best.
+ */
+export const COSMETIC_CATEGORIES: CosmeticCategory[] = CATEGORY_IDS.map(
+  (id) => CATEGORY_DEFINITIONS.find((category) => category.id === id)!,
+);

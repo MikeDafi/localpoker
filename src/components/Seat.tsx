@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSequence, cancelAnimation, Easing, ZoomIn, FadeOut, FadeInDown } from 'react-native-reanimated';
 import { AnimatedPal } from './AnimatedPal';
+import { PalMotion } from './PalMotion';
 import { PlayingCard } from './PlayingCard';
 import { DealtCard } from './DealtCard';
 import { colors, fonts, radii, shadows, spacing, numeric, motion, easings } from '../theme/theme';
@@ -80,6 +81,17 @@ const BET_SLOT_H = 28;
 /** How big an opponent's hole card is while it is still face down. */
 const SEAT_CARD = 26;
 
+/**
+ * How much bigger it gets once its owner turns it over.
+ *
+ * Doubling was not enough. At 52 points a rank is still something you squint
+ * at from across a table, and the whole purpose of showing a card is that
+ * everybody else reads it without effort. Four times the face down size puts
+ * it near the size of your own hole cards, which is the right comparison:
+ * this is a card you are meant to be looking at.
+ */
+const EXPOSED_CARD_SCALE = 4;
+
 export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
@@ -118,7 +130,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
   const cardFaceUp = (index: number): boolean => !!showCards || shownCards?.[index] === true;
   /** Turned over by its owner mid hand, rather than tabled at a showdown. */
   const deliberatelyShown = (index: number): boolean => !showCards && shownCards?.[index] === true;
-  const seatCardSize = (index: number): number => (deliberatelyShown(index) ? SEAT_CARD * 2 : SEAT_CARD);
+  const seatCardSize = (index: number): number => (deliberatelyShown(index) ? SEAT_CARD * EXPOSED_CARD_SCALE : SEAT_CARD);
 
   // The ring is the avatar plus a fixed border allowance.
   const ringSize = avatarSize + 10;
@@ -128,7 +140,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
   if (compact) {
     return (
       <View style={styles.cWrap}>
-        {emote && <EmoteBubble emote={emote} />}
+        {emote && <EmoteBubble emote={emote} pal={pal} />}
         <View style={styles.cAvatarWrap}>
         {hasHoleCardsToDisplay && !dimmed && !handOff && (
           <Animated.View
@@ -210,7 +222,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
 
   return (
     <View style={styles.wrap}>
-      {emote && <EmoteBubble emote={emote} />}
+      {emote && <EmoteBubble emote={emote} pal={pal} />}
       {!isHuman && hasHoleCardsToDisplay && (
         <View style={styles.cards}>
           {/*
@@ -279,7 +291,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
 }
 
 /** A short-lived reaction bubble that pops above a player's seat. */
-function EmoteBubble({ emote }: { emote: Emote }) {
+function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
   const t = useSharedValue(0);
   useEffect(() => {
     if (emote.anim) {
@@ -304,12 +316,36 @@ function EmoteBubble({ emote }: { emote: Emote }) {
 
   const isText = emote.type === 'text';
   const isGif = emote.type === 'gif';
+  const isMotion = emote.type === 'palMotion';
   // Text/GIF slide in gently; emoji & stickers keep a lively pop.
   // Fast, small, eased, no springy overshoot.
   const entering = isText || isGif
     ? FadeInDown.duration(motion.fast).easing(Easing.bezier(...easings.out))
     : ZoomIn.duration(motion.fast).easing(Easing.bezier(...easings.out));
   const textStyle = isText ? styles.emoteText : emote.type === 'sticker' ? styles.emoteSticker : styles.emoteEmoji;
+
+  /*
+   * A motion is the player's own Pal performing the gesture, so it is drawn
+   * rather than put in a bubble. The bubble chrome would read as a second
+   * head next to the one at the seat.
+   */
+  /*
+   * A fresh key each time a reaction arrives, so sending the same motion
+   * twice in a row plays it twice. `Emote` carries no timestamp once it
+   * reaches the seat, and the object identity is the only thing that changes.
+   */
+  const replayKey = useMemo(() => Date.now(), [emote]);
+
+  if (isMotion) {
+    return (
+      <View style={styles.emoteAnchor} pointerEvents="none">
+        <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)}>
+          <PalMotion config={pal} motionId={emote.value} size={64} replayKey={replayKey} />
+        </Animated.View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.emoteAnchor} pointerEvents="none">
       <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)} style={[styles.emoteBubble, emote.type === 'sticker' && styles.emoteBubbleSticker, isGif && styles.emoteBubbleGif, shadows.soft]}>

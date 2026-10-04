@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
+import { seatRingSlot } from '../game/seatRing';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
 import { blindsForMode, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
@@ -843,6 +844,18 @@ export function TableScreen({ navigation, route }: Props) {
     setRevealProgress((prev) => advanceReveal(revealOrder, prev, show));
     if (show && roomCode && firebaseOnline) void revealOwnHand(roomCode);
   };
+
+  const promptExposeCard = useCallback(() => {
+    sound.play('tap');
+    const shown = humanCardExposure;
+    showAlert('Show one card', 'The whole table will see it, and you cannot take it back.', [
+      ...(shown[0] ? [] : [{ text: 'Show left card', onPress: () => exposeCardToTable(0) }]),
+      ...(shown[1] ? [] : [{ text: 'Show right card', onPress: () => exposeCardToTable(1) }]),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+    // exposeCardToTable is declared below and is stable, so it is safe to omit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [humanCardExposure]);
 
   const exposeCardToTable = useCallback((index: HoleCardIndex) => {
     sound.play('tap');
@@ -1949,20 +1962,20 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const avatarSize = Math.round(Math.max(40, Math.min(66, 74 - opponents.length * 5)));
   const SEAT_W = Math.max(76, avatarSize + 34);
-  const seatPos = (idx: number, n: number) => {
-    const cx = area.w / 2;
-    const cy = stageH * 0.25;
-    const rx = area.w * 0.44;
-    const ry = stageH * 0.20;
-    const t = n === 1 ? 0.5 : idx / (n - 1);
-    const ang = ((210 + t * 120) * Math.PI) / 180; // top arc (210°..330°) along the rail
-    const x = cx + rx * Math.cos(ang);
-    const y = cy + ry * Math.sin(ang);
-    return {
-      left: Math.max(2, Math.min(area.w - SEAT_W - 2, x - SEAT_W / 2)),
-      top: Math.max(2, y - 30),
-    };
-  };
+  /*
+   * Packed rather than placed on a fixed arc. The arithmetic, and the proof
+   * that no two pods can touch at any seat count on any screen, is in
+   * `src/game/seatRing.ts`.
+   */
+  const seatPos = (idx: number, n: number) =>
+    seatRingSlot({
+      index: idx,
+      count: n,
+      width: area.w,
+      height: stageH,
+      podWidth: SEAT_W,
+      podHeight: podH,
+    });
 
   /**
    * The community-card lane: the band of felt between the lowest seat pod and
@@ -2585,31 +2598,31 @@ export function TableScreen({ navigation, route }: Props) {
               />
             );
           })()}
-          {canExposeHoleCards && (
-            <View style={styles.exposeOverlay} pointerEvents="box-none">
-              {([0, 1] as const).map((index) => {
-                const exposed = humanCardExposure[index];
-                return (
-                  <Pressable
-                    key={index}
-                    onPress={() => exposeCardToTable(index)}
-                    disabled={exposed}
-                    style={[styles.exposeBtn, exposed && styles.exposeBtnDone]}
-                    accessibilityRole="button"
-                    accessibilityLabel={index === 0 ? 'Show left hole card' : 'Show right hole card'}
-                    accessibilityHint="Shows only this one card to the table"
-                  >
-                    <Text style={[styles.exposeBtnText, exposed && styles.exposeBtnTextDone]}>
-                      {exposed ? 'Shown' : index === 0 ? 'Show L' : 'Show R'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
         </View>
         <View style={styles.emoteAnchor}>
-          <EmoteBar onEmote={sendEmote} ownedCosmeticIds={cosmetics.ownedCosmeticIds} />
+          {/*
+            * One button, above the chat bubble, and it asks which card.
+            *
+            * Two buttons sat under the hole cards, where on a smaller phone
+            * they overlapped the bet sizing row, so reaching for half pot
+            * could expose a card instead. Showing a card cannot be undone, so
+            * it is the one control on this screen that must not be possible
+            * to hit by accident. Out of the betting controls entirely, and a
+            * second tap to choose, which also removes the need to work out
+            * which of your cards is the left one.
+            */}
+          {canExposeHoleCards && (
+            <Pressable
+              onPress={promptExposeCard}
+              style={styles.exposeFab}
+              accessibilityRole="button"
+              accessibilityLabel="Show one of your cards to the table"
+              accessibilityHint="Asks which card, then turns only that one face up"
+            >
+              <Text style={styles.exposeFabText}>Show</Text>
+            </Pressable>
+          )}
+          <EmoteBar onEmote={sendEmote} ownedCosmeticIds={cosmetics.ownedCosmeticIds} pal={profile.pal} />
         </View>
       </View>
 
@@ -2943,7 +2956,8 @@ const styles = StyleSheet.create({
   // above the controls or the action bar paints over the lifted corner.
   humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.sm, minHeight: 142, zIndex: 41 },
   humanCards: { flexDirection: 'row', position: 'relative' },
-  exposeOverlay: { position: 'absolute', left: 0, right: 0, bottom: -30, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2 },
+  exposeFab: { marginBottom: spacing.sm, alignSelf: 'flex-end', paddingHorizontal: spacing.md, height: 30, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.goldDeep, backgroundColor: 'rgba(214,180,92,0.22)', alignItems: 'center', justifyContent: 'center' },
+  exposeFabText: { fontFamily: fonts.bold, fontSize: 12, color: colors.gold },
   exposeBtn: { minWidth: 70, height: 26, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.goldDeep, backgroundColor: 'rgba(214,180,92,0.18)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
   exposeBtnDone: { borderColor: colors.surfaceBorder, backgroundColor: colors.surface },
   exposeBtnText: { fontFamily: fonts.bold, fontSize: 11, color: colors.gold },

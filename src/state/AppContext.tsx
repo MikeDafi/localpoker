@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Linking } from 'react-native';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
 import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
 import { emptyCosmetics, migrateCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
+import { randomName } from '../game/playerName';
 import type { ObservedCounters } from '../game/observedStats';
 import {
   Stats, HandResult, DEFAULT_STATS, applyHandResult, derivedStats as computeDerived, mergeStats,
@@ -34,6 +37,13 @@ import {
   type SocialSnapshot,
 } from '../services/firebase';
 import { publicNameIssue } from '../moderation/contentFilter';
+import {
+  REPORT_EMAIL,
+  REPORT_TIMEOUT_MS,
+  buildReportEmail,
+  reportMailtoUrl,
+  withTimeout,
+} from '../moderation/reportDelivery';
 import { enablePushNotifications, disablePushNotifications } from '../services/pushSetup';
 import {
   GUEST_ACCOUNT,
@@ -193,19 +203,6 @@ const reportStorageError = (operation: string, key: string, error: unknown): voi
   captureError(error, { tags: { area: 'async-storage', operation, key } });
 };
 
-const ADJ = ['mighty', 'lucky', 'sneaky', 'royal', 'turbo', 'cosmic', 'wild', 'golden'];
-const NOUN = ['ace', 'shark', 'bluff', 'chip', 'river', 'joker', 'king', 'bandit'];
-/**
- * The one name is also the handle other players add you by, so the generated
- * starter has to be handle-shaped: lowercase, no spaces, and unique enough that
- * two fresh installs rarely collide on the claim.
- */
-function randomName(): string {
-  const adj = ADJ[Math.floor(Math.random() * ADJ.length)];
-  const noun = NOUN[Math.floor(Math.random() * NOUN.length)];
-  const suffix = Math.floor(Math.random() * 9000) + 1000;
-  return `${adj}_${noun}${suffix}`;
-}
 function makeDefaultProfile(): Profile {
   const id = 'me-' + Math.random().toString(36).slice(2, 10);
   return { id, name: randomName(), pal: randomPal(), coins: 5000, xp: 0 };
@@ -837,12 +834,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!uid || uid === profile.id) {
       return { ok: false, reason: "You can't report yourself." };
     }
-    if (!auth.loggedIn || !isFirebaseConfigured()) {
-      return { ok: false, reason: 'Online reports need Firebase setup.' };
+
+    /*
+     * The database write is best effort and strictly bounded.
+     *
+     * It used to be awaited unbounded, and a Realtime Database write does not
+     * reject when the device is offline: the SDK queues it and the promise
+     * settles only once a server acknowledges it. So this call never
+     * returned, the confirmation alert after it never ran, and the player was
+     * left on a frozen screen having just tried to report something
+     * offensive. See `src/moderation/reportDelivery.ts`.
+     */
+    if (auth.loggedIn && isFirebaseConfigured()) {
+      const remote = await withTimeout(
+        reportFirebaseUser(uid, name, context, roomCode).catch(() => ({ ok: false as const })),
+        REPORT_TIMEOUT_MS,
+        { ok: false as const },
+      );
+      if (!remote.ok) {
+        captureError(new Error('report-not-acknowledged'), {
+          tags: { area: 'moderation', operation: 'report-user' },
+        });
+      }
     }
-    const remote = await reportFirebaseUser(uid, name, context, roomCode);
-    return remote.ok ? { ok: true } : { ok: false, reason: remote.reason || 'Could not send that report.' };
-  }, [auth.loggedIn, profile.id]);
+
+    /*
+     * The email is what actually reaches a human. Reports were being filed
+     * into a database node with no reader, so nothing happened to anyone
+     * reported. Composing on the device also means the report survives the
+     * app having no backend moderation at all.
+     */
+    const email = buildReportEmail({
+      reportedName: name,
+      context,
+      roomCode,
+      reporterHandle: auth.handle ?? undefined,
+      reportedUid: uid,
+      reporterUid: profile.id,
+      appVersion: Constants.expoConfig?.version,
+    });
+    const url = reportMailtoUrl(email);
+    const opened = await Linking.canOpenURL(url)
+      .then((can) => (can ? Linking.openURL(url).then(() => true) : false))
+      .catch(() => false);
+
+    return opened
+      ? { ok: true }
+      : {
+        ok: true,
+        reason: `Report logged. To add detail, email ${REPORT_EMAIL}.`,
+      };
+  }, [auth.loggedIn, auth.handle, profile.id]);
 
   const clearLocalAccountData = useCallback(async (): Promise<void> => {
     const nextProfile = makeDefaultProfile();

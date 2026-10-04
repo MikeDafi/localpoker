@@ -5,7 +5,7 @@ import Svg, {
 import {
   PalConfig, SKIN_TONES, HAIR_COLORS, EYE_COLORS, BG_COLORS, SHIRT_COLORS,
   HEAD_SHAPES, HAIR_STYLES, EYEBROW_STYLES, EYE_STYLES, NOSE_STYLES, MOUTH_STYLES,
-  FACIAL_HAIR, GLASSES, HEADWEAR, BG_STYLES, normalizePal,
+  FACIAL_HAIR, GLASSES, HEADWEAR, BG_STYLES, BLUSH_STYLES, FRECKLE_STYLES, normalizePal,
 } from '../avatar/palConfig';
 
 export type PalExpression = 'idle' | 'happy' | 'sad' | 'think' | 'surprised' | 'blink';
@@ -27,6 +27,7 @@ export function PalAvatar({ config, size = 72, expression = 'idle', clip = true 
   const c = normalizePal(config);
   const id = React.useMemo(() => `pal${uid++}`, []);
   const skin = SKIN_TONES[c.skinTone % SKIN_TONES.length];
+  const blush = blushTint(skin);
   const hair = HAIR_COLORS[c.hairColor % HAIR_COLORS.length];
   const eyeC = EYE_COLORS[c.eyeColor % EYE_COLORS.length];
   const bg = BG_COLORS[c.bgColor % BG_COLORS.length];
@@ -47,6 +48,8 @@ export function PalAvatar({ config, size = 72, expression = 'idle', clip = true 
   const glasses = GLASSES[c.glasses % GLASSES.length];
   const headwear = HEADWEAR[c.headwear % HEADWEAR.length];
   const bgStyle = BG_STYLES[c.bgStyle % BG_STYLES.length];
+  const blushStyle = BLUSH_STYLES[c.blushStyle % BLUSH_STYLES.length];
+  const freckleStyle = FRECKLE_STYLES[c.frecklesStyle % FRECKLE_STYLES.length];
 
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100">
@@ -83,8 +86,9 @@ export function PalAvatar({ config, size = 72, expression = 'idle', clip = true 
           <Stop offset="1" stopColor={shade(skin, 0.2)} stopOpacity={0.18} />
         </LinearGradient>
         <RadialGradient id={`${id}cheek`} cx="50%" cy="50%" rx="50%" ry="50%">
-          <Stop offset="0" stopColor="#FF8FA3" stopOpacity={0.7} />
-          <Stop offset="1" stopColor="#FF8FA3" stopOpacity={0} />
+          <Stop offset="0" stopColor={blush} stopOpacity={0.78} />
+          <Stop offset="0.58" stopColor={mix(blush, skin, 0.24)} stopOpacity={0.36} />
+          <Stop offset="1" stopColor={skin} stopOpacity={0} />
         </RadialGradient>
         <LinearGradient id={`${id}shirt`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={lighten(shirt, 0.24)} />
@@ -125,11 +129,11 @@ export function PalAvatar({ config, size = 72, expression = 'idle', clip = true 
         <BackHair style={hairStyle} color={hair} id={id} />
         <Ears skin={skin} id={id} />
         <Head shape={headShape} skin={skin} id={id} />
-        <Cheeks blush={c.blush} id={id} expression={expression} />
+        <Cheeks style={blushStyle} skin={skin} id={id} expression={expression} />
         <Brows style={browStyle} color={hair} expression={expression} />
         <Eyes style={eyeStyle} color={eyeC} id={id} expression={expression} />
         <Nose style={noseStyle} skin={skin} />
-        {c.freckles && <Freckles skin={skin} />}
+        <Freckles style={freckleStyle} skin={skin} />
         <FacialHairPart style={facialHair} color={hair} id={id} />
         <Mouth style={mouthStyle} expression={expression} />
         <FrontHair style={hairStyle} color={hair} id={id} />
@@ -143,6 +147,8 @@ export function PalAvatar({ config, size = 72, expression = 'idle', clip = true 
 function Background({ style, bg, id }: { style: string; bg: string; id: string }) {
   const sparkle = lighten(bg, 0.48);
   const rayColor = lighten(bg, 0.3);
+  const accent = vividAccent(bg);
+  const deep = shade(bg, 0.3);
   return (
     <>
       <Rect x="0" y="0" width="100" height="100" fill={`url(#${id}bg)`} />
@@ -178,8 +184,139 @@ function Background({ style, bg, id }: { style: string; bg: string; id: string }
           <Circle cx="78" cy="68" r="3.2" fill="#FFFFFF" opacity={0.22} />
         </>
       )}
+      {style === 'spotlight' && (
+        <>
+          <Path d="M30 0 L70 0 L88 100 L12 100 Z" fill="#FFFFFF" opacity={0.16} />
+          <Ellipse cx="50" cy="77" rx="34" ry="12" fill={lighten(bg, 0.45)} opacity={0.28} />
+          <Path d="M18 22 C32 15 68 15 82 22" stroke={accent} strokeWidth="5" opacity={0.24} fill="none" strokeLinecap="round" />
+        </>
+      )}
+      {style === 'confetti' && (
+        <G opacity={0.68}>
+          {[
+            [18, 20, 5, 3, '#FFFFFF'], [76, 18, 4, 5, '#FACC15'], [14, 62, 6, 3, '#22D3EE'],
+            [80, 58, 5, 3, '#FB7185'], [30, 82, 4, 4, '#A3E635'], [68, 82, 6, 3, '#FFFFFF'],
+            [48, 14, 3, 6, '#E879F9'], [88, 34, 4, 4, '#FFFFFF'],
+          ].map(([x, y, w, h, fill], i) => (
+            <Rect key={i} x={x} y={y} width={w} height={h} rx="1.2" fill={String(fill)} opacity={i % 3 === 0 ? 0.82 : 0.58} />
+          ))}
+        </G>
+      )}
+      {style === 'suits' && (
+        <G opacity={0.42}>
+          <SuitIcon type="heart" x={22} y={24} size={18} fill="#FF2D55" />
+          <SuitIcon type="spade" x={78} y={24} size={18} fill={deep} />
+          <SuitIcon type="club" x={21} y={78} size={19} fill={shade(accent, 0.12)} />
+          <SuitIcon type="diamond" x={79} y={78} size={18} fill="#FFFFFF" />
+          <SuitIcon type="diamond" x={50} y={18} size={11} fill={lighten(bg, 0.54)} />
+        </G>
+      )}
+      {style === 'chips' && (
+        <G opacity={0.58}>
+          <PokerChip cx={20} cy={25} r={10} color="#FFFFFF" accent={accent} />
+          <PokerChip cx={82} cy={31} r={9} color={lighten(bg, 0.5)} accent="#FF2D55" />
+          <PokerChip cx={19} cy={78} r={9} color={lighten(bg, 0.42)} accent="#FACC15" />
+          <PokerChip cx={79} cy={77} r={11} color="#FFFFFF" accent={deep} />
+        </G>
+      )}
+      {style === 'starburst' && (
+        <G opacity={0.42}>
+          {Array.from({ length: 16 }).map((_, i) => {
+            const a1 = (i / 16) * Math.PI * 2 - Math.PI / 2;
+            const a2 = ((i + 0.48) / 16) * Math.PI * 2 - Math.PI / 2;
+            const x1 = 50 + Math.cos(a1) * 86;
+            const y1 = 50 + Math.sin(a1) * 86;
+            const x2 = 50 + Math.cos(a2) * 86;
+            const y2 = 50 + Math.sin(a2) * 86;
+            return <Path key={i} d={`M50 50 L${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} Z`} fill={i % 2 === 0 ? '#FFFFFF' : accent} opacity={i % 2 === 0 ? 0.32 : 0.5} />;
+          })}
+          <Circle cx="50" cy="50" r="8" fill="#FFFFFF" opacity={0.18} />
+        </G>
+      )}
+      {style === 'neon-grid' && (
+        <G opacity={0.56}>
+          <Path d="M0 72 L100 72" stroke="#FFFFFF" strokeWidth="1.8" opacity={0.38} />
+          {[58, 67, 77, 89].map((y, i) => (
+            <Path key={y} d={`M0 ${y} L100 ${y}`} stroke={i % 2 === 0 ? '#22D3EE' : '#E879F9'} strokeWidth={i === 0 ? 1.2 : 1.6} opacity={0.42} />
+          ))}
+          {[14, 30, 50, 70, 86].map((x) => (
+            <Path key={x} d={`M50 55 L${x} 100`} stroke={x === 50 ? '#FFFFFF' : accent} strokeWidth="1.4" opacity={x === 50 ? 0.45 : 0.34} />
+          ))}
+          <Path d="M0 55 L100 55" stroke={deep} strokeWidth="2.2" opacity={0.34} />
+        </G>
+      )}
+      {style === 'bokeh' && (
+        <G opacity={0.48}>
+          <Circle cx="20" cy="24" r="13" fill="#FFFFFF" opacity={0.34} />
+          <Circle cx="82" cy="29" r="16" fill={accent} opacity={0.22} />
+          <Circle cx="23" cy="76" r="15" fill={lighten(bg, 0.55)} opacity={0.38} />
+          <Circle cx="76" cy="80" r="12" fill="#FFFFFF" opacity={0.28} />
+          <Circle cx="50" cy="18" r="8" fill={lighten(bg, 0.62)} opacity={0.3} />
+        </G>
+      )}
+      {style === 'holo-sweep' && (
+        <G opacity={0.5}>
+          <Path d="M-8 76 L72 -4 L96 -4 L16 100 L-8 100 Z" fill="#FFFFFF" opacity={0.22} />
+          <Path d="M18 100 L100 18 L100 44 L44 100 Z" fill="#22D3EE" opacity={0.18} />
+          <Path d="M-4 34 L34 -4 L54 -4 L-4 54 Z" fill="#E879F9" opacity={0.26} />
+          <Path d="M28 96 L96 28" stroke="#FFFFFF" strokeWidth="4.6" opacity={0.22} strokeLinecap="round" />
+        </G>
+      )}
+      {style === 'waves' && (
+        <G opacity={0.5}>
+          {[24, 40, 56, 72].map((y, i) => (
+            <Path key={y} d={`M-6 ${y} C12 ${y - 12} 30 ${y + 12} 50 ${y} C70 ${y - 12} 88 ${y + 12} 106 ${y}`} stroke={i % 2 === 0 ? '#FFFFFF' : accent} strokeWidth="5" fill="none" strokeLinecap="round" opacity={i % 2 === 0 ? 0.32 : 0.42} />
+          ))}
+        </G>
+      )}
+      {style === 'diagonal-stripes' && (
+        <G opacity={0.42}>
+          {[-40, -16, 8, 32, 56, 80].map((x, i) => (
+            <Path key={x} d={`M${x} 100 L${x + 48} 0 L${x + 66} 0 L${x + 18} 100 Z`} fill={i % 2 === 0 ? '#FFFFFF' : accent} opacity={i % 2 === 0 ? 0.24 : 0.34} />
+          ))}
+        </G>
+      )}
       <Rect x="0" y="0" width="100" height="100" fill={`url(#${id}vignette)`} />
     </>
+  );
+}
+
+function SuitIcon({ type, x, y, size, fill }: { type: 'heart' | 'diamond' | 'club' | 'spade'; x: number; y: number; size: number; fill: string }) {
+  const scale = size / 24;
+  if (type === 'heart') {
+    return <Path transform={`translate(${x} ${y}) scale(${scale})`} d="M0 9 C-10 1 -15 -5 -10 -11 C-6 -16 -1 -12 0 -8 C1 -12 6 -16 10 -11 C15 -5 10 1 0 9 Z" fill={fill} />;
+  }
+  if (type === 'diamond') {
+    return <Path transform={`translate(${x} ${y}) scale(${scale})`} d="M0 -13 L9 0 L0 13 L-9 0 Z" fill={fill} />;
+  }
+  if (type === 'club') {
+    return (
+      <G transform={`translate(${x} ${y}) scale(${scale})`}>
+        <Circle cx="0" cy="-6" r="6" fill={fill} />
+        <Circle cx="-6" cy="2" r="6" fill={fill} />
+        <Circle cx="6" cy="2" r="6" fill={fill} />
+        <Path d="M-3 9 L3 9 L5 14 L-5 14 Z" fill={fill} />
+      </G>
+    );
+  }
+  return <Path transform={`translate(${x} ${y}) scale(${scale})`} d="M0 -13 C-10 -4 -15 2 -10 8 C-6 13 -1 10 0 6 C1 10 6 13 10 8 C15 2 10 -4 0 -13 Z M-3 8 L3 8 L5 14 L-5 14 Z" fill={fill} />;
+}
+
+function PokerChip({ cx, cy, r, color, accent }: { cx: number; cy: number; r: number; color: string; accent: string }) {
+  return (
+    <G>
+      <Circle cx={cx} cy={cy} r={r} fill={color} opacity={0.42} />
+      <Circle cx={cx} cy={cy} r={r * 0.72} fill="none" stroke={accent} strokeWidth="2.2" opacity={0.64} />
+      <Circle cx={cx} cy={cy} r={r * 0.34} fill={accent} opacity={0.44} />
+      {Array.from({ length: 6 }).map((_, i) => {
+        const a = (i / 6) * Math.PI * 2;
+        const x1 = cx + Math.cos(a) * r * 0.78;
+        const y1 = cy + Math.sin(a) * r * 0.78;
+        const x2 = cx + Math.cos(a) * r * 0.98;
+        const y2 = cy + Math.sin(a) * r * 0.98;
+        return <Path key={i} d={`M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)}`} stroke={accent} strokeWidth="2" opacity={0.7} strokeLinecap="round" />;
+      })}
+    </G>
   );
 }
 
@@ -255,19 +392,54 @@ function Head({ shape, skin, id }: { shape: string; skin: string; id: string }) 
   }
 }
 
-function Cheeks({ blush, id, expression }: { blush: boolean; id: string; expression: PalExpression }) {
-  const visible = blush || expression === 'happy' || expression === 'surprised';
-  const opacity = blush ? 0.86 : expression === 'happy' ? 0.38 : expression === 'surprised' ? 0.24 : 0.18;
-  if (!visible) {
+function Cheeks({ style, skin, id, expression }: { style: string; skin: string; id: string; expression: PalExpression }) {
+  const expressionBlush = expression === 'happy' || expression === 'surprised';
+  const line = mix(blushTint(skin), shade(skin, 0.18), 0.28);
+  if (style === 'none') {
+    if (!expressionBlush) return null;
     return (
-      <G opacity={0.18}>
+      <G opacity={expression === 'happy' ? 0.34 : 0.24}>
         <Ellipse cx="31" cy="61" rx="8" ry="5" fill={`url(#${id}cheek)`} />
         <Ellipse cx="69" cy="61" rx="8" ry="5" fill={`url(#${id}cheek)`} />
       </G>
     );
   }
+  if (style === 'strong') {
+    return (
+      <G opacity={0.88}>
+        <Ellipse cx="31" cy="61" rx="10" ry="6.3" fill={`url(#${id}cheek)`} />
+        <Ellipse cx="69" cy="61" rx="10" ry="6.3" fill={`url(#${id}cheek)`} />
+        <Ellipse cx="31" cy="60" rx="4.6" ry="2.4" fill="#FFFFFF" opacity={0.12} />
+        <Ellipse cx="69" cy="60" rx="4.6" ry="2.4" fill="#FFFFFF" opacity={0.12} />
+      </G>
+    );
+  }
+  if (style === 'doll') {
+    return (
+      <G opacity={0.82}>
+        <Circle cx="31" cy="62" r="6.4" fill={`url(#${id}cheek)`} />
+        <Circle cx="69" cy="62" r="6.4" fill={`url(#${id}cheek)`} />
+        <Circle cx="29.2" cy="60.2" r="1.4" fill="#FFFFFF" opacity={0.22} />
+        <Circle cx="67.2" cy="60.2" r="1.4" fill="#FFFFFF" opacity={0.22} />
+      </G>
+    );
+  }
+  if (style === 'anime-lines') {
+    return (
+      <G opacity={0.82}>
+        <Ellipse cx="31" cy="62" rx="9" ry="4.8" fill={`url(#${id}cheek)`} opacity={0.6} />
+        <Ellipse cx="69" cy="62" rx="9" ry="4.8" fill={`url(#${id}cheek)`} opacity={0.6} />
+        {[-4, 0, 4].map((dx) => (
+          <Path key={`l${dx}`} d={`M${29 + dx} 58 L${24 + dx} 65`} stroke={line} strokeWidth="1.8" strokeLinecap="round" opacity={0.8} />
+        ))}
+        {[-4, 0, 4].map((dx) => (
+          <Path key={`r${dx}`} d={`M${67 + dx} 58 L${62 + dx} 65`} stroke={line} strokeWidth="1.8" strokeLinecap="round" opacity={0.8} />
+        ))}
+      </G>
+    );
+  }
   return (
-    <G opacity={opacity}>
+    <G opacity={0.62}>
       <Ellipse cx="31" cy="61" rx="9" ry="5.4" fill={`url(#${id}cheek)`} />
       <Ellipse cx="69" cy="61" rx="9" ry="5.4" fill={`url(#${id}cheek)`} />
     </G>
@@ -672,12 +844,34 @@ function Nose({ style, skin }: { style: string; skin: string }) {
   }
 }
 
-function Freckles({ skin }: { skin: string }) {
-  const d = shade(skin, 0.22);
+function Freckles({ style, skin }: { style: string; skin: string }) {
+  if (style === 'none') return null;
+  const dot = freckleTint(skin);
+  const lightDots: readonly [number, number, number][] = [
+    [38, 61.5, 1.25], [43, 63.6, 1.1], [34, 64, 1.05],
+    [62, 61.5, 1.25], [57, 63.6, 1.1], [66, 64, 1.05],
+  ];
+  const heavyDots: readonly [number, number, number][] = [
+    [36, 57.5, 1.1], [41, 58.9, 1.2], [32, 61.8, 1.15], [38, 64.4, 1.2],
+    [44, 66.2, 1.05], [59, 58.9, 1.2], [64, 57.5, 1.1], [68, 61.8, 1.15],
+    [62, 64.4, 1.2], [56, 66.2, 1.05], [48, 61.4, 0.95], [52, 61.4, 0.95],
+  ];
+  const noseBand: readonly [number, number, number][] = [
+    [35, 59.4, 1.1], [40, 57.5, 1.2], [45, 58.7, 1.05], [50, 57.6, 1.16],
+    [55, 58.7, 1.05], [60, 57.5, 1.2], [65, 59.4, 1.1], [42, 62.6, 0.95],
+    [58, 62.6, 0.95],
+  ];
+  const scattered: readonly [number, number, number][] = [
+    [39, 47.5, 0.95], [57, 47.2, 0.9], [34, 54.8, 1.05], [46, 56.4, 0.98],
+    [64, 55.2, 1.06], [38, 62.5, 1.18], [61, 62.7, 1.18], [48, 65.2, 0.9],
+    [53, 66.1, 0.9], [43, 70.2, 0.82], [57, 70.2, 0.82],
+  ];
+  const dots = style === 'heavy-cheeks' ? heavyDots : style === 'nose-band' ? noseBand : style === 'scattered' ? scattered : lightDots;
+  const opacity = style === 'light-cheeks' ? 0.62 : 0.76;
   return (
-    <G opacity={0.66}>
-      {[[39.2, 61.8], [43.2, 64], [35.4, 64.2], [60.8, 61.8], [56.8, 64], [64.6, 64.2], [32.8, 60.5], [67.2, 60.5]].map(([x, y], i) => (
-        <Circle key={i} cx={x} cy={y} r={i > 5 ? 0.75 : 0.95} fill={d} />
+    <G opacity={opacity}>
+      {dots.map(([x, y, r], i) => (
+        <Circle key={i} cx={x} cy={y} r={r} fill={dot} />
       ))}
     </G>
   );
@@ -902,6 +1096,26 @@ function hexToRgb(hex: string) {
 }
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b].map((x) => clampByte(x).toString(16).padStart(2, '0')).join('')}`;
+}
+function mix(hex: string, target: string, amt: number) {
+  const [r, g, b] = hexToRgb(hex);
+  const [tr, tg, tb] = hexToRgb(target);
+  return rgbToHex(r + (tr - r) * amt, g + (tg - g) * amt, b + (tb - b) * amt);
+}
+function luminance(hex: string) {
+  const [r, g, b] = hexToRgb(hex);
+  return (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+}
+function blushTint(skin: string) {
+  const lum = luminance(skin);
+  const target = lum < 0.48 ? '#FF8A6B' : '#FF6F91';
+  return mix(skin, target, lum < 0.48 ? 0.62 : 0.48);
+}
+function freckleTint(skin: string) {
+  return luminance(skin) < 0.42 ? lighten(skin, 0.28) : shade(skin, 0.34);
+}
+function vividAccent(bg: string) {
+  return luminance(bg) < 0.5 ? lighten(bg, 0.46) : shade(bg, 0.18);
 }
 function lighten(hex: string, amt: number) {
   const [r, g, b] = hexToRgb(hex);

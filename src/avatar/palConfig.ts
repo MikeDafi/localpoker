@@ -25,7 +25,9 @@ export const EYE_COLORS = [
 export const BG_COLORS = [
   '#FDE68A', '#A7E3F2', '#C8F2CF', '#FBC7D4', '#D6C8F5', '#FFD8A8',
   '#B9E4C9', '#AEE0F0', '#FFB3B3', '#C3F0CA', '#F5D0FE', '#BAE6FD',
-  '#FDBA74', '#86EFAC', '#93C5FD', '#F0ABFC',
+  '#FDBA74', '#86EFAC', '#93C5FD', '#F0ABFC', '#FF2D55', '#00E5FF',
+  '#7C3AED', '#FACC15', '#22D3EE', '#F43F5E', '#4ADE80', '#FB7185',
+  '#38BDF8', '#F97316', '#A3E635', '#E879F9',
 ] as const;
 
 export const SHIRT_COLORS = [
@@ -47,7 +49,13 @@ export const MOUTH_STYLES = ['smile', 'grin', 'neutral', 'small', 'open', 'smirk
 export const FACIAL_HAIR = ['none', 'stubble', 'mustache', 'goatee', 'full', 'soul'] as const;
 export const GLASSES = ['none', 'round', 'square', 'sun', 'halfrim', 'sport'] as const;
 export const HEADWEAR = ['none', 'cap', 'beanie', 'crown', 'headband', 'visor', 'party', 'cowboy'] as const;
-export const BG_STYLES = ['solid', 'gradient', 'ring', 'rays'] as const;
+export const BLUSH_STYLES = ['none', 'soft', 'strong', 'doll', 'anime-lines'] as const;
+export const FRECKLE_STYLES = ['none', 'light-cheeks', 'heavy-cheeks', 'nose-band', 'scattered'] as const;
+export const BG_STYLES = [
+  'solid', 'gradient', 'ring', 'rays', 'spotlight', 'confetti', 'suits',
+  'chips', 'starburst', 'neon-grid', 'bokeh', 'holo-sweep', 'waves',
+  'diagonal-stripes',
+] as const;
 
 export interface PalConfig {
   version: 1;
@@ -69,6 +77,8 @@ export interface PalConfig {
   bgStyle: number;
   blush: boolean;
   freckles: boolean;
+  blushStyle: number;
+  frecklesStyle: number;
 }
 
 /** Feature metadata the designer can iterate to build its controls. */
@@ -84,8 +94,8 @@ export interface FeatureSpec {
 export const FEATURE_SPECS: FeatureSpec[] = [
   { key: 'skinTone', label: 'Skin', kind: 'color', count: SKIN_TONES.length, palette: SKIN_TONES, group: 'Face' },
   { key: 'headShape', label: 'Head Shape', kind: 'option', count: HEAD_SHAPES.length, group: 'Face' },
-  { key: 'blush', label: 'Blush', kind: 'toggle', count: 2, group: 'Face' },
-  { key: 'freckles', label: 'Freckles', kind: 'toggle', count: 2, group: 'Face' },
+  { key: 'blushStyle', label: 'Blush', kind: 'option', count: BLUSH_STYLES.length, group: 'Face' },
+  { key: 'frecklesStyle', label: 'Freckles', kind: 'option', count: FRECKLE_STYLES.length, group: 'Face' },
   { key: 'noseStyle', label: 'Nose', kind: 'option', count: NOSE_STYLES.length, group: 'Face' },
   { key: 'mouthStyle', label: 'Mouth', kind: 'option', count: MOUTH_STYLES.length, group: 'Face' },
   { key: 'hairStyle', label: 'Hair Style', kind: 'option', count: HAIR_STYLES.length, group: 'Hair' },
@@ -121,12 +131,15 @@ export function mulberry32(a: number) {
   };
 }
 
+const SEEDED_BG_COLOR_COUNT = 16;
+const SEEDED_BG_STYLE_COUNT = 4;
+
 /** Build a deterministic Pal from any seed string (used for bots/friends). */
 export function palFromSeed(seed: string): PalConfig {
   const rng = mulberry32(hashSeed(seed));
   const ri = (n: number) => Math.floor(rng() * n);
-  return {
-    version: 1,
+  const base = {
+    version: 1 as const,
     skinTone: ri(SKIN_TONES.length),
     headShape: ri(HEAD_SHAPES.length),
     hairStyle: ri(HAIR_STYLES.length),
@@ -141,15 +154,47 @@ export function palFromSeed(seed: string): PalConfig {
     headwear: rng() > 0.7 ? ri(HEADWEAR.length) : 0,
     headwearColor: ri(SHIRT_COLORS.length),
     shirtColor: ri(SHIRT_COLORS.length),
-    bgColor: ri(BG_COLORS.length),
-    bgStyle: ri(BG_STYLES.length),
-    blush: rng() > 0.5,
-    freckles: rng() > 0.7,
+    bgColor: ri(SEEDED_BG_COLOR_COUNT),
+    bgStyle: ri(SEEDED_BG_STYLE_COUNT),
+  };
+  const blush = rng() > 0.5;
+  const freckles = rng() > 0.7;
+  return {
+    ...base,
+    blush,
+    freckles,
+    blushStyle: blush ? 1 : 0,
+    frecklesStyle: freckles ? 1 : 0,
   };
 }
 
 export function randomPal(): PalConfig {
-  return palFromSeed(Math.random().toString(36).slice(2) + Date.now());
+  const ri = (n: number) => Math.floor(Math.random() * n);
+  const blushStyle = ri(BLUSH_STYLES.length);
+  const frecklesStyle = ri(FRECKLE_STYLES.length);
+  return normalizePal({
+    version: 1,
+    skinTone: ri(SKIN_TONES.length),
+    headShape: ri(HEAD_SHAPES.length),
+    hairStyle: ri(HAIR_STYLES.length),
+    hairColor: ri(HAIR_COLORS.length),
+    eyebrowStyle: ri(EYEBROW_STYLES.length),
+    eyeStyle: ri(EYE_STYLES.length),
+    eyeColor: ri(EYE_COLORS.length),
+    noseStyle: ri(NOSE_STYLES.length),
+    mouthStyle: ri(MOUTH_STYLES.length),
+    facialHair: Math.random() > 0.4 ? ri(FACIAL_HAIR.length) : 0,
+    glasses: Math.random() > 0.58 ? ri(GLASSES.length) : 0,
+    headwear: Math.random() > 0.58 ? ri(HEADWEAR.length) : 0,
+    headwearColor: ri(SHIRT_COLORS.length),
+    shirtColor: ri(SHIRT_COLORS.length),
+    bgColor: ri(BG_COLORS.length),
+    bgStyle: ri(BG_STYLES.length),
+    blush: blushStyle > 0,
+    freckles: frecklesStyle > 0,
+    blushStyle,
+    frecklesStyle,
+  });
 }
 
 export const DEFAULT_PAL: PalConfig = {
@@ -172,9 +217,60 @@ export const DEFAULT_PAL: PalConfig = {
   bgStyle: 1,
   blush: false,
   freckles: false,
+  blushStyle: 0,
+  frecklesStyle: 0,
 };
 
+type StoredPalConfig = Partial<Omit<PalConfig, 'blush' | 'freckles' | 'blushStyle' | 'frecklesStyle'>> & {
+  blush?: boolean | number | null;
+  freckles?: boolean | number | null;
+  blushStyle?: number | boolean | null;
+  frecklesStyle?: number | boolean | null;
+};
+
+function clampIndex(value: unknown, count: number, fallback = 0): number {
+  if (count <= 0) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(count - 1, Math.trunc(value)));
+}
+
+function legacyStyle(value: unknown): number {
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 0 ? 1 : 0;
+  return 0;
+}
+
+function clampStyle(value: unknown, count: number, fallback: number): number {
+  if (typeof value === 'boolean') return value ? Math.min(1, count - 1) : 0;
+  return clampIndex(value, count, fallback);
+}
+
 /** Clamp/repair a possibly-partial stored config into a valid PalConfig. */
-export function normalizePal(c?: Partial<PalConfig> | null): PalConfig {
-  return { ...DEFAULT_PAL, ...(c ?? {}) };
+export function normalizePal(c?: StoredPalConfig | null): PalConfig {
+  const source = c ?? {};
+  const blushStyle = clampStyle(source.blushStyle, BLUSH_STYLES.length, legacyStyle(source.blush));
+  const frecklesStyle = clampStyle(source.frecklesStyle, FRECKLE_STYLES.length, legacyStyle(source.freckles));
+  return {
+    version: 1,
+    skinTone: clampIndex(source.skinTone, SKIN_TONES.length, DEFAULT_PAL.skinTone),
+    headShape: clampIndex(source.headShape, HEAD_SHAPES.length, DEFAULT_PAL.headShape),
+    hairStyle: clampIndex(source.hairStyle, HAIR_STYLES.length, DEFAULT_PAL.hairStyle),
+    hairColor: clampIndex(source.hairColor, HAIR_COLORS.length, DEFAULT_PAL.hairColor),
+    eyebrowStyle: clampIndex(source.eyebrowStyle, EYEBROW_STYLES.length, DEFAULT_PAL.eyebrowStyle),
+    eyeStyle: clampIndex(source.eyeStyle, EYE_STYLES.length, DEFAULT_PAL.eyeStyle),
+    eyeColor: clampIndex(source.eyeColor, EYE_COLORS.length, DEFAULT_PAL.eyeColor),
+    noseStyle: clampIndex(source.noseStyle, NOSE_STYLES.length, DEFAULT_PAL.noseStyle),
+    mouthStyle: clampIndex(source.mouthStyle, MOUTH_STYLES.length, DEFAULT_PAL.mouthStyle),
+    facialHair: clampIndex(source.facialHair, FACIAL_HAIR.length, DEFAULT_PAL.facialHair),
+    glasses: clampIndex(source.glasses, GLASSES.length, DEFAULT_PAL.glasses),
+    headwear: clampIndex(source.headwear, HEADWEAR.length, DEFAULT_PAL.headwear),
+    headwearColor: clampIndex(source.headwearColor, SHIRT_COLORS.length, DEFAULT_PAL.headwearColor),
+    shirtColor: clampIndex(source.shirtColor, SHIRT_COLORS.length, DEFAULT_PAL.shirtColor),
+    bgColor: clampIndex(source.bgColor, BG_COLORS.length, DEFAULT_PAL.bgColor),
+    bgStyle: clampIndex(source.bgStyle, BG_STYLES.length, DEFAULT_PAL.bgStyle),
+    blush: blushStyle > 0,
+    freckles: frecklesStyle > 0,
+    blushStyle,
+    frecklesStyle,
+  };
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Crypto from 'expo-crypto';
@@ -11,21 +11,19 @@ import { WiiButton } from '../components/WiiButton';
 import { AdBanner } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { palFromSeed } from '../avatar/palConfig';
-import { useApp } from '../state/AppContext';
 import { isRoomCodeTaken, subscribeOpenRooms, getRoomListingInfo } from '../services/firebase/roomSync';
 import { CODE_LENGTH, filterToCodeAlphabet, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
 import type { RoomSummary } from '../services/firebase/types';
 import { colors, fonts, radii, spacing } from '../theme/theme';
+import { GAME_MODE_LABELS } from '../game/gameMode';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateJoin'>;
 
 export function CreateJoinScreen({ navigation }: Props) {
-  const { friends } = useApp();
   // Browsing for a table is the common arrival, hosting is the deliberate one.
   const [mode, setMode] = useState<'create' | 'join'>('join');
   const [joinCode, setJoinCode] = useState('');
-  const [invited, setInvited] = useState<Record<string, boolean>>({});
   // Shown immediately so hosting never waits on the network, then replaced if
   // the availability check finds that code already belongs to a live room.
   const [roomCode, setRoomCode] = useState(() => makeRoomCode(Crypto.getRandomBytes));
@@ -36,17 +34,6 @@ export function CreateJoinScreen({ navigation }: Props) {
       .catch(() => {});
     return () => { active = false; };
   }, []);
-  /*
-   * Everyone, with whoever is online first.
-   *
-   * Filtering to online friends meant the list was usually empty and the
-   * screen told you to come back later, when inviting someone who is away is
-   * the normal case: they get a notification and join when they see it.
-   */
-  const invitableFriends = useMemo(
-    () => [...friends].sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name)),
-    [friends],
-  );
   const [openRooms, setOpenRooms] = useState<{ friends: RoomSummary[]; public: RoomSummary[] }>({ friends: [], public: [] });
 
   useEffect(() => subscribeOpenRooms(setOpenRooms), []);
@@ -93,20 +80,6 @@ export function CreateJoinScreen({ navigation }: Props) {
   const joinListed = (summary: RoomSummary) => {
     Haptics.selectionAsync();
     navigation.navigate('Lobby', { roomCode: summary.code, host: false });
-  };
-
-  const share = async () => {
-    try {
-      await Share.share({ message: `Join my LocalPoker table! Room code: ${roomCode}` });
-    } catch {}
-  };
-
-  const inviteFriend = async (id: string, name: string) => {
-    Haptics.selectionAsync();
-    setInvited((prev) => ({ ...prev, [id]: true }));
-    try {
-      await Share.share({ message: `${name}, join my LocalPoker table! Room code: ${roomCode}` });
-    } catch {}
   };
 
   const startCreate = () => navigation.navigate('GameSetup', { mode: 'friends', roomCode });
@@ -210,17 +183,30 @@ function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats }: {
               </View>
               {/* Faces, so you can see who is already there rather than
                   deciding from a host name and a blind level alone. */}
+              {/* The faces are the count. Saying "3 seated" next to three
+                  faces is the same fact twice, and the row is narrow enough
+                  that the words were crowding out the stakes. Six fit, and
+                  past that a plain number carries the overflow. */}
               {(seats[room.code] ?? []).length > 0 && (
                 <View style={styles.seatFaces}>
-                  {(seats[room.code] ?? []).slice(0, 3).map((p) => (
+                  {(seats[room.code] ?? []).slice(0, 6).map((p) => (
                     <View key={p.id} style={styles.seatFace}>
                       <AnimatedPal config={palFromSeed(p.palSeed || p.id)} size={26} alive />
                     </View>
                   ))}
+                  {(seats[room.code] ?? []).length > 6 && (
+                    <Text style={styles.seatOverflow}>{`+${(seats[room.code] ?? []).length - 6}`}</Text>
+                  )}
                 </View>
               )}
               <Text style={styles.note}>
-                {`#${room.code} · ${room.smallBlind}/${room.bigBlind} · ${(seats[room.code] ?? []).length || room.playerCount} seated`}
+                {[
+                  `#${room.code}`,
+                  // A missing mode means the room was published by an older
+                  // build, so say nothing rather than guess at cash.
+                  room.gameMode ? GAME_MODE_LABELS[room.gameMode] : null,
+                  `${room.smallBlind}/${room.bigBlind}`,
+                ].filter(Boolean).join(' · ')}
               </Text>
             </View>
             <WiiButton label="Join" variant="blue" size="sm" onPress={() => onJoin(room)} />
@@ -241,6 +227,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3, marginTop: spacing.sm,
   },
   seatFaces: { flexDirection: 'row', marginTop: 6, marginBottom: 2 },
+  seatOverflow: { fontFamily: fonts.bold, fontSize: 12, color: colors.inkMuted, marginLeft: 4 },
   seatFace: { marginRight: -8 },
   roomTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   roomBadge: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },

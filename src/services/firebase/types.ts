@@ -1,3 +1,4 @@
+import type { GameMode } from '../../game/gameMode';
 import type { PlayerAction } from '../../engine';
 import type { PrivatePlayerView, PublicGameState } from '../../game/onlineSync';
 
@@ -50,6 +51,12 @@ export type RoomSummary = {
   smallBlind: number;
   bigBlind: number;
   startingStack: number;
+  /**
+   * Cash, tournament or turbo. Optional because rooms published by an older
+   * build do not carry it, and a missing mode has to read as "we do not know"
+   * rather than as a cash game somebody might sit down to by mistake.
+   */
+  gameMode?: GameMode;
   updatedAt: number;
 };
 

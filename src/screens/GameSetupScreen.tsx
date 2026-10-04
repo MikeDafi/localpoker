@@ -17,7 +17,7 @@ import {
   type SettingsSection,
   type SettingField,
 } from '../game/settings';
-import { GAME_MODE_OPTIONS, GAME_MODE_LABELS } from '../game/gameMode';
+import { isGameMode, settingsForMode } from '../game/gameMode';
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
 import { useHoldRepeat } from '../components/useHoldRepeat';
@@ -79,7 +79,18 @@ export function GameSetupScreen({ navigation, route }: Props) {
 
   const setField = useCallback(<K extends keyof GameSettings>(key: K, value: GameSettings[K]) => {
     sound.play('select');
-    setLocal((prev) => ({ ...prev, [key]: value }));
+    setLocal((prev) => {
+      /*
+       * Picking a tournament sets the table up for one.
+       *
+       * A tournament is not a cash game with a flag on it: it has a published
+       * ladder, so the blinds have to be the first rung of that ladder rather
+       * than whatever the cash game happened to be playing. Leaving the table
+       * on 50/100 while the ladder starts at 10/20 would make level one a lie.
+       */
+      if (key === 'gameMode' && isGameMode(value)) return settingsForMode(prev, value);
+      return { ...prev, [key]: value };
+    });
   }, []);
 
   const setBooleanField = useCallback(<K extends BooleanSettingKey>(key: K, value: boolean) => {
@@ -144,8 +155,6 @@ export function GameSetupScreen({ navigation, route }: Props) {
           <View style={styles.heroTopRow}>
             <View style={styles.heroIntro}>
               <Text style={styles.modeLabel}>{isFriends ? 'Private friends table' : 'Quick play vs bots'}</Text>
-              <Text style={styles.heroTitle}>Tune your perfect table</Text>
-              <Text style={styles.optionCount}>Table & opponent rules</Text>
             </View>
             <View style={styles.stakesBadge}>
               <Text style={styles.stakesKicker}>Stakes</Text>
@@ -154,46 +163,23 @@ export function GameSetupScreen({ navigation, route }: Props) {
             </View>
           </View>
 
-          <View style={styles.quickPickHeader}>
-            <Text style={styles.sectionEyebrow}>Game mode</Text>
-            <Text style={styles.quickPickValue}>{GAME_MODE_LABELS[local.gameMode]}</Text>
-          </View>
-          <View style={styles.modeGrid}>
-            {GAME_MODE_OPTIONS.map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => setField('gameMode', option.value)}
-                style={[
-                  styles.modePill,
-                  local.gameMode === option.value && styles.modePillActive,
-                ]}
-              >
-                <Text style={[styles.modePillLabel, local.gameMode === option.value && styles.modePillLabelActive]}>
-                  {option.label}
-                </Text>
-                <Text style={[styles.modePillHint, local.gameMode === option.value && styles.modePillHintActive]}>
-                  {option.hint}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={[styles.heroActions, compact && styles.heroActionsCompact]}>
+          {/* One row, always. Stacked, the button nobody wants sat above the
+              button everybody wants, and on a short phone the green one went
+              under the fold. */}
+          <View style={styles.heroActions}>
             <WiiButton
               label="Reset defaults"
               variant="white"
               size="md"
               onPress={handleReset}
-              fullWidth={compact}
-              style={compact ? undefined : styles.resetButton}
+              style={styles.resetButton}
             />
             <WiiButton
               label={isFriends ? 'Open Lobby' : 'Start Game'}
               variant="green"
               size="lg"
               onPress={handleStart}
-              fullWidth={compact}
-              style={compact ? undefined : styles.startButton}
+              style={styles.startButton}
             />
           </View>
         </WiiPanel>

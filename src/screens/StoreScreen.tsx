@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Modal,
   Pressable,
   Image,
   ScrollView,
@@ -26,16 +27,16 @@ import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { gifThumbUrl } from '../services/gifs';
 import { EMOJI_EMOTES, GIF_EMOTES } from '../game/cosmetics';
-import { RootStackParamList } from '../navigation/types';
-
-type Props = NativeStackScreenProps<RootStackParamList, 'Store'>;
-
+import { StorePreview } from '../components/storePreview';
 import {
   COSMETIC_CATEGORIES,
   type CosmeticCategory,
   type CosmeticCategoryId,
   type CosmeticItem,
 } from '../game/storeCatalog';
+import { RootStackParamList } from '../navigation/types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Store'>;
 
 type CardWidth = '100%' | '48%';
 type ButtonVariant = 'blue' | 'green' | 'gold' | 'white' | 'red';
@@ -45,7 +46,7 @@ function formatCoins(amount: number): string {
 }
 
 function isUnlockOnly(item: CosmeticItem): boolean {
-  return item.category === 'gifs' || item.category === 'emotes';
+  return item.category === 'gifs' || item.category === 'emotes' || item.category === 'palMotions';
 }
 
 export function StoreScreen({ navigation }: Props) {
@@ -58,7 +59,8 @@ export function StoreScreen({ navigation }: Props) {
    */
   const { profile, addCoins, cosmetics, setCosmetics, ready } = useApp();
   const { width } = useWindowDimensions();
-  const [activeCategory, setActiveCategory] = useState<CosmeticCategoryId>('outfits');
+  const [activeCategory, setActiveCategory] = useState<CosmeticCategoryId>(COSMETIC_CATEGORIES[0].id);
+  const [previewing, setPreviewing] = useState<CosmeticItem | null>(null);
 
   const isWide = width >= 680;
   const cardWidth: CardWidth = isWide ? '48%' : '100%';
@@ -124,14 +126,6 @@ export function StoreScreen({ navigation }: Props) {
           <BalanceBanner coins={profile.coins} hydrated={ready} />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(90).duration(360)}>
-          <SectionHeader
-            eyebrow="Earned coin boutique"
-            title="Spend coins on table flair"
-            subtitle="Every cosmetic here is unlocked with coins earned by playing hands."
-          />
-        </Animated.View>
-
         <Animated.View entering={FadeInDown.delay(150).duration(380)}>
           <ScrollView
             horizontal
@@ -167,34 +161,25 @@ export function StoreScreen({ navigation }: Props) {
                 owned={owned}
                 equipped={equipped}
                 onPress={() => buyCosmetic(item)}
+                onPreview={() => setPreviewing(item)}
               />
             );
           })}
         </View>
 
-        <Animated.View entering={FadeInDown.delay(260).duration(400)}>
-          <WiiPanel padding={0} gloss={false} style={styles.promisePanel}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.96)', 'rgba(233,255,244,0.94)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.promiseGradient}
-            >
-              <View style={styles.promiseIcon}>
-                <CoinIcon size={30} />
-              </View>
-              <View style={styles.promiseCopy}>
-                <Text style={styles.promiseTitle}>Earn, unlock, equip</Text>
-                <Text style={styles.promiseText}>
-                  Coins come from play. Build your collection, then switch styles any time from the owned items.
-                </Text>
-              </View>
-            </LinearGradient>
-          </WiiPanel>
-        </Animated.View>
-
         <AdBanner />
       </ScrollView>
+
+      <PreviewSheet
+        item={previewing}
+        owned={previewing ? ownedCosmetics.has(previewing.id) : false}
+        coins={profile.coins}
+        onClose={() => setPreviewing(null)}
+        onBuy={(item) => {
+          setPreviewing(null);
+          buyCosmetic(item);
+        }}
+      />
     </ScreenBackground>
   );
 }
@@ -213,27 +198,15 @@ function BalanceBanner({ coins, hydrated }: { coins: number; hydrated: boolean }
             <CoinIcon size={38} />
           </View>
           <View style={styles.balanceCopy}>
-            <Text style={styles.balanceLabel}>Your coin balance</Text>
-            <Text style={styles.balanceValue}>{formatCoins(coins)}</Text>
-            <Text style={styles.balanceHint}>Earn coins by playing hands.</Text>
+            {/* The coin icon says what the number is, so the label does not
+                need to. Only the one line that tells you where coins come
+                from earns its space. */}
+            <Text style={styles.balanceValue}>{hydrated ? formatCoins(coins) : '...'}</Text>
+            <Text style={styles.balanceHint}>Earned by playing hands.</Text>
           </View>
-        </View>
-        <View style={styles.balanceMeta}>
-          <Badge label="Earned" tone="green" />
-          <Text style={styles.balanceMetaText}>{hydrated ? 'Closet saved' : 'Loading closet'}</Text>
         </View>
       </LinearGradient>
     </WiiPanel>
-  );
-}
-
-function SectionHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.sectionSubtitle}>{subtitle}</Text>
-    </View>
   );
 }
 
@@ -248,10 +221,9 @@ function CategoryIntro({ category }: { category: CosmeticCategory }) {
       <View style={styles.categoryIcon}>
         <Text style={styles.categoryEmoji}>{category.emoji}</Text>
       </View>
-      <View style={styles.categoryCopy}>
-        <Text style={styles.categoryTitle}>{category.label}</Text>
-        <Text style={styles.categoryDescription}>{category.description}</Text>
-      </View>
+      {/* The tab above already says which category this is, so repeating the
+          label here was a heading for a heading. */}
+      <Text style={styles.categoryDescription}>{category.description}</Text>
     </LinearGradient>
   );
 }
@@ -289,6 +261,7 @@ function CosmeticCard({
   owned,
   equipped,
   onPress,
+  onPreview,
 }: {
   item: CosmeticItem;
   index: number;
@@ -296,6 +269,7 @@ function CosmeticCard({
   owned: boolean;
   equipped: boolean;
   onPress: () => void;
+  onPreview: () => void;
 }) {
   const unlockOnly = isUnlockOnly(item);
   const buttonLabel = owned ? (unlockOnly ? 'Owned' : equipped ? 'Equipped' : 'Equip') : 'Buy';
@@ -315,10 +289,7 @@ function CosmeticCard({
         <View style={[styles.accentOrb, { backgroundColor: item.swatches[0] }]} />
         <View style={styles.cardBody}>
           <View style={styles.cardTopRow}>
-            <View style={styles.cosmeticTitleWrap}>
-              <Text style={styles.cardEyebrow}>{item.category === 'outfits' ? 'Pal style' : 'Cosmetic'}</Text>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-            </View>
+            <Text style={styles.cardTitle} numberOfLines={1}>{item.name}</Text>
             {equipped ? (
               <Badge label="Equipped" tone="green" />
             ) : owned ? (
@@ -328,37 +299,91 @@ function CosmeticCard({
             ) : null}
           </View>
 
-          <CosmeticPreview item={item} />
-          <Text style={styles.cardDescription}>{item.description}</Text>
+          {/* The thumbnail is the preview's own button: tapping the picture to
+              see it bigger is what everyone tries first, and the labelled
+              button beside Buy is there for anyone who does not. */}
+          <Pressable onPress={onPreview} accessibilityRole="button" accessibilityLabel={`Preview ${item.name}`}>
+            <CosmeticPreview item={item} />
+          </Pressable>
+          <Text style={styles.cardDescription} numberOfLines={2}>{item.description}</Text>
 
           <View style={styles.purchaseRow}>
-            <View style={styles.statusColumn}>
-              {owned ? (
-                <>
-                  <Text style={styles.ownedText}>Owned</Text>
-                  <Text style={styles.ownedHint}>
-                    {unlockOnly ? 'Available in emotes' : equipped ? 'Ready at table' : 'Tap equip to use'}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.priceLabel}>Coin price</Text>
-                  <CoinAmount amount={item.price} iconSize={18} textStyle={styles.cosmeticPrice} />
-                </>
-              )}
+            {owned ? <View style={styles.statusColumn} /> : (
+              <View style={styles.statusColumn}>
+                <CoinAmount amount={item.price} iconSize={18} textStyle={styles.cosmeticPrice} />
+              </View>
+            )}
+            <View style={styles.cardButtons}>
+              <WiiButton label="Preview" size="sm" variant="white" onPress={onPreview} />
+              <WiiButton
+                label={buttonLabel}
+                size="sm"
+                variant={buttonVariant}
+                disabled={equipped || (unlockOnly && owned)}
+                onPress={onPress}
+                icon={!owned ? <CoinIcon size={16} color={colors.goldDeep} /> : undefined}
+              />
             </View>
-            <WiiButton
-              label={buttonLabel}
-              size="sm"
-              variant={buttonVariant}
-              disabled={equipped || (unlockOnly && owned)}
-              onPress={onPress}
-              icon={!owned ? <CoinIcon size={16} color={colors.goldDeep} /> : undefined}
-            />
           </View>
         </View>
       </View>
     </Animated.View>
+  );
+}
+
+/**
+ * The item at the size it is actually seen at during a hand.
+ *
+ * A 62pt swatch cannot answer "what am I buying", which is why the card backs
+ * were once sold as gradients that looked nothing like the card that got
+ * dealt. Each category draws its own, see `src/components/storePreview`.
+ */
+function PreviewSheet({
+  item,
+  owned,
+  coins,
+  onClose,
+  onBuy,
+}: {
+  item: CosmeticItem | null;
+  owned: boolean;
+  coins: number;
+  onClose: () => void;
+  onBuy: (item: CosmeticItem) => void;
+}) {
+  const { width } = useWindowDimensions();
+  if (!item) return null;
+  const stageWidth = Math.min(width - spacing.lg * 2, 460) - spacing.lg * 2;
+  const affordable = coins >= item.price;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Close preview">
+        {/* Swallows taps on the sheet itself so only the backdrop closes it. */}
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <Text style={styles.sheetTitle} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.sheetDescription}>{item.description}</Text>
+          <View style={styles.sheetStage}>
+            <StorePreview item={item} width={stageWidth} />
+          </View>
+          <View style={styles.sheetActions}>
+            <WiiButton label="Close" size="md" variant="white" onPress={onClose} />
+            {owned ? (
+              <Badge label="Owned" tone="green" />
+            ) : (
+              <WiiButton
+                label={affordable ? 'Buy' : 'Not enough coins'}
+                size="md"
+                variant="gold"
+                disabled={!affordable}
+                onPress={() => onBuy(item)}
+                icon={affordable ? <CoinIcon size={16} color={colors.goldDeep} /> : undefined}
+              />
+            )}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -520,21 +545,8 @@ const styles = StyleSheet.create({
     ...shadows.soft,
   },
   balanceCopy: { flex: 1, minWidth: 0 },
-  balanceLabel: { fontFamily: fonts.medium, fontSize: 13, color: colors.inkMuted },
   balanceValue: { fontFamily: fonts.bold, fontSize: 34, lineHeight: 39, color: colors.ink },
   balanceHint: { marginTop: 2, fontFamily: fonts.medium, fontSize: 13, color: colors.inkSoft },
-  balanceMeta: { alignItems: 'flex-end', gap: spacing.xs },
-  balanceMetaText: { fontFamily: fonts.medium, fontSize: 11, color: colors.inkMuted },
-  sectionHeader: { gap: spacing.xs, marginTop: spacing.xs },
-  sectionEyebrow: {
-    fontFamily: fonts.bold,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: colors.accentPink,
-  },
-  sectionTitle: { fontFamily: fonts.bold, fontSize: 25, color: colors.ink },
-  sectionSubtitle: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 19, color: colors.inkSoft },
   tabs: { gap: spacing.sm, paddingRight: spacing.lg },
   tab: {
     minHeight: 44,
@@ -569,9 +581,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.9)',
   },
   categoryEmoji: { fontSize: 28 },
-  categoryCopy: { flex: 1, minWidth: 0 },
-  categoryTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.ink },
-  categoryDescription: { marginTop: spacing.xs, fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
+  categoryDescription: { flex: 1, minWidth: 0, fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -603,30 +613,20 @@ const styles = StyleSheet.create({
   },
   cardBody: { padding: spacing.lg, gap: spacing.md },
   cardTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  cardEyebrow: {
-    fontFamily: fonts.bold,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    color: colors.inkMuted,
-    textTransform: 'uppercase',
-  },
-  cardTitle: { fontFamily: fonts.bold, fontSize: 19, lineHeight: 24, color: colors.ink },
-  cosmeticTitleWrap: { flex: 1, minWidth: 0 },
+  cardTitle: { flex: 1, minWidth: 0, fontFamily: fonts.bold, fontSize: 19, lineHeight: 24, color: colors.ink },
   cardDescription: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
   purchaseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    gap: spacing.sm,
     marginTop: 'auto',
   },
+  cardButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusColumn: { flex: 1, minWidth: 0 },
-  priceLabel: { fontFamily: fonts.bold, fontSize: 11, color: colors.inkMuted, textTransform: 'uppercase' },
   coinAmountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   coinAmountText: { fontFamily: fonts.bold, fontSize: 16, color: colors.goldDeep },
   cosmeticPrice: { fontSize: 18 },
-  ownedText: { fontFamily: fonts.bold, fontSize: 15, color: colors.green },
-  ownedHint: { marginTop: 2, fontFamily: fonts.medium, fontSize: 12, color: colors.inkMuted },
   previewFrame: {
     height: 112,
     borderRadius: radii.lg,
@@ -703,26 +703,31 @@ const styles = StyleSheet.create({
   },
   previewEmoji: { fontSize: 30 },
   previewEmojiSmall: { fontSize: 20 },
-  promisePanel: { borderColor: 'rgba(63,181,107,0.24)' },
-  promiseGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  promiseIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: radii.pill,
-    backgroundColor: '#FFF7CF',
-    borderWidth: 1,
-    borderColor: 'rgba(217,164,0,0.26)',
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(8,10,18,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: spacing.lg,
   },
-  promiseCopy: { flex: 1, minWidth: 0 },
-  promiseTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.ink },
-  promiseText: { marginTop: spacing.xs, fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
+  sheet: {
+    width: '100%',
+    maxWidth: 460,
+    borderRadius: radii.lg,
+    backgroundColor: '#FFFFFF',
+    padding: spacing.lg,
+    gap: spacing.sm,
+    ...shadows.raised,
+  },
+  sheetTitle: { fontFamily: fonts.bold, fontSize: 21, color: colors.ink },
+  sheetDescription: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
+  sheetStage: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm },
+  sheetActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
   badge: {
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
