@@ -20,6 +20,7 @@ import {
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson } from '../game/settings';
+import { GAME_MODE_LABELS } from '../game/gameMode';
 import { pinCosmetics } from '../game/cosmetics';
 import { shouldLeaveRoomOnLobbyUnmount } from '../game/lobbyRoom';
 import type { GameSettings } from '../game/settings';
@@ -346,6 +347,7 @@ export function LobbyScreen({ navigation, route }: Props) {
           </View>
           <View style={styles.settingsGrid}>
             {[
+              ['Mode', GAME_MODE_LABELS[tableSettings.gameMode]],
               ['Blinds', `${tableSettings.smallBlind} / ${tableSettings.bigBlind}`],
               ['Ante', tableSettings.ante > 0 ? String(tableSettings.ante) : 'None'],
               ['Starting stack', String(tableSettings.startingStack)],

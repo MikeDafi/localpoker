@@ -17,6 +17,7 @@ import {
   type SettingsSection,
   type SettingField,
 } from '../game/settings';
+import { GAME_MODE_OPTIONS, GAME_MODE_LABELS } from '../game/gameMode';
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
 import { useHoldRepeat } from '../components/useHoldRepeat';
@@ -28,13 +29,6 @@ type SettingValue = GameSettings[keyof GameSettings];
 type BooleanSettingKey = { [K in keyof GameSettings]: GameSettings[K] extends boolean ? K : never }[keyof GameSettings];
 type NumberSettingKey = { [K in keyof GameSettings]: GameSettings[K] extends number ? K : never }[keyof GameSettings];
 type SelectableSettingKey = { [K in keyof GameSettings]: GameSettings[K] extends string | number ? K : never }[keyof GameSettings];
-
-const DIFFICULTY_OPTIONS = [
-  { value: 'easy', label: 'Easy', hint: 'Relaxed' },
-  { value: 'medium', label: 'Medium', hint: 'Balanced' },
-  { value: 'hard', label: 'Hard', hint: 'Sharp' },
-  { value: 'expert', label: 'Expert', hint: 'Punishing' },
-] satisfies { value: GameSettings['difficulty']; label: string; hint: string }[];
 
 export function GameSetupScreen({ navigation, route }: Props) {
   const { settings, updateSettings, cosmetics } = useApp();
@@ -160,35 +154,29 @@ export function GameSetupScreen({ navigation, route }: Props) {
             </View>
           </View>
 
-          {/* Bot difficulty has nothing to set when the opponents are real
-              people, so the quick-pick goes with the Opponents section. */}
-          {!isFriends && (
-          <>
           <View style={styles.quickPickHeader}>
-            <Text style={styles.sectionEyebrow}>Difficulty quick-pick</Text>
-            <Text style={styles.quickPickValue}>{capitalize(local.difficulty)}</Text>
+            <Text style={styles.sectionEyebrow}>Game mode</Text>
+            <Text style={styles.quickPickValue}>{GAME_MODE_LABELS[local.gameMode]}</Text>
           </View>
-          <View style={styles.difficultyGrid}>
-            {DIFFICULTY_OPTIONS.map((option) => (
+          <View style={styles.modeGrid}>
+            {GAME_MODE_OPTIONS.map((option) => (
               <Pressable
                 key={option.value}
-                onPress={() => setField('difficulty', option.value)}
+                onPress={() => setField('gameMode', option.value)}
                 style={[
-                  styles.difficultyPill,
-                  local.difficulty === option.value && styles.difficultyPillActive,
+                  styles.modePill,
+                  local.gameMode === option.value && styles.modePillActive,
                 ]}
               >
-                <Text style={[styles.difficultyLabel, local.difficulty === option.value && styles.difficultyLabelActive]}>
+                <Text style={[styles.modePillLabel, local.gameMode === option.value && styles.modePillLabelActive]}>
                   {option.label}
                 </Text>
-                <Text style={[styles.difficultyHint, local.difficulty === option.value && styles.difficultyHintActive]}>
+                <Text style={[styles.modePillHint, local.gameMode === option.value && styles.modePillHintActive]}>
                   {option.hint}
                 </Text>
               </Pressable>
             ))}
           </View>
-          </>
-          )}
 
           <View style={[styles.heroActions, compact && styles.heroActionsCompact]}>
             <WiiButton
@@ -530,10 +518,6 @@ function formatChips(value: number): string {
   return String(value);
 }
 
-function capitalize(value: string): string {
-  return value.slice(0, 1).toUpperCase() + value.slice(1);
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -613,12 +597,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.blueDeep,
   },
-  difficultyGrid: {
+  modeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  difficultyPill: {
+  modePill: {
     flexGrow: 1,
     minWidth: 78,
     borderRadius: radii.lg,
@@ -629,7 +613,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     alignItems: 'center',
   },
-  difficultyPillActive: {
+  modePillActive: {
     backgroundColor: colors.blue,
     borderColor: colors.blueDeep,
     shadowColor: colors.blueDeep,
@@ -638,21 +622,21 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
-  difficultyLabel: {
+  modePillLabel: {
     fontFamily: fonts.bold,
     fontSize: 15,
     color: colors.ink,
   },
-  difficultyLabelActive: {
+  modePillLabelActive: {
     color: colors.onBlue,
   },
-  difficultyHint: {
+  modePillHint: {
     marginTop: 1,
     fontFamily: fonts.medium,
     fontSize: 11,
     color: colors.inkMuted,
   },
-  difficultyHintActive: {
+  modePillHintActive: {
     color: 'rgba(255,255,255,0.82)',
   },
   summaryGrid: {

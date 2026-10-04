@@ -1,4 +1,5 @@
 import type { Difficulty } from '../engine/bot';
+import { GAME_MODE_OPTIONS, isGameMode, type GameMode } from './gameMode';
 import {
   CARD_BACK_PALETTES,
   CHIP_PALETTES,
@@ -40,6 +41,9 @@ export interface SettingsSection {
 type SettingOption = NonNullable<SettingField['options']>[number];
 
 export interface GameSettings {
+  // Mode
+  gameMode: GameMode;
+
   // Blinds & stakes
   smallBlind: number;
   bigBlind: number;
@@ -102,6 +106,8 @@ export interface GameSettings {
 }
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  gameMode: 'cash',
+
   smallBlind: 10,
   bigBlind: 20,
   ante: 0,
@@ -145,6 +151,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'table', title: 'Table', icon: '🎲',
     fields: [
+      { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash plays like today with rebuys. Tournaments use a fixed blind ladder and no rebuys.', options: GAME_MODE_OPTIONS },
       { key: 'smallBlind', label: 'Small Blind', type: 'number', min: 1, max: 100000, step: 1 },
       { key: 'bigBlind', label: 'Big Blind', type: 'number', min: 2, max: 200000, step: 1 },
       { key: 'ante', label: 'Ante', type: 'number', min: 0, max: 100000, step: 1 },
@@ -212,6 +219,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
 export function normalizeSettings(s?: Partial<GameSettings> | null): GameSettings {
   const merged = { ...DEFAULT_GAME_SETTINGS, ...(s ?? {}) } as GameSettings & Record<string, unknown>;
   delete merged.showAvatarNames;
+  if (!isGameMode(merged.gameMode)) merged.gameMode = DEFAULT_GAME_SETTINGS.gameMode;
   if (merged.bigBlind < merged.smallBlind) merged.bigBlind = merged.smallBlind * 2;
   merged.numOpponents = Math.max(1, Math.min(8, merged.numOpponents));
   merged.maxPlayers = Math.max(merged.numOpponents + 1, merged.maxPlayers);

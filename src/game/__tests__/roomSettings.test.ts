@@ -19,8 +19,9 @@ describe('roomSettingsJson', () => {
   });
 
   it('keeps every rule that actually decides how a hand plays', () => {
-    const settings = { ...DEFAULT_GAME_SETTINGS, smallBlind: 5, bigBlind: 10, numOpponents: 4 };
+    const settings = { ...DEFAULT_GAME_SETTINGS, gameMode: 'turbo' as const, smallBlind: 5, bigBlind: 10, numOpponents: 4 };
     const shared = JSON.parse(roomSettingsJson(settings));
+    expect(shared.gameMode).toBe('turbo');
     expect(shared.smallBlind).toBe(5);
     expect(shared.bigBlind).toBe(10);
     expect(shared.numOpponents).toBe(4);
@@ -40,5 +41,10 @@ describe('roomSettingsJson', () => {
   it('strips the preference even when the host has it switched off', () => {
     const json = roomSettingsJson({ ...DEFAULT_GAME_SETTINGS, pushNotifications: false });
     expect(JSON.parse(json)).not.toHaveProperty('pushNotifications');
+  });
+
+  it('defaults old saved settings to cash mode', () => {
+    expect(normalizeSettings({}).gameMode).toBe('cash');
+    expect(normalizeSettings({ gameMode: 'made-up' } as never).gameMode).toBe('cash');
   });
 });
