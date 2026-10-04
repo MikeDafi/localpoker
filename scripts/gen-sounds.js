@@ -88,12 +88,23 @@ function silence(dur) {
  * sound in the first few milliseconds and leaves a tick. The shaping is done
  * with short durations and modest exponents instead.
  */
+/*
+ * Knuckles on a wooden table.
+ *
+ * Wood is lossy, so it does not ring: the contact is loud and broadband, the
+ * body under it is low and already gone inside a tenth of a second. The old
+ * one carried a partial at five times the body, which is the sort of overtone
+ * a struck metal bar has and a table does not, and it was the thing making
+ * this read as a chime rather than a rap.
+ */
 function knock(body, vol) {
   return mix(
-    tone(5000, 0.012, { type: 'noise', vol: vol * 0.45, decay: 1.6 }),
-    tone(body, 0.075, { type: 'sine', vol: vol, decay: 2.6 }),
-    tone(body * 5.1, 0.04, { type: 'tri', vol: vol * 0.3, decay: 3.2 }),
-    tone(body * 2.4, 0.055, { type: 'sine', vol: vol * 0.24, decay: 3 }),
+    // The knuckle itself. Short, wide, and the loudest part of the event.
+    tone(2600, 0.009, { type: 'noise', vol: vol * 0.85, decay: 2.2 }),
+    tone(900, 0.016, { type: 'noise', vol: vol * 0.5, decay: 2.6 }),
+    // The table answering. Low, and damped hard so nothing hangs over.
+    tone(body, 0.085, { type: 'sine', vol: vol, decay: 3.4 }),
+    tone(body * 1.6, 0.045, { type: 'sine', vol: vol * 0.3, decay: 4.0 }),
   );
 }
 
@@ -120,17 +131,26 @@ function knock(body, vol) {
  * has to outlast the gap between coins so a handful overlaps into a cascade
  * instead of a stutter.
  */
-function coinDrop(pitch, vol) {
-  const f = 2300 * pitch;
+/*
+ * One clay chip landing on a stack.
+ *
+ * A composition chip is mostly clay and chalk. It is damped, so the sound is
+ * almost all contact and almost no tone: a dry broadband tick with a short
+ * low knock under it, over inside about fifty milliseconds.
+ *
+ * The previous version was built the way you build a bell, with sine partials
+ * at 2.76 and 5.40 times a 2.3kHz fundamental and a slow decay. That is the
+ * recipe for struck metal, which is exactly what it sounded like. Chips do
+ * not ring, so there are no sustained partials here at all.
+ */
+function chipHit(pitch, vol) {
   return mix(
-    // The strike. Very short, just the edge hitting the felt.
-    tone(5200 * pitch, 0.012, { type: 'noise', vol: vol * 0.36, decay: 2.2 }),
-    // The ring. Long and slow-decaying, so coins pile up on each other.
-    tone(f, 0.26, { type: 'sine', vol: vol * 0.5, decay: 1.6 }),
-    tone(f * 2.76, 0.2, { type: 'sine', vol: vol * 0.26, decay: 1.9 }),
-    tone(f * 5.4, 0.13, { type: 'sine', vol: vol * 0.12, decay: 2.4 }),
-    // A little body underneath, or it reads as a wind chime rather than coin.
-    tone(760 * pitch, 0.05, { type: 'tri', vol: vol * 0.18, decay: 2.8 }),
+    // Contact. This is the sound; everything else is just body under it.
+    tone(3800 * pitch, 0.007, { type: 'noise', vol: vol * 0.9, decay: 2.4 }),
+    tone(1500 * pitch, 0.018, { type: 'noise', vol: vol * 0.6, decay: 3.0 }),
+    // The disc and the stack it lands on. Low, and damped to nothing fast.
+    tone(620 * pitch, 0.038, { type: 'sine', vol: vol * 0.5, decay: 4.2 }),
+    tone(330 * pitch, 0.05, { type: 'sine', vol: vol * 0.32, decay: 4.6 }),
   );
 }
 
@@ -156,7 +176,7 @@ writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }
  * the pot (see `chipSoundsFor`), so this has to be a single clean hit that
  * stacks well rather than a finished phrase.
  */
-writeWav('chip.wav', coinDrop(1, 0.34));
+writeWav('chip.wav', chipHit(1, 0.42));
 
 /*
  * Checking is knocking on the table, so it sounds like knocking on a table.

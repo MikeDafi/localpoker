@@ -42,7 +42,7 @@ import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
-import { boardDealDelay } from '../game/boardDeal';
+import { BOARD_THROW_MS, boardDealDelay } from '../game/boardDeal';
 import { isRunningOut, runoutAction, runoutFelt, runoutLabel, SHOWDOWN_STEP_MS, SHOW_CHOICE_MS } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
 import {
@@ -2116,6 +2116,7 @@ export function TableScreen({ navigation, route }: Props) {
                     faceUp
                     noFlip
                     animate={!animsOff}
+                    throwMs={BOARD_THROW_MS}
                     delay={boardDelay(i)}
                     fromX={boardThrowFrom(i).x}
                     fromY={boardThrowFrom(i).y}

@@ -14,6 +14,17 @@
 export const BOARD_DEAL_STEP = 140;
 
 /**
+ * How long a community card takes to fly in.
+ *
+ * Slower than a hole card on purpose. A hole card is dealt two at a time to
+ * somebody who already knows what is coming, so it can be brisk. The flop,
+ * the turn and the river are the moments the whole table is watching, and at
+ * the speed a hole card travels they arrived before anyone had finished
+ * looking up. Hole cards keep `motion.dealCard` and are unaffected.
+ */
+export const BOARD_THROW_MS = 520;
+
+/**
  * Stagger for the board card at `index`.
  *
  * The flop arrives as three cards at once and is staggered so they land one

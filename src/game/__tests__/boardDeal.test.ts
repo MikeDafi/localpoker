@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_DEAL_STEP, boardDealDelay } from '../boardDeal';
+import { BOARD_DEAL_STEP, BOARD_THROW_MS, boardDealDelay } from '../boardDeal';
+import { motion } from '../../theme/theme';
 
 /**
  * Regression guard for a card visibly disappearing mid-hand.
@@ -48,5 +49,20 @@ describe('board deal timing', () => {
   it('is defensive about odd input', () => {
     expect(boardDealDelay(-1)).toBe(0);
     expect(boardDealDelay(99)).toBe(0);
+  });
+});
+
+describe('BOARD_THROW_MS', () => {
+  it('is slower than a hole card, which is the point of having it', () => {
+    // A hole card is dealt to somebody who knows it is coming. The flop, turn
+    // and river are what the table is watching, and at hole card speed they
+    // landed before anyone had looked up.
+    expect(BOARD_THROW_MS).toBeGreaterThan(motion.dealCard);
+  });
+
+  it('is still quick enough not to hold the hand up', () => {
+    // Three flop cards are staggered on top of this, so the whole flop has to
+    // stay inside about a second.
+    expect(BOARD_THROW_MS + BOARD_DEAL_STEP * 2).toBeLessThanOrEqual(1000);
   });
 });
