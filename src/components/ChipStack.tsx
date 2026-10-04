@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { colors, fonts } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { resolveChips, type ChipPalette } from '../game/cosmetics';
+import { compactChipCount } from '../game/chipStackLook';
 
 /**
  * Denominations, coloured by whichever chip set the table is using.
@@ -84,7 +85,24 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact }: Chip
             ))}
           </View>
         ))}
-      {compact && <Chip color={stacks[0].color} edge={stacks[0].edge} size={size} />}
+      {compact && (
+        /*
+         * A stack rather than one chip.
+         *
+         * This is what a pod and a bet pill draw, and it used to be a single
+         * puck whatever the amount was, so 20 and 20,000 were the same
+         * picture and the chips carried no information at all. Stacked from
+         * the top denomination's colour, because at this size the height is
+         * the only thing legible and the colour is what says which chips.
+         */
+        <View style={styles.stack}>
+          {Array.from({ length: compactChipCount(amount) }).map((_, j) => (
+            <View key={j} style={{ marginTop: j === 0 ? 0 : -size * 0.24 }}>
+              <Chip color={stacks[0].color} edge={stacks[0].edge} size={size} />
+            </View>
+          ))}
+        </View>
+      )}
       {showLabel && (
         <Text style={styles.label}>{amount.toLocaleString()}</Text>
       )}
