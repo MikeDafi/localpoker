@@ -8,9 +8,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-const EQUITY_CACHE_LIMIT = 2048;
-const equityCache = new Map<string, number>();
-
 function potSize(state: GameState): number {
   return state.pots.reduce((sum, pot) => sum + pot.amount, 0);
 }
@@ -221,23 +218,7 @@ function estimateEquity(
   seed: string,
 ): number {
   const sims = Math.max(40, Math.round((profile.sims * 2) / (opponents + 1)));
-  const key = [
-    holeCards.map((card) => `${card.rank}${card.suit}`).join(','),
-    state.board.map((card) => `${card.rank}${card.suit}`).join(','),
-    opponents,
-    sims,
-    seed,
-  ].join('|');
-  const cached = equityCache.get(key);
-  if (cached !== undefined) return cached;
-
-  const equity = monteCarloEquity(holeCards, state.board, opponents, sims, seed);
-  equityCache.set(key, equity);
-  if (equityCache.size > EQUITY_CACHE_LIMIT) {
-    const first = equityCache.keys().next().value;
-    if (first !== undefined) equityCache.delete(first);
-  }
-  return equity;
+  return monteCarloEquity(holeCards, state.board, opponents, sims, seed);
 }
 
 /**
