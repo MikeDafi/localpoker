@@ -77,7 +77,7 @@ measure and render; it should not decide.
 ## Store state
 
 1.0.0 was **rejected** under guideline 2.3.6 and has not shipped. TestFlight is
-unaffected: build 34 is live for internal testers and behind a public link.
+unaffected: build 35 is live for internal testers and behind a public link.
 `docs/store/SUBMISSION-CHECKLIST.md` has the open items.
 
 ## Cosmetics
@@ -100,6 +100,55 @@ Two rules, both learned the hard way, and both now locked by tests:
 A store preview must render the real component rather than an impression of
 one. The card back preview was a gradient with two plain views standing in for
 the pattern, so the thing on sale and the thing dealt were different pictures.
+Each category owns one file in `src/components/storePreview/`, and the switch
+in that folder's `index.tsx` is deliberate rather than a lookup, so a new
+category without a preview is a type error instead of a blank sheet.
+
+A third failure mode showed up after those two: **a cosmetic can be sold,
+have a palette, and still not be reachable.** Outfits had neither palette nor
+reader, so `equippedByCategory.outfits` went unread everywhere and six items
+priced up to 5,000 coins changed nothing at all. `src/game/outfits.ts` applies
+them now, and `src/game/__tests__/cosmeticSettings.test.ts` asserts in both
+directions that every palette is offered in Game Setup and nothing is offered
+without one.
+
+## Where the arithmetic lives
+
+Layout and policy that can be decided without a device belongs in `src/game`,
+because that is the only place it can be tested. The table has been broken by
+eyeballed layout four times, so prefer a module and a test over a formula in
+`TableScreen`:
+
+| Module | The thing it stops |
+|---|---|
+| `seatRing.ts` | Seat pods overlapping. Even spacing in *angle* is not even spacing in x, so end pods sat 32pt apart at 76pt wide. The test proves no overlap for 1 to 8 seats on 4 screen sizes. |
+| `hostControls.ts` | A host rewriting the stakes mid-game. Only cosmetics and table visibility are changeable; the test asserts every agreed term is refused. |
+| `showdownLayout.ts` | Tabled hands colliding with the board. |
+| `chipStackLook.ts` | Chip and pot sizing, including the pot size tiers. |
+| `purchaseHistory.ts` | Receipts, including the awkward case of items owned before the ledger existed. |
+| `reportDelivery.ts` | The report flow hanging. See below. |
+
+## A Firebase write does not fail when you are offline
+
+It queues. The promise settles only once a server acknowledges it, which may
+be never, so `await update(...)` is not bounded by anything. This froze the
+whole screen when a player reported offensive content, at the worst possible
+moment to look broken. Bound anything a person is waiting on, see
+`withTimeout` in `src/moderation/reportDelivery.ts`.
+
+## Blocking stops notifications by accident, not by design
+
+A push comes from Expo without passing through the app, so nothing on the
+device can filter one. The only thing that stops it is losing the ability to
+read the recipient's token, and `pushTokens/$uid` grants that to the owner, a
+friend, or someone with a pending request. `blockUser` and `reportUser` both
+clear every one of those edges, which is what makes "no notifications from
+someone you blocked" true.
+
+It is therefore a safety property that holds as a consequence of the friend
+rules rather than because any code says so. `scripts/rules-unit-check.cjs`
+pins both halves of it. **If you change the `pushTokens` read rule, you are
+changing who can notify a person who blocked them.**
 
 ## Security rules are not deployed by anything
 
