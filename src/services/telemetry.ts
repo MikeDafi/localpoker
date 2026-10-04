@@ -85,7 +85,16 @@ const getSentry = (): SentryModule | null => {
     const loaded = sentryLoader();
     loaded.init({
       dsn,
-      enabled: true,
+      /*
+       * Never report from a development build.
+       *
+       * A developer running the app against Metro shares the project's DSN,
+       * so every deliberate crash, every half-finished screen and every
+       * debugging harness raised a Sentry issue and paged the team. Those
+       * events came tagged `development` from a local worktree path, which is
+       * noise that buries the reports from real installs.
+       */
+      enabled: !isDev(),
       debug: isDev(),
       environment: isDev() ? 'development' : 'production',
       sendDefaultPii: false,

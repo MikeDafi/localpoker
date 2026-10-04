@@ -405,6 +405,19 @@ export function createGame(config: GameConfig, players: readonly PlayerInput[], 
   };
 }
 
+/**
+ * Whether a hand can be dealt at all.
+ *
+ * Exported so the table can ask before dealing instead of finding out by
+ * catching. `startHand` treats "fewer than two players with chips" as a broken
+ * invariant, which it is, but a table reaches it legitimately: the last
+ * opponent busts, or a room holds two seats while only one still has chips.
+ * An engine invariant is not something a player should ever be shown.
+ */
+export function canStartHand(state: GameState): boolean {
+  return activeSeatIndexes(state.players).length >= 2;
+}
+
 export function startHand(state: GameState): GameState {
   const next = cloneState(state);
   const activeIndexes = activeSeatIndexes(next.players);

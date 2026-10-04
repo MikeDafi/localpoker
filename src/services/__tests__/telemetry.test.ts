@@ -59,4 +59,30 @@ describe('telemetry graceful degradation', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toContain('Telemetry is unavailable');
   });
+  it('stays inert in a development build, so local debugging cannot page the team', () => {
+    /*
+     * A developer running against Metro shares the project DSN. Every
+     * deliberate crash and every debugging harness used to raise a real
+     * Sentry issue from a local worktree, which is how a harness bug ended up
+     * notifying the project.
+     */
+    env.EXPO_PUBLIC_SENTRY_DSN = 'https://public@example.com/1';
+    const options: Record<string, unknown>[] = [];
+    __setSentryLoaderForTests(() => ({
+      init: (opts: Record<string, unknown>) => options.push(opts),
+      captureException: () => {},
+      captureMessage: () => {},
+      addBreadcrumb: () => {},
+      withScope: (fn: (scope: unknown) => void) => {
+        fn({ setTag: () => {}, setTags: () => {}, setExtras: () => {}, setLevel: () => {} });
+      },
+    }) as never);
+
+    initTelemetry();
+
+    expect(options).toHaveLength(1);
+    // vitest runs with __DEV__ undefined and NODE_ENV 'test', so isDev() is true.
+    expect(options[0].enabled).toBe(false);
+    expect(options[0].environment).toBe('development');
+  });
 });

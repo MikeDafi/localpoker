@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Card, type Rank, type Suit } from '../cards';
-import { applyAction, advanceStreet, createGame, legalActions, startHand } from '../holdem';
+import { applyAction, advanceStreet, canStartHand, createGame, legalActions, startHand } from '../holdem';
 import type { ActionResult, GameConfig, GameState, PlayerInput } from '../types';
 
 const config: GameConfig = {
@@ -260,5 +260,69 @@ describe('explicit chips versus the configured starting stack', () => {
       { id: 'b', name: 'B', seatIndex: 1, chips: 2000 },
     ]);
     expect(game.players.map((p) => p.chips)).toEqual([2000, 2000]);
+  });
+});
+
+describe('canStartHand', () => {
+  /*
+   * This exists so the table can ask before dealing. startHand throws when
+   * fewer than two seats have chips, and that throw used to reach the screen:
+   * the host's app showed the error boundary the moment their last opponent
+   * busted. The predicate and the throw have to agree, so they are checked
+   * against each other here rather than trusted to stay in step.
+   */
+  const seat = (id: string, chips: number, sittingOut = false) => ({ id, name: id, chips, sittingOut });
+
+  const gameWith = (players: ReturnType<typeof seat>[]): GameState => {
+    const game = createGame(config, players as PlayerInput[], 1);
+    game.players.forEach((p, i) => {
+      p.chips = players[i].chips;
+      p.sittingOut = players[i].sittingOut;
+    });
+    return game;
+  };
+
+  it('allows a hand when two seats still have chips', () => {
+    expect(canStartHand(gameWith([seat('a', 100), seat('b', 100)]))).toBe(true);
+  });
+
+  it('refuses when everyone but one player has busted', () => {
+    expect(canStartHand(gameWith([seat('a', 100), seat('b', 0)]))).toBe(false);
+  });
+
+  it('refuses when nobody has chips', () => {
+    expect(canStartHand(gameWith([seat('a', 0), seat('b', 0)]))).toBe(false);
+  });
+
+  it('does not count a player who is sitting out', () => {
+    expect(canStartHand(gameWith([seat('a', 100), seat('b', 100, true)]))).toBe(false);
+  });
+
+  it('counts a third player when one of three has busted', () => {
+    expect(canStartHand(gameWith([seat('a', 100), seat('b', 0), seat('c', 50)]))).toBe(true);
+  });
+
+  it('agrees with startHand, which is the whole point', () => {
+    const playable = gameWith([seat('a', 100), seat('b', 100)]);
+    const dead = gameWith([seat('a', 100), seat('b', 0)]);
+
+    expect(canStartHand(playable)).toBe(true);
+    expect(() => startHand(playable)).not.toThrow();
+
+    expect(canStartHand(dead)).toBe(false);
+    expect(() => startHand(dead)).toThrow(/two seated players/);
+  });
+
+  it('is not confused by a live hand where players are all in', () => {
+    /*
+     * An all-in player has nothing left in front of them, so a naive chip
+     * count says the table is finished in the middle of a hand that is still
+     * being played. The table must only ask this between hands, and this
+     * records why: the predicate genuinely reads false here.
+     */
+    const game = startHand(gameWith([seat('a', 100), seat('b', 100)]));
+    game.players.forEach((p) => { p.chips = 0; p.allIn = true; });
+    expect(canStartHand(game)).toBe(false);
+    expect(game.handNumber).toBeGreaterThan(0);
   });
 });

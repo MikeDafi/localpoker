@@ -52,7 +52,7 @@ import {
 import { applyHostIntent, hydrateGameState } from '../game/onlineSync';
 import type { Difficulty } from '../engine/bot';
 import {
-  createGame, startHand, applyAction, legalActions, decideAction, handName, evaluateHand, randomFloat,
+  createGame, startHand, canStartHand, applyAction, legalActions, decideAction, handName, evaluateHand, randomFloat,
   type GameState, type PlayerAction, type PlayerInput,
 } from '../engine';
 import {
@@ -214,13 +214,54 @@ export function TableScreen({ navigation, route }: Props) {
       players,
       seed,
     );
-    return startHand(game);
+    /*
+     * A table that can never deal must not take the app down with it.
+     *
+     * This throws when fewer than two seats have chips, which a room reaches
+     * on its own: a guest busts, or a saved game is resumed after one. It used
+     * to escape a useState initialiser and land on the error boundary, so the
+     * player got a red screen instead of being told the table was finished.
+     * Returning the undealt game leaves handNumber at 0, which the effect
+     * below treats as "this table is over".
+     */
+    try {
+      return startHand(game);
+    } catch (error) {
+      captureError(error, { tags: { area: 'table', operation: 'start-first-hand' } });
+      return game;
+    }
   });
 
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  /*
+   * The table could not deal its very first hand.
+   *
+   * handNumber only stays at 0 when the initialiser above caught startHand
+   * refusing, which means fewer than two seats had chips before a card was
+   * dealt: a room that emptied, or a saved game resumed after someone busted.
+   * There is no hand to show and no way to make one, so say so and leave
+   * rather than render a dead table. Checking handNumber rather than
+   * canStartHand matters, because players go to zero chips legitimately when
+   * they are all in and a live hand must not be mistaken for a finished one.
+   */
+  const announcedDeadTable = useRef(false);
+  useEffect(() => {
+    if (state.handNumber !== 0 || announcedDeadTable.current) return;
+    announcedDeadTable.current = true;
+    showAlert('Table over', 'There are not enough players with chips to deal a hand.', [
+      {
+        text: 'Back to menu',
+        onPress: () => {
+          clearSavedGame();
+          navigation.replace('Home');
+        },
+      },
+    ]);
+  }, [state.handNumber, navigation, clearSavedGame]);
 
   useEffect(() => {
     if (!roomCode || !firebaseOnline) {
@@ -1087,13 +1128,8 @@ export function TableScreen({ navigation, route }: Props) {
 
     const active = state.players.filter((p) => p.chips > 0 && !p.sittingOut);
     const roomSeated = Object.keys(room?.players ?? {}).length;
-    if (active.length < 2 && (!roomCode || roomSeated < 2)) {
-      /*
-       * Who actually ran out matters. This said "Everyone else is out" to a
-       * player who had just busted with chips still in front of the opponent,
-       * which is the exact opposite of what had happened.
-       */
-      showAlert('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.', [
+    const endTable = (title: string, message: string) => {
+      showAlert(title, message, [
         {
           text: 'Back to menu',
           onPress: () => {
@@ -1105,6 +1141,33 @@ export function TableScreen({ navigation, route }: Props) {
           },
         },
       ]);
+    };
+
+    if (active.length < 2 && (!roomCode || roomSeated < 2)) {
+      /*
+       * Who actually ran out matters. This said "Everyone else is out" to a
+       * player who had just busted with chips still in front of the opponent,
+       * which is the exact opposite of what had happened.
+       */
+      endTable('Table over', human.chips > 0 ? 'You cleaned up! 🎉' : 'You are out of chips.');
+      return;
+    }
+    /*
+     * A room with seats still filled but fewer than two stacks left.
+     *
+     * The check above deliberately lets a room through, because an absent
+     * player is not an out player and the roster is what decides. But nobody
+     * can be dealt in without chips, so falling through called startHand
+     * anyway and it threw: the host got the error boundary the moment their
+     * last opponent busted. Say what happened instead.
+     */
+    if (!canStartHand(state)) {
+      endTable(
+        'Table over',
+        human.chips > 0
+          ? 'Everyone else is out of chips.'
+          : 'You are out of chips.',
+      );
       return;
     }
     if (human.chips <= 0) {
@@ -1124,7 +1187,20 @@ export function TableScreen({ navigation, route }: Props) {
     setEarned(0);
     setReveal('auto');
     setState((prev) => {
-      const next = startHand(prev);
+      /*
+       * Last line of defence. This runs inside a state updater, so anything
+       * thrown here tears down the tree and shows the error boundary. The
+       * guards in nextHand catch the situations a table actually reaches; if
+       * one is ever missed, hold the current hand rather than crash.
+       */
+      if (!canStartHand(prev)) return prev;
+      let next: GameState;
+      try {
+        next = startHand(prev);
+      } catch (error) {
+        captureError(error, { tags: { area: 'table', operation: 'start-next-hand' } });
+        return prev;
+      }
       if (roomCode && firebaseOnline && isOnlineHost) {
         publishHostGameState(roomCode, next)
           .then((r) => noteSync(r.ok))
