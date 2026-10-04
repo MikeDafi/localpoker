@@ -145,12 +145,18 @@ function knock(body, vol) {
  */
 function chipHit(pitch, vol) {
   return mix(
-    // Contact. This is the sound; everything else is just body under it.
-    tone(3800 * pitch, 0.007, { type: 'noise', vol: vol * 0.9, decay: 2.4 }),
-    tone(1500 * pitch, 0.018, { type: 'noise', vol: vol * 0.6, decay: 3.0 }),
-    // The disc and the stack it lands on. Low, and damped to nothing fast.
-    tone(620 * pitch, 0.038, { type: 'sine', vol: vol * 0.5, decay: 4.2 }),
-    tone(330 * pitch, 0.05, { type: 'sine', vol: vol * 0.32, decay: 4.6 }),
+    // Contact. Short and wide: two clay edges meeting.
+    tone(3800 * pitch, 0.006, { type: 'noise', vol: vol * 0.8, decay: 2.6 }),
+    // The clack. This is the band a clay chip is recognised by, and leaving
+    // it out was what made the last attempt read as a dull tap rather than as
+    // a chip: it went straight from a broadband tick down to a low thud with
+    // nothing in between.
+    tone(1650 * pitch, 0.022, { type: 'noise', vol: vol * 0.7, decay: 3.2 }),
+    tone(1180 * pitch, 0.026, { type: 'sine', vol: vol * 0.42, decay: 3.8 }),
+    // The disc and the stack under it. Damped to nothing almost at once,
+    // because clay does not ring.
+    tone(560 * pitch, 0.034, { type: 'sine', vol: vol * 0.4, decay: 4.4 }),
+    tone(300 * pitch, 0.042, { type: 'sine', vol: vol * 0.26, decay: 4.8 }),
   );
 }
 
