@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
+  Image,
   ScrollView,
   StyleProp,
   StyleSheet,
@@ -23,6 +24,8 @@ import { CoinIcon } from '../components/Icons';
 import { colors, fonts, spacing, radii, shadows } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
+import { gifThumbUrl } from '../services/gifs';
+import { EMOJI_EMOTES, GIF_EMOTES } from '../game/cosmetics';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Store'>;
@@ -39,6 +42,10 @@ type ButtonVariant = 'blue' | 'green' | 'gold' | 'white' | 'red';
 
 function formatCoins(amount: number): string {
   return amount.toLocaleString();
+}
+
+function isUnlockOnly(item: CosmeticItem): boolean {
+  return item.category === 'gifs' || item.category === 'emotes';
 }
 
 export function StoreScreen({ navigation }: Props) {
@@ -62,6 +69,7 @@ export function StoreScreen({ navigation }: Props) {
   );
 
   const equipCosmetic = useCallback((item: CosmeticItem) => {
+    if (isUnlockOnly(item)) return;
     setCosmetics((current) => {
       if (!current.ownedCosmeticIds.includes(item.id)) return current;
       if (current.equippedByCategory[item.category] === item.id) return current;
@@ -76,7 +84,7 @@ export function StoreScreen({ navigation }: Props) {
   const buyCosmetic = useCallback(
     (item: CosmeticItem) => {
       if (ownedCosmetics.has(item.id)) {
-        equipCosmetic(item);
+        if (!isUnlockOnly(item)) equipCosmetic(item);
         return;
       }
 
@@ -89,11 +97,16 @@ export function StoreScreen({ navigation }: Props) {
       setCosmetics((current) => ({
         ...current,
         ownedCosmeticIds: Array.from(new Set([...current.ownedCosmeticIds, item.id])),
-        equippedByCategory: { ...current.equippedByCategory, [item.category]: item.id },
+        equippedByCategory: isUnlockOnly(item)
+          ? current.equippedByCategory
+          : { ...current.equippedByCategory, [item.category]: item.id },
       }));
       addCoins(-item.price);
       sound.play('coins');
-      showAlert('Cosmetic unlocked', item.name + ' is now owned and equipped.');
+      showAlert(
+        'Cosmetic unlocked',
+        isUnlockOnly(item) ? item.name + ' is now in your emote tray.' : item.name + ' is now owned and equipped.',
+      );
     },
     [addCoins, equipCosmetic, ownedCosmetics, profile.coins, setCosmetics],
   );
@@ -143,7 +156,7 @@ export function StoreScreen({ navigation }: Props) {
         <View style={styles.grid}>
           {activeCategoryData.items.map((item, index) => {
             const owned = ownedCosmetics.has(item.id);
-            const equipped = cosmetics.equippedByCategory[item.category] === item.id;
+            const equipped = !isUnlockOnly(item) && cosmetics.equippedByCategory[item.category] === item.id;
 
             return (
               <CosmeticCard
@@ -284,8 +297,9 @@ function CosmeticCard({
   equipped: boolean;
   onPress: () => void;
 }) {
-  const buttonLabel = equipped ? 'Equipped' : owned ? 'Equip' : 'Buy';
-  const buttonVariant: ButtonVariant = equipped ? 'green' : owned ? 'white' : 'gold';
+  const unlockOnly = isUnlockOnly(item);
+  const buttonLabel = owned ? (unlockOnly ? 'Owned' : equipped ? 'Equipped' : 'Equip') : 'Buy';
+  const buttonVariant: ButtonVariant = owned && (unlockOnly || equipped) ? 'green' : owned ? 'white' : 'gold';
 
   return (
     <Animated.View entering={FadeInDown.delay(120 + index * 64).duration(410)} style={{ width }}>
@@ -322,7 +336,9 @@ function CosmeticCard({
               {owned ? (
                 <>
                   <Text style={styles.ownedText}>Owned</Text>
-                  <Text style={styles.ownedHint}>{equipped ? 'Ready at table' : 'Tap equip to use'}</Text>
+                  <Text style={styles.ownedHint}>
+                    {unlockOnly ? 'Available in emotes' : equipped ? 'Ready at table' : 'Tap equip to use'}
+                  </Text>
                 </>
               ) : (
                 <>
@@ -335,7 +351,7 @@ function CosmeticCard({
               label={buttonLabel}
               size="sm"
               variant={buttonVariant}
-              disabled={equipped}
+              disabled={equipped || (unlockOnly && owned)}
               onPress={onPress}
               icon={!owned ? <CoinIcon size={16} color={colors.goldDeep} /> : undefined}
             />
@@ -389,6 +405,34 @@ function CosmeticPreview({ item }: { item: CosmeticItem }) {
       <View style={styles.previewFrame}>
         <LinearGradient colors={item.swatches} style={styles.cardBackStage}>
           <CardBack size={62} variant={item.id} />
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  if (item.category === 'gifs') {
+    const gif = GIF_EMOTES[item.id];
+    return (
+      <View style={styles.previewFrame}>
+        <LinearGradient colors={item.swatches} style={styles.gifPreview}>
+          {gif ? (
+            <Image source={{ uri: gifThumbUrl(gif.gifId) }} style={styles.gifPreviewImage} resizeMode="cover" />
+          ) : (
+            <Text style={styles.previewEmoji}>{item.emoji}</Text>
+          )}
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  if (item.category === 'emotes') {
+    const emoji = EMOJI_EMOTES[item.id];
+    return (
+      <View style={styles.previewFrame}>
+        <LinearGradient colors={item.swatches} style={styles.emotePreview}>
+          <View style={styles.emotePreviewBubble}>
+            <Text style={styles.emotePreviewEmoji}>{emoji?.emoji ?? item.emoji}</Text>
+          </View>
         </LinearGradient>
       </View>
     );
@@ -593,6 +637,21 @@ const styles = StyleSheet.create({
   },
   previewGlow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   cardBackStage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  gifPreview: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.sm },
+  gifPreviewImage: { width: 112, height: 82, borderRadius: radii.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  emotePreview: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emotePreviewBubble: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.soft,
+  },
+  emotePreviewEmoji: { fontSize: 40 },
   tablePreview: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   tableRail: {
     width: '86%',

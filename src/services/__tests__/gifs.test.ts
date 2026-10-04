@@ -3,8 +3,8 @@ import { GIF_LIBRARY, gifUrl, gifThumbUrl } from '../gifs';
 
 describe('gif library', () => {
   it('ships the full curated pack', () => {
-    // The whole pack is shown at once in the emote sheet (no search), so it
-    // needs to stay big enough to be worth browsing.
+    // The store and the free tray both draw from this pack, so it needs to
+    // stay big enough to be worth unlocking.
     expect(GIF_LIBRARY.length).toBeGreaterThanOrEqual(70);
   });
 

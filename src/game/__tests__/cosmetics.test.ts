@@ -5,13 +5,24 @@ import {
   CLASSIC_CARD_BACK,
   CLASSIC_CHIPS,
   CLASSIC_FELT,
+  EMOJI_EMOTES,
   FELT_PALETTES,
+  FREE_GIF_COSMETIC_IDS,
+  GIF_EMOTES,
+  LEGACY_EMOJI_GRANT_IDS,
+  PURCHASABLE_GIF_EMOTES,
+  PURCHASABLE_EMOJI_EMOTES,
   STARTER_CARD_BACKS,
+  gifCosmeticId,
+  migrateCosmetics,
   resolveCardBack,
   resolveChips,
+  resolveEmojiEmotes,
   resolveFelt,
+  resolveGifEmotes,
   pinCosmetics,
 } from '../cosmetics';
+import { GIF_LIBRARY } from '../../services/gifs';
 
 describe('cosmetic palettes', () => {
   /*
@@ -274,5 +285,99 @@ describe('card backs', () => {
       expect(p.glyph.length, `${id} glyph should be a single code point`).toBeLessThanOrEqual(2);
       expect(p.glyph.includes('\uFE0F'), `${id} forces emoji presentation`).toBe(false);
     }
+  });
+});
+
+describe('gif emotes', () => {
+  it('keeps one fifth free and sells the rest', () => {
+    expect(GIF_LIBRARY.length).toBeGreaterThanOrEqual(70);
+    expect(FREE_GIF_COSMETIC_IDS).toHaveLength(16);
+    expect(Object.keys(PURCHASABLE_GIF_EMOTES)).toHaveLength(GIF_LIBRARY.length - FREE_GIF_COSMETIC_IDS.length);
+    const soldShare = Object.keys(PURCHASABLE_GIF_EMOTES).length / GIF_LIBRARY.length;
+    expect(soldShare).toBeGreaterThan(0.78);
+    expect(soldShare).toBeLessThan(0.82);
+  });
+
+  it('has cosmetic data for every GIF in the library', () => {
+    expect(Object.keys(GIF_EMOTES)).toHaveLength(GIF_LIBRARY.length);
+    for (const gif of GIF_LIBRARY) {
+      expect(GIF_EMOTES[gifCosmeticId(gif.id)], `missing cosmetic data for ${gif.id}`).toBeDefined();
+    }
+  });
+
+  it('starts with the everyday free set only', () => {
+    const available = resolveGifEmotes({ owned: [] });
+    expect(available.map((gif) => gif.id)).toEqual(FREE_GIF_COSMETIC_IDS);
+  });
+
+  it('adds bought GIFs without exposing unowned ones', () => {
+    const bought = Object.keys(PURCHASABLE_GIF_EMOTES).slice(0, 2);
+    const available = resolveGifEmotes({ owned: bought });
+    const ids = available.map((gif) => gif.id);
+    for (const id of bought) expect(ids).toContain(id);
+    for (const id of Object.keys(PURCHASABLE_GIF_EMOTES).slice(2)) {
+      expect(ids, `${id} is unowned`).not.toContain(id);
+    }
+  });
+
+  it('never drops an owned GIF from the available tray', () => {
+    const available = resolveGifEmotes({ owned: Object.keys(PURCHASABLE_GIF_EMOTES) });
+    expect(available.map((gif) => gif.gifId)).toEqual(GIF_LIBRARY.map((gif) => gif.id));
+  });
+});
+
+describe('emoji emotes', () => {
+  it('keeps ordinary table talk free and sells novelty reactions', () => {
+    expect(resolveEmojiEmotes({ owned: [] })).toEqual(['👍', '😂', '😤', '🤔', '😅', '🍀', '🤝']);
+    expect(Object.values(PURCHASABLE_EMOJI_EMOTES).map((emoji) => emoji.emoji)).toEqual([
+      '😮',
+      '😎',
+      '🔥',
+      '🎉',
+      '🙌',
+      '😱',
+      '🤯',
+      '💪',
+      '😴',
+    ]);
+  });
+
+  it('adds bought emoji without exposing unowned ones', () => {
+    const available = resolveEmojiEmotes({ owned: ['emoji-fire', 'emoji-mind-blown'] });
+    expect(available).toContain('🔥');
+    expect(available).toContain('🤯');
+    expect(available).not.toContain('😎');
+  });
+
+  it('has store data for every emoji reaction', () => {
+    expect(Object.keys(EMOJI_EMOTES)).toHaveLength(16);
+    for (const emoji of Object.values(EMOJI_EMOTES)) {
+      expect(emoji.swatches).toHaveLength(3);
+      expect(emoji.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('grants newly paid emoji to existing players exactly once', () => {
+    const migrated = migrateCosmetics(
+      { ownedCosmeticIds: ['card-midnight'], equippedByCategory: {} },
+      { grantLegacyEmojiEmotes: true },
+    );
+    for (const id of LEGACY_EMOJI_GRANT_IDS) {
+      expect(migrated.ownedCosmeticIds).toContain(id);
+    }
+
+    const repeated = migrateCosmetics(migrated, { grantLegacyEmojiEmotes: true });
+    expect(repeated).toBe(migrated);
+  });
+
+  it('marks new players migrated without giving them paid emoji', () => {
+    const migrated = migrateCosmetics(
+      { ownedCosmeticIds: [], equippedByCategory: {} },
+      { grantLegacyEmojiEmotes: false },
+    );
+    for (const id of LEGACY_EMOJI_GRANT_IDS) {
+      expect(migrated.ownedCosmeticIds).not.toContain(id);
+    }
+    expect(migrated.appliedMigrations?.length).toBeGreaterThan(0);
   });
 });

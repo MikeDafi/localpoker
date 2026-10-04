@@ -2528,7 +2528,7 @@ export function TableScreen({ navigation, route }: Props) {
           )}
         </View>
         <View style={styles.emoteAnchor}>
-          <EmoteBar onEmote={sendEmote} />
+          <EmoteBar onEmote={sendEmote} ownedCosmeticIds={cosmetics.ownedCosmeticIds} />
         </View>
       </View>
 

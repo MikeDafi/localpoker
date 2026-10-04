@@ -2,7 +2,8 @@
  * Curated, key-free GIF reaction pack.
  *
  * Giphy's media CDN serves GIFs without an API key, so this pack needs no
- * credentials and no network API, the whole thing is shown in the emote sheet.
+ * credentials and no network API. Ownership decides which entries reach the
+ * emote sheet.
  * Tags are kept for grouping/intent, not for a search box.
  *
  * Pure module (no React Native imports) so the catalog stays unit-testable.
@@ -13,7 +14,7 @@ export const gifUrl = (id: string) => `https://media.giphy.com/media/${id}/200w.
 /** Tiny static preview (~6KB) so the whole pack can be shown at once. */
 export const gifThumbUrl = (id: string) => `https://media.giphy.com/media/${id}/100_s.gif`;
 
-/** The full curated reaction pack, shown all at once in the emote sheet. */
+/** The full curated reaction pack. */
 export const GIF_LIBRARY: { id: string; tags: string[] }[] = [
   // poker
   { id: 'xT9DPi61MmrDLzVFzq', tags: ['poker', 'cards', 'allin', 'bet'] },

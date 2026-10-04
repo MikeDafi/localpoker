@@ -1,4 +1,5 @@
 import { colors } from '../theme/theme';
+import { GIF_LIBRARY } from '../services/gifs';
 
 /**
  * What a bought felt or chip set actually changes.
@@ -51,6 +52,26 @@ export interface CardBackPalette {
   glyph: string;
 }
 
+export interface GifCosmetic {
+  id: string;
+  gifId: string;
+  name: string;
+  price: number;
+  description: string;
+  emoji: string;
+  swatches: readonly [string, string, string];
+  tags: readonly string[];
+}
+
+export interface EmojiCosmetic {
+  id: string;
+  emoji: string;
+  name: string;
+  price: number;
+  description: string;
+  swatches: readonly [string, string, string];
+}
+
 /** The felt the game has always had, and what anything unknown falls back to. */
 export const CLASSIC_FELT = 'classic';
 export const CLASSIC_CHIPS = 'classic';
@@ -58,6 +79,320 @@ export const CLASSIC_CARD_BACK = 'blue';
 export const STARTER_FELTS = [CLASSIC_FELT] as const;
 export const STARTER_CHIPS = [CLASSIC_CHIPS] as const;
 export const STARTER_CARD_BACKS = [CLASSIC_CARD_BACK, 'red'] as const;
+
+const FREE_GIF_IDS = [
+  'l0MYv61yrzZu6roFG',
+  'YFH1JUdAdtNkf0kmFL',
+  'SsaY6eIIKSJJtPEh6B',
+  'l0MYt5jPR6QX5pnqM',
+  'vmon3eAOp1WfK',
+  'd2lcHJTG5Tscg',
+  'XHeLeuirRbwptHhSWd',
+  '26ufdipQqU2lhNA4g',
+  '5VKbvrjxpVJCM',
+  '11tTNkNy1SdXGg',
+  'd3mlE7uhX8KFgEmY',
+  'MFsqcBSoOKPbjtmvWz',
+  'YRuFixSNWFVcXaxpmX',
+  'XD4qHZpkyUFfq',
+  '111ebonMs90YLu',
+  '12XDYvMJNcmLgQ',
+] as const;
+
+export const gifCosmeticId = (gifId: string): string => `gif-${gifId}`;
+export const FREE_GIF_COSMETIC_IDS = FREE_GIF_IDS.map(gifCosmeticId);
+
+const GIF_TAG_ORDER = [
+  'poker',
+  'win',
+  'sad',
+  'laugh',
+  'wow',
+  'shocked',
+  'angry',
+  'think',
+  'money',
+  'clap',
+  'facepalm',
+  'thumbsup',
+  'goodluck',
+] as const;
+
+type GifStyleTag = (typeof GIF_TAG_ORDER)[number];
+
+const GIF_TAG_STYLES: Record<GifStyleTag, {
+  label: string;
+  price: number;
+  description: string;
+  emoji: string;
+  swatches: readonly [string, string, string];
+}> = {
+  poker: {
+    label: 'Poker Reaction',
+    price: 450,
+    description: 'A table read for the GIF tray.',
+    emoji: '🃏',
+    swatches: [colors.green, '#064E3B', colors.gold],
+  },
+  win: {
+    label: 'Win Reaction',
+    price: 500,
+    description: 'A celebration for big pots.',
+    emoji: '🎉',
+    swatches: [colors.gold, '#F97316', colors.accentPink],
+  },
+  sad: {
+    label: 'Bad Beat',
+    price: 300,
+    description: 'A soft landing for rough rivers.',
+    emoji: '😭',
+    swatches: ['#60A5FA', '#1D4ED8', '#E0F2FE'],
+  },
+  laugh: {
+    label: 'Laugh Reaction',
+    price: 350,
+    description: 'A laugh for friendly chaos.',
+    emoji: '😂',
+    swatches: ['#FDE68A', '#F59E0B', '#7C2D12'],
+  },
+  wow: {
+    label: 'Wow Reaction',
+    price: 450,
+    description: 'A big reaction for unreal runouts.',
+    emoji: '😮',
+    swatches: [colors.accentAlt, colors.blue, '#E0F2FE'],
+  },
+  shocked: {
+    label: 'Shock Reaction',
+    price: 450,
+    description: 'A stunned look for surprise flips.',
+    emoji: '🤯',
+    swatches: ['#A855F7', '#4C1D95', '#F5D0FE'],
+  },
+  angry: {
+    label: 'Tilt Reaction',
+    price: 400,
+    description: 'A safe vent for a spicy beat.',
+    emoji: '😤',
+    swatches: ['#EF4444', '#7F1D1D', '#FCA5A5'],
+  },
+  think: {
+    label: 'Tank Reaction',
+    price: 350,
+    description: 'A thinking face for tough spots.',
+    emoji: '🤔',
+    swatches: ['#94A3B8', '#334155', '#E2E8F0'],
+  },
+  money: {
+    label: 'Money Reaction',
+    price: 550,
+    description: 'A chip flex for stacked pots.',
+    emoji: '💰',
+    swatches: [colors.green, colors.gold, '#FDE68A'],
+  },
+  clap: {
+    label: 'Nice Hand',
+    price: 300,
+    description: 'A respectful nod after showdown.',
+    emoji: '👏',
+    swatches: ['#FDBA74', '#C2410C', '#FFEDD5'],
+  },
+  facepalm: {
+    label: 'Oops Reaction',
+    price: 300,
+    description: 'A facepalm for missed clicks and punts.',
+    emoji: '🤦',
+    swatches: ['#CBD5E1', '#64748B', '#F8FAFC'],
+  },
+  thumbsup: {
+    label: 'Thumbs Up',
+    price: 250,
+    description: 'A quick yes for table talk.',
+    emoji: '👍',
+    swatches: [colors.blue, colors.blueDeep, '#DBEAFE'],
+  },
+  goodluck: {
+    label: 'Good Luck',
+    price: 250,
+    description: 'A friendly send-off before the flop.',
+    emoji: '🍀',
+    swatches: [colors.green, '#16A34A', '#DCFCE7'],
+  },
+};
+
+const gifStyleForTags = (tags: readonly string[]): GifStyleTag =>
+  GIF_TAG_ORDER.find((tag) => tags.includes(tag)) ?? 'poker';
+
+function buildGifEmotes(): Record<string, GifCosmetic> {
+  const counts: Partial<Record<GifStyleTag, number>> = {};
+  const out: Record<string, GifCosmetic> = {};
+  for (const gif of GIF_LIBRARY) {
+    const id = gifCosmeticId(gif.id);
+    const styleTag = gifStyleForTags(gif.tags);
+    const style = GIF_TAG_STYLES[styleTag];
+    const count = (counts[styleTag] ?? 0) + 1;
+    counts[styleTag] = count;
+    out[id] = {
+      id,
+      gifId: gif.id,
+      name: `${style.label} ${count}`,
+      price: style.price,
+      description: style.description,
+      emoji: style.emoji,
+      swatches: style.swatches,
+      tags: gif.tags,
+    };
+  }
+  return out;
+}
+
+export const GIF_EMOTES = buildGifEmotes();
+export const PURCHASABLE_GIF_EMOTES = Object.fromEntries(
+  Object.entries(GIF_EMOTES).filter(([id]) => !FREE_GIF_COSMETIC_IDS.includes(id)),
+) as Record<string, GifCosmetic>;
+
+const EMOJI_EMOTE_LIST = [
+  {
+    id: 'emoji-thumbsup',
+    emoji: '👍',
+    name: 'Nice Hand',
+    price: 0,
+    description: 'A simple nod for a well played pot.',
+    swatches: [colors.blue, colors.blueDeep, '#DBEAFE'],
+  },
+  {
+    id: 'emoji-laugh',
+    emoji: '😂',
+    name: 'Table Laugh',
+    price: 0,
+    description: 'A friendly laugh when the table gets silly.',
+    swatches: ['#FDE68A', '#F59E0B', '#7C2D12'],
+  },
+  {
+    id: 'emoji-steam',
+    emoji: '😤',
+    name: 'Steam Vent',
+    price: 0,
+    description: 'A safe way to show a frustrating beat.',
+    swatches: ['#EF4444', '#7F1D1D', '#FCA5A5'],
+  },
+  {
+    id: 'emoji-thinking',
+    emoji: '🤔',
+    name: 'Thinking',
+    price: 0,
+    description: 'A tanking face for tough choices.',
+    swatches: ['#94A3B8', '#334155', '#E2E8F0'],
+  },
+  {
+    id: 'emoji-sweat-smile',
+    emoji: '😅',
+    name: 'Close One',
+    price: 0,
+    description: 'A small oops for awkward runouts.',
+    swatches: ['#7DD3FC', '#0284C7', '#E0F2FE'],
+  },
+  {
+    id: 'emoji-clover',
+    emoji: '🍀',
+    name: 'Good Luck',
+    price: 0,
+    description: 'A friendly wish before the cards turn.',
+    swatches: [colors.green, '#16A34A', '#DCFCE7'],
+  },
+  {
+    id: 'emoji-handshake',
+    emoji: '🤝',
+    name: 'Thanks',
+    price: 0,
+    description: 'A quick thanks or good game.',
+    swatches: ['#FDBA74', '#92400E', '#FFEDD5'],
+  },
+  {
+    id: 'emoji-wow',
+    emoji: '😮',
+    name: 'Surprise',
+    price: 250,
+    description: 'A bigger face for unexpected turns.',
+    swatches: [colors.accentAlt, colors.blue, '#E0F2FE'],
+  },
+  {
+    id: 'emoji-cool',
+    emoji: '😎',
+    name: 'Cool Read',
+    price: 350,
+    description: 'A shades-on flex after a clean call.',
+    swatches: ['#111827', colors.blue, colors.gold],
+  },
+  {
+    id: 'emoji-fire',
+    emoji: '🔥',
+    name: 'Heater',
+    price: 450,
+    description: 'A hot-streak marker for loud pots.',
+    swatches: ['#F97316', '#EF4444', '#FDE68A'],
+  },
+  {
+    id: 'emoji-party',
+    emoji: '🎉',
+    name: 'Party Pot',
+    price: 400,
+    description: 'A celebration for splashy wins.',
+    swatches: [colors.gold, colors.accentPink, colors.accentAlt],
+  },
+  {
+    id: 'emoji-raised-hands',
+    emoji: '🙌',
+    name: 'Hype Hands',
+    price: 300,
+    description: 'Extra hype when the table erupts.',
+    swatches: ['#FDE68A', '#F59E0B', colors.accentPink],
+  },
+  {
+    id: 'emoji-scream',
+    emoji: '😱',
+    name: 'River Scream',
+    price: 350,
+    description: 'A dramatic shriek for wild boards.',
+    swatches: ['#60A5FA', '#1D4ED8', '#F5D0FE'],
+  },
+  {
+    id: 'emoji-mind-blown',
+    emoji: '🤯',
+    name: 'Mind Blown',
+    price: 500,
+    description: 'A premium reaction for unreal reveals.',
+    swatches: ['#A855F7', '#4C1D95', '#F5D0FE'],
+  },
+  {
+    id: 'emoji-muscle',
+    emoji: '💪',
+    name: 'Flex',
+    price: 400,
+    description: 'A strength pose for confident wins.',
+    swatches: ['#FDBA74', '#C2410C', colors.gold],
+  },
+  {
+    id: 'emoji-sleepy',
+    emoji: '😴',
+    name: 'Sleepy Needle',
+    price: 300,
+    description: 'A sleepy needle for slow tanks.',
+    swatches: ['#93C5FD', '#312E81', '#E0E7FF'],
+  },
+] as const satisfies readonly EmojiCosmetic[];
+
+export const EMOJI_EMOTES: Record<string, EmojiCosmetic> = Object.fromEntries(
+  EMOJI_EMOTE_LIST.map((emoji) => [emoji.id, emoji]),
+) as Record<string, EmojiCosmetic>;
+export const FREE_EMOJI_COSMETIC_IDS = EMOJI_EMOTE_LIST
+  .filter((emoji) => emoji.price === 0)
+  .map((emoji) => emoji.id);
+export const PURCHASABLE_EMOJI_EMOTES = Object.fromEntries(
+  EMOJI_EMOTE_LIST.filter((emoji) => emoji.price > 0).map((emoji) => [emoji.id, emoji]),
+) as Record<string, EmojiCosmetic>;
+export const LEGACY_EMOJI_GRANT_IDS = Object.keys(PURCHASABLE_EMOJI_EMOTES);
+export const LEGACY_EMOJI_GRANT_MIGRATION = 'legacy-emoji-emotes-2026-10-03';
 
 /**
  * Keyed by the store item id, so a purchase and its palette cannot drift
@@ -267,6 +602,24 @@ export function resolveCardBack(input: {
   return pickStyle(input, CARD_BACK_PALETTES, CLASSIC_CARD_BACK, STARTER_CARD_BACKS);
 }
 
+export function resolveGifEmotes(input: {
+  owned?: readonly string[];
+}): GifCosmetic[] {
+  const ownedSet = new Set(input.owned ?? []);
+  const freeSet = new Set(FREE_GIF_COSMETIC_IDS);
+  return Object.values(GIF_EMOTES).filter((gif) => freeSet.has(gif.id) || ownedSet.has(gif.id));
+}
+
+export function resolveEmojiEmotes(input: {
+  owned?: readonly string[];
+}): string[] {
+  const ownedSet = new Set(input.owned ?? []);
+  const freeSet = new Set<string>(FREE_EMOJI_COSMETIC_IDS);
+  return Object.values(EMOJI_EMOTES)
+    .filter((emoji) => freeSet.has(emoji.id) || ownedSet.has(emoji.id))
+    .map((emoji) => emoji.emoji);
+}
+
 /** The id a table settles on, exported so the host can publish it to a room. */
 export function pickStyle(
   input: { setting?: string; equippedId?: string; owned?: readonly string[] },
@@ -289,9 +642,10 @@ export function pickStyle(
 export interface CosmeticsState {
   ownedCosmeticIds: string[];
   equippedByCategory: Record<string, string>;
+  appliedMigrations?: string[];
 }
 
-export const emptyCosmetics: CosmeticsState = { ownedCosmeticIds: [], equippedByCategory: {} };
+export const emptyCosmetics: CosmeticsState = { ownedCosmeticIds: [], equippedByCategory: {}, appliedMigrations: [] };
 
 /**
  * Read the stored cosmetics without trusting them.
@@ -312,10 +666,32 @@ export function readCosmetics(raw: string | null | undefined): CosmeticsState {
     for (const [category, id] of Object.entries(parsed.equippedByCategory ?? {})) {
       if (typeof id === 'string') equipped[category] = id;
     }
-    return { ownedCosmeticIds: owned, equippedByCategory: equipped };
+    const appliedMigrations = Array.isArray(parsed.appliedMigrations)
+      ? parsed.appliedMigrations.filter((id): id is string => typeof id === 'string')
+      : [];
+    return { ownedCosmeticIds: owned, equippedByCategory: equipped, appliedMigrations };
   } catch {
     return emptyCosmetics;
   }
+}
+
+export function migrateCosmetics(
+  state: CosmeticsState,
+  options: { grantLegacyEmojiEmotes: boolean },
+): CosmeticsState {
+  const appliedMigrations = new Set(state.appliedMigrations ?? []);
+  if (appliedMigrations.has(LEGACY_EMOJI_GRANT_MIGRATION)) return state;
+
+  appliedMigrations.add(LEGACY_EMOJI_GRANT_MIGRATION);
+  const owned = new Set(state.ownedCosmeticIds);
+  if (options.grantLegacyEmojiEmotes) {
+    for (const id of LEGACY_EMOJI_GRANT_IDS) owned.add(id);
+  }
+  return {
+    ...state,
+    ownedCosmeticIds: [...owned],
+    appliedMigrations: [...appliedMigrations],
+  };
 }
 
 /**

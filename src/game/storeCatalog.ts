@@ -8,8 +8,9 @@
  * asserted against each other in tests instead of by eye.
  */
 import { colors } from '../theme/theme';
+import { PURCHASABLE_EMOJI_EMOTES, PURCHASABLE_GIF_EMOTES } from './cosmetics';
 
-export const CATEGORY_IDS = ['outfits', 'cardBacks', 'tables', 'chips'] as const;
+export const CATEGORY_IDS = ['outfits', 'cardBacks', 'tables', 'chips', 'emotes', 'gifs'] as const;
 
 export type CosmeticCategoryId = (typeof CATEGORY_IDS)[number];
 
@@ -33,6 +34,25 @@ export type CosmeticCategory = {
   items: CosmeticItem[];
 };
 
+const GIF_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_GIF_EMOTES).map((gif) => ({
+  id: gif.id,
+  category: 'gifs',
+  name: gif.name,
+  price: gif.price,
+  description: gif.description,
+  emoji: gif.emoji,
+  swatches: gif.swatches,
+}));
+
+const EMOTE_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_EMOJI_EMOTES).map((emoji) => ({
+  id: emoji.id,
+  category: 'emotes',
+  name: emoji.name,
+  price: emoji.price,
+  description: emoji.description,
+  emoji: emoji.emoji,
+  swatches: emoji.swatches,
+}));
 
 export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
   {
@@ -298,5 +318,21 @@ export const COSMETIC_CATEGORIES: CosmeticCategory[] = [
         badge: 'Legend',
       },
     ],
+  },
+  {
+    id: 'emotes',
+    label: 'Emoji Emotes',
+    shortLabel: 'Emotes',
+    emoji: '😎',
+    description: 'Unlock novelty emoji reactions for the quick emote grid.',
+    items: EMOTE_STORE_ITEMS,
+  },
+  {
+    id: 'gifs',
+    label: 'Reaction GIFs',
+    shortLabel: 'GIFs',
+    emoji: '🎞️',
+    description: 'Unlock extra Giphy reactions for the table chat tray.',
+    items: GIF_STORE_ITEMS,
   },
 ];

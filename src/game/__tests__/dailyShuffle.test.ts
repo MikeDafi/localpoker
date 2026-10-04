@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { dayNumber, shuffleForDay } from '../dailyShuffle';
+import { FREE_GIF_COSMETIC_IDS, PURCHASABLE_GIF_EMOTES, resolveGifEmotes } from '../cosmetics';
 
 const items = Array.from({ length: 24 }, (_, i) => i);
 
@@ -53,5 +54,15 @@ describe('shuffleForDay', () => {
   it('actually reorders rather than handing back the same list', () => {
     const days = Array.from({ length: 10 }, (_, d) => shuffleForDay(items, 500 + d));
     expect(days.some((order) => !order.every((v, i) => v === items[i]))).toBe(true);
+  });
+
+  it('shuffles only GIFs the player can send', () => {
+    const bought = Object.keys(PURCHASABLE_GIF_EMOTES).slice(0, 3);
+    const shuffled = shuffleForDay(resolveGifEmotes({ owned: bought }), 12345);
+    const allowed = new Set([...FREE_GIF_COSMETIC_IDS, ...bought]);
+    expect(shuffled.every((gif) => allowed.has(gif.id))).toBe(true);
+    for (const id of bought) {
+      expect(shuffled.map((gif) => gif.id)).toContain(id);
+    }
   });
 });

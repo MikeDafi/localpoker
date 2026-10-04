@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
 import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
-import { emptyCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
+import { emptyCosmetics, migrateCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
 import type { ObservedCounters } from '../game/observedStats';
 import {
   Stats, HandResult, DEFAULT_STATS, applyHandResult, derivedStats as computeDerived, mergeStats,
@@ -325,7 +325,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (av === 'true') setAgeVerified(true);
         if (b) setBlockedUsers(JSON.parse(b));
         if (oh) setOpponentHistory(JSON.parse(oh));
-        if (cos) setCosmeticsState(readCosmetics(cos));
+        const hadPersistedUserData = Boolean(p || s || a || f || st || g || av || b || acct || oh || cos);
+        const readCloset = readCosmetics(cos);
+        const migratedCloset = migrateCosmetics(readCloset, { grantLegacyEmojiEmotes: hadPersistedUserData });
+        setCosmeticsState(migratedCloset);
+        if (migratedCloset !== readCloset || !cos) {
+          AsyncStorage.setItem(COSMETICS_KEY, JSON.stringify(migratedCloset)).catch((error) => {
+            reportStorageError('migrate-cosmetics', COSMETICS_KEY, error);
+          });
+        }
       } catch (error) {
         captureError(error, { tags: { area: 'async-storage', operation: 'hydrate-app-state' } });
       }

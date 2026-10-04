@@ -3,7 +3,11 @@ import { COSMETIC_CATEGORIES, type CosmeticItem } from '../storeCatalog';
 import {
   CARD_BACK_PALETTES,
   CHIP_PALETTES,
+  EMOJI_EMOTES,
   FELT_PALETTES,
+  FREE_EMOJI_COSMETIC_IDS,
+  FREE_GIF_COSMETIC_IDS,
+  GIF_EMOTES,
   STARTER_CARD_BACKS,
   STARTER_CHIPS,
   STARTER_FELTS,
@@ -26,6 +30,8 @@ describe('everything on sale actually does something', () => {
     ['cardBacks', CARD_BACK_PALETTES, STARTER_CARD_BACKS],
     ['tables', FELT_PALETTES, STARTER_FELTS],
     ['chips', CHIP_PALETTES, STARTER_CHIPS],
+    ['emotes', EMOJI_EMOTES, FREE_EMOJI_COSMETIC_IDS],
+    ['gifs', GIF_EMOTES, FREE_GIF_COSMETIC_IDS],
   ];
 
   for (const [category, palettes, builtInIds] of cases) {

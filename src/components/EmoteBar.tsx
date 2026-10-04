@@ -5,12 +5,13 @@ import { colors, fonts, radii, shadows, spacing, type, motion, easings } from '.
 import { sound } from '../services/sound';
 import { GIF_LIBRARY, gifUrl, gifThumbUrl } from '../services/gifs';
 import { shuffleForDay } from '../game/dailyShuffle';
+import { EMOJI_EMOTES, resolveEmojiEmotes, resolveGifEmotes } from '../game/cosmetics';
 
 export type EmoteAnim = 'bounce' | 'spin' | 'pulse' | 'shake' | 'burst';
 export type Emote = { type: 'emoji' | 'text' | 'sticker' | 'gif'; value: string; anim?: EmoteAnim };
 
 /** Big, clear emoji reactions. */
-export const EMOJIS = ['👍', '😂', '😮', '😎', '🔥', '🎉', '😤', '🤔', '😅', '🙌', '😱', '🤯', '💪', '🍀', '😴', '🤝'];
+export const EMOJIS = Object.values(EMOJI_EMOTES).map((emoji) => emoji.emoji);
 
 /** Animated "sticker" reactions, each plays a looping animation in the bubble. */
 export const STICKERS: Emote[] = [
@@ -30,11 +31,19 @@ export const QUICK_TEXTS = ['Nice hand!', 'All in!', 'Bluffing?', 'GG', "Let's g
 // Curated GIF pack lives in services/gifs.
 export { GIF_LIBRARY };
 
-export function EmoteBar({ onEmote }: { onEmote: (emote: Emote) => void }) {
+const NO_OWNED_COSMETICS: readonly string[] = [];
+
+export function EmoteBar({
+  onEmote,
+  ownedCosmeticIds = NO_OWNED_COSMETICS,
+}: {
+  onEmote: (emote: Emote) => void;
+  ownedCosmeticIds?: readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
 
-  // The whole curated pack, shown at once. Thumbnails are Giphy's tiny static
+  // The available curated pack, shown at once. Thumbnails are Giphy's tiny static
   // renditions (~6KB each) so all of them load instantly; the GIF that actually
   // gets sent is the full animated one.
   //
@@ -42,8 +51,13 @@ export function EmoteBar({ onEmote }: { onEmote: (emote: Emote) => void }) {
   // easy reach are not the same six forever, while the tray still holds still
   // for as long as anyone is playing.
   const gifs = useMemo(
-    () => shuffleForDay(GIF_LIBRARY).map((g) => ({ send: gifUrl(g.id), thumb: gifThumbUrl(g.id) })),
-    [],
+    () => shuffleForDay(resolveGifEmotes({ owned: ownedCosmeticIds }))
+      .map((g) => ({ send: gifUrl(g.gifId), thumb: gifThumbUrl(g.gifId) })),
+    [ownedCosmeticIds],
+  );
+  const emojis = useMemo(
+    () => resolveEmojiEmotes({ owned: ownedCosmeticIds }),
+    [ownedCosmeticIds],
   );
 
   const send = (emote: Emote) => {
@@ -124,7 +138,7 @@ export function EmoteBar({ onEmote }: { onEmote: (emote: Emote) => void }) {
 
               <Text style={styles.sectionLabel}>Emojis</Text>
               <View style={styles.emojiGrid}>
-                {EMOJIS.map((e) => (
+                {emojis.map((e) => (
                   <Pressable key={e} style={styles.emojiChip} onPress={() => send({ type: 'emoji', value: e })} accessibilityLabel={`Send ${e}`}>
                     <Text style={styles.emoji}>{e}</Text>
                   </Pressable>
