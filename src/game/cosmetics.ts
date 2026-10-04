@@ -185,7 +185,7 @@ export const CARD_BACK_PALETTES: Record<string, CardBackPalette> = {
     emblemStroke: 'rgba(90,40,8,0.4)',
     mark: 'rgba(84,34,6,0.88)',
     line: 'rgba(96,42,10,0.32)',
-    glyph: '☀',
+    glyph: '✹',
   },
   'card-nebula': {
     gradient: [colors.accentPink, colors.accent, '#1B1040'],
@@ -205,7 +205,7 @@ export const CARD_BACK_PALETTES: Record<string, CardBackPalette> = {
     emblemStroke: 'rgba(240,206,122,0.6)',
     mark: 'rgba(248,226,160,0.95)',
     line: 'rgba(240,206,122,0.42)',
-    glyph: '♛',
+    glyph: '❖',
   },
   'card-lucky-koi': {
     gradient: ['#FFF1D6', '#FF7A59', '#B23A24'],
@@ -215,7 +215,7 @@ export const CARD_BACK_PALETTES: Record<string, CardBackPalette> = {
     emblemStroke: 'rgba(96,28,14,0.42)',
     mark: 'rgba(88,24,12,0.88)',
     line: 'rgba(104,32,16,0.34)',
-    glyph: '❀',
+    glyph: '◉',
   },
   'card-midnight': {
     gradient: ['#1F2937', '#111827', '#03060C'],

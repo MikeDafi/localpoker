@@ -222,4 +222,39 @@ describe('card backs', () => {
     );
     expect(pinned.cardBack).toBe(CLASSIC_CARD_BACK);
   });
+  it('uses only glyphs iOS draws as ink, never as colour emoji', () => {
+    /*
+     * A glyph with an emoji presentation ignores the fill colour entirely.
+     * Three of these shipped as emoji on a first pass: a yellow sun and a
+     * pink flower sat on top of dark-ink cards like stickers, and a gold
+     * crown did the same. They have to be engraved in the card's own ink, so
+     * only code points with no emoji presentation are allowed.
+     *
+     * Checked by code point rather than by eye, because the two look
+     * identical in a source file.
+     */
+    const EMOJI_CAPABLE = [
+      [0x2600, 0x27bf], // misc symbols and dingbats, where most of them live
+      [0x1f000, 0x1faff],
+      [0x2b00, 0x2bff],
+    ];
+    // Vetted exceptions: these sit inside the ranges above but have no emoji
+    // presentation, and were each confirmed on a simulator.
+    const TEXT_ONLY = new Set(['\u2660', '\u2665', '\u2663', '\u2666', '\u25C6',
+      '\u2726', '\u2739', '\u2756', '\u25C9', '\u2B22']);
+
+    for (const [id, p] of Object.entries(CARD_BACK_PALETTES)) {
+      const cp = p.glyph.codePointAt(0)!;
+      if (TEXT_ONLY.has(p.glyph)) continue;
+      const risky = EMOJI_CAPABLE.some(([lo, hi]) => cp >= lo && cp <= hi);
+      expect(risky, `${id} uses ${p.glyph} (U+${cp.toString(16).toUpperCase()}), which may render as emoji`).toBe(false);
+    }
+  });
+
+  it('never carries a variation selector, which would be a workaround', () => {
+    for (const [id, p] of Object.entries(CARD_BACK_PALETTES)) {
+      expect(p.glyph.length, `${id} glyph should be a single code point`).toBeLessThanOrEqual(2);
+      expect(p.glyph.includes('\uFE0F'), `${id} forces emoji presentation`).toBe(false);
+    }
+  });
 });
