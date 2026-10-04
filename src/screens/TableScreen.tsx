@@ -11,6 +11,7 @@ import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdo
 import { seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
 import { pickMidGameSafe } from '../game/hostControls';
+import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import { SETTINGS_SCHEMA, availableSettingOptions, type GameSettings } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
@@ -559,6 +560,7 @@ export function TableScreen({ navigation, route }: Props) {
     Object.values(emoteTimers.current).forEach(clearTimeout);
   }, []);
 
+
   /**
    * Whether the settled hand on screen still has board left to deal.
    *
@@ -621,6 +623,46 @@ export function TableScreen({ navigation, route }: Props) {
     ?? (roomCode
       ? felt.players[0]!
       : felt.players.find((p) => p.id === HUMAN_ID) ?? felt.players[0]!);
+  /*
+   * Bots reacting to what just happened.
+   *
+   * Gated on the reaction being a *bot's*: in an online room the other seats
+   * are real people who send their own, and a local phone puppeting them
+   * would be inventing messages nobody wrote.
+   *
+   * `humanActionElapsedMs` is deliberately not passed, so the "human is
+   * tanking" situation never fires. It would need a timer ticking every
+   * second purely to decide whether to post a shrug, which is a re-render a
+   * second for a joke. Everything that happens at a showdown works from the
+   * state transition alone.
+   */
+  const botReactionMemory = useRef(BOT_REACTION_INITIAL_MEMORY);
+  const botReactionFrom = useRef<GameState | null>(null);
+  useEffect(() => {
+    const previous = botReactionFrom.current;
+    botReactionFrom.current = state;
+    if (animsOff || !previous || previous === state) return;
+
+    const nowMs = Date.now();
+    for (const player of state.players) {
+      if (!player.id.startsWith('bot-')) continue;
+      const decision = maybeBotReaction(
+        {
+          state,
+          previousState: previous,
+          botId: player.id,
+          nowMs,
+          humanPlayerId: human.id,
+          botDifficulty: botDiff[player.id],
+          includeFreeReactions: true,
+        },
+        botReactionMemory.current,
+      );
+      botReactionMemory.current = decision.memory;
+      if (decision.emote) showEmote(player.id, decision.emote as Emote);
+    }
+  }, [state, animsOff, human.id, botDiff, showEmote]);
+
   const current = felt.players[felt.currentPlayerIndex];
   const isAwaitingOnlineState = !!roomCode && firebaseOnline && !onlineSyncActive;
   const isHumanTurn = current?.id === human?.id && !handOver && !isAwaitingOnlineState;
