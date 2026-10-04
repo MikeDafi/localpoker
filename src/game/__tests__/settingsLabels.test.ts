@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_GAME_SETTINGS, SETTINGS_SCHEMA } from '../settings';
+import { DEFAULT_GAME_SETTINGS, DEVICE_ONLY_SETTINGS, SETTINGS_SCHEMA } from '../settings';
 
 /**
  * Guards the fix for a label that broke mid-word.
@@ -99,5 +99,52 @@ describe('every setting is real', () => {
     // If one of these gains a control, it is no longer internal.
     const contradictory = [...INTERNAL_ONLY].filter((key) => schemaKeys.has(key));
     expect(contradictory).toEqual([]);
+  });
+});
+
+describe('what Game Setup is allowed to show', () => {
+  /*
+   * Game Setup configures a table. Anything that belongs to the phone rather
+   * than to the game has to be filtered out of it, and "Notify me" was not:
+   * it turns push on for this device and publishes a token, but it appeared
+   * while setting up a game as though it were a property of the table.
+   *
+   * This mirrors the filter in GameSetupScreen so that adding another
+   * device-only setting cannot quietly put it back on that screen.
+   */
+  const setupSections = SETTINGS_SCHEMA
+    .filter((s) => !['sound', 'animations', 'a11y'].includes(s.id))
+    .map((s) => ({
+      ...s,
+      fields: s.fields.filter((f) => !(DEVICE_ONLY_SETTINGS as readonly string[]).includes(String(f.key))),
+    }))
+    .filter((s) => s.fields.length > 0);
+
+  it('shows no device-only setting', () => {
+    const keys = setupSections.flatMap((s) => s.fields.map((f) => String(f.key)));
+    for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
+      expect(keys, `${deviceOnly} belongs in Settings, not Game Setup`).not.toContain(deviceOnly);
+    }
+  });
+
+  it('leaves no empty tab behind', () => {
+    // Friends held nothing but that one toggle, so filtering the field has to
+    // take the section with it rather than leave a tab with nothing in it.
+    for (const section of setupSections) {
+      expect(section.fields.length, `${section.id} is an empty tab`).toBeGreaterThan(0);
+    }
+  });
+
+  it('still offers the table settings worth setting per game', () => {
+    const ids = setupSections.map((s) => s.id);
+    expect(ids).toContain('table');
+    expect(ids).toContain('bots');
+  });
+
+  it('keeps every device-only setting reachable in full Settings', () => {
+    const all = SETTINGS_SCHEMA.flatMap((s) => s.fields.map((f) => String(f.key)));
+    for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
+      expect(all, `${deviceOnly} must still be changeable somewhere`).toContain(deviceOnly);
+    }
   });
 });

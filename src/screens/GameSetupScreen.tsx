@@ -8,6 +8,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiButton } from '../components/WiiButton';
 import { WiiPanel } from '../components/WiiPanel';
 import {
+  DEVICE_ONLY_SETTINGS,
   SETTINGS_SCHEMA,
   DEFAULT_GAME_SETTINGS,
   normalizeSettings,
@@ -50,7 +51,23 @@ export function GameSetupScreen({ navigation, route }: Props) {
       if (['sound', 'animations', 'a11y'].includes(s.id)) return false;
       if (isFriends && s.id === 'bots') return false;
       return true;
-    }),
+    })
+      /*
+       * Strip anything that belongs to the device rather than to the table.
+       *
+       * "Notify me" turns on push for this phone and publishes a token; it
+       * follows the player, not the game, and sits in Settings. Offering it
+       * while setting up a table read as a per-table switch and would have
+       * been changed by anyone who happened to be opening a game.
+       */
+      .map((s) => ({
+        ...s,
+        fields: s.fields.filter(
+          (f) => !(DEVICE_ONLY_SETTINGS as readonly string[]).includes(f.key),
+        ),
+      }))
+      // Friends was nothing but that one toggle, so it is now an empty tab.
+      .filter((s) => s.fields.length > 0),
     [isFriends],
   );
   const compact = width < 430;

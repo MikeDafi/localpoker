@@ -20,6 +20,9 @@ import type { RoomSummary } from '../services/firebase/types';
  * This is the missing half: if a friend opens a table while you are looking at
  * the app, it says so, once, with a way straight in.
  */
+/** How long an invite stays on screen before it takes itself away. */
+export const INVITE_BANNER_MS = 5000;
+
 export function InviteBanner({
   enabled,
   onJoin,
@@ -60,6 +63,20 @@ export function InviteBanner({
       setOffer(fresh);
     });
   }, [enabled]);
+
+  /*
+   * Take itself away after a few seconds.
+   *
+   * It sat there until it was dismissed or acted on, so a missed invite stayed
+   * pinned over the top of whatever came next for the rest of the session. An
+   * invite is a moment, not a state: the room is still in Join Room if the
+   * offer is wanted after the banner has gone.
+   */
+  useEffect(() => {
+    if (!offer) return undefined;
+    const timer = setTimeout(() => setOffer(null), INVITE_BANNER_MS);
+    return () => clearTimeout(timer);
+  }, [offer]);
 
   if (!offer) return null;
 

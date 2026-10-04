@@ -218,7 +218,7 @@ export function normalizeSettings(s?: Partial<GameSettings> | null): GameSetting
  * These keys have no bearing on how a hand plays, so they are stripped before
  * the settings travel.
  */
-const DEVICE_ONLY_SETTINGS = ['pushNotifications'] as const;
+export const DEVICE_ONLY_SETTINGS = ['pushNotifications'] as const;
 
 /** The settings payload a room publishes, minus anything device-local. */
 export function roomSettingsJson(settings: GameSettings): string {
