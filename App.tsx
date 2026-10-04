@@ -14,13 +14,14 @@ import {
   Fredoka_700Bold,
 } from '@expo-google-fonts/fredoka';
 
-import { AppProvider, useApp } from './src/state/AppContext';
+import { AppProvider, SAVED_GAME_KEY, useApp } from './src/state/AppContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { InviteBanner } from './src/components/InviteBanner';
 import { AppAlertHost } from './src/components/AppAlertHost';
 import { colors } from './src/theme/theme';
 import { sound } from './src/services/sound';
 import { ensureSignedIn } from './src/services/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { captureError, initTelemetry } from './src/services/telemetry';
 import { configureNotificationHandler, useNotificationTaps } from './src/services/pushSetup';
 import { RootStackParamList } from './src/navigation/types';
@@ -141,6 +142,22 @@ function RootNavigator() {
   );
 }
 
+/**
+ * What the error screen throws away before letting the tree rebuild.
+ *
+ * Only the saved table, never the profile, stats or coins. A resumable table
+ * is the one piece of stored state that can crash the app the instant it
+ * reopens, so it is the one piece worth discarding; losing a hand is a fair
+ * price for getting back to the menu, losing a bankroll is not.
+ */
+const discardSavedTable = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(SAVED_GAME_KEY);
+  } catch (error) {
+    captureError(error, { tags: { area: 'saved-game', operation: 'discard-after-crash' } });
+  }
+};
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Fredoka_400Regular,
@@ -159,7 +176,7 @@ export default function App() {
   if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary onDiscardSession={discardSavedTable}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <AppProvider>

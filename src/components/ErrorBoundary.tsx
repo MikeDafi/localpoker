@@ -1,8 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { captureError } from '../services/telemetry';
 
-interface Props { children: React.ReactNode }
+declare const __DEV__: boolean | undefined;
+
+const isDev = (): boolean => (typeof __DEV__ !== 'undefined' ? Boolean(__DEV__) : false);
+
+interface Props {
+  children: React.ReactNode;
+  /**
+   * Throws away whatever could crash the tree again the moment it remounts,
+   * which in practice means a saved table. Without it "try again" rebuilds the
+   * same broken screen from the same bad data and fails in the same place, so
+   * the player is stuck in a loop with no way back.
+   */
+  onDiscardSession?: () => void | Promise<void>;
+}
 interface State { error: Error | null }
 
 /**
@@ -17,6 +31,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    /*
+     * Lift the native splash before anything else.
+     *
+     * SplashGate lives inside this boundary, so a failure during startup
+     * unmounts the one thing that would have hidden the splash, including its
+     * timeout backstop. The fallback below then renders underneath an opaque
+     * native image and the app looks frozen rather than broken, which is the
+     * worse of the two: there is nothing to read and nothing to tap.
+     */
+    SplashScreen.hideAsync().catch(() => {});
     captureError(error, {
       tags: { area: 'react', source: 'ErrorBoundary' },
       extra: { componentStack: info.componentStack },
@@ -26,18 +50,43 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   reset = () => this.setState({ error: null });
 
+  backToMenu = () => {
+    /*
+     * Discard first, then remount. The navigator lives inside this boundary,
+     * so it is already unmounted here and cannot be navigated; clearing the
+     * saved table and letting the tree rebuild is what actually lands the
+     * player back on the menu.
+     */
+    void Promise.resolve(this.props.onDiscardSession?.()).finally(() => {
+      this.setState({ error: null });
+    });
+  };
+
   render() {
     if (this.state.error) {
       return (
         <View style={styles.wrap}>
           <Text style={styles.emoji}>🃏</Text>
           <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.msg}>The app hit an unexpected error. You can try to continue.</Text>
-          <ScrollView style={styles.box}>
-            <Text style={styles.err}>{this.state.error.message}</Text>
-          </ScrollView>
+          <Text style={styles.msg}>
+            The hand could not be finished. Your chips and stats are safe.
+          </Text>
+          {/*
+            * The raw message is for whoever is debugging, not for the player.
+            * This used to print engine text like "At least two seated players
+            * with chips are required to start a hand" in red monospace, which
+            * reads as the app being broken rather than as a table ending.
+            */}
+          {isDev() ? (
+            <ScrollView style={styles.box}>
+              <Text style={styles.err}>{this.state.error.message}</Text>
+            </ScrollView>
+          ) : null}
           <Pressable style={styles.btn} onPress={this.reset}>
             <Text style={styles.btnText}>Try again</Text>
+          </Pressable>
+          <Pressable style={styles.secondary} onPress={this.backToMenu}>
+            <Text style={styles.secondaryText}>Back to menu</Text>
           </Pressable>
         </View>
       );
@@ -55,4 +104,6 @@ const styles = StyleSheet.create({
   err: { fontSize: 12, color: '#C63A26', fontFamily: 'Courier' },
   btn: { backgroundColor: '#22ABE4', borderRadius: 999, paddingHorizontal: 28, paddingVertical: 14 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  secondary: { marginTop: 12, paddingHorizontal: 28, paddingVertical: 12 },
+  secondaryText: { color: '#53656F', fontSize: 15, fontWeight: '600' },
 });

@@ -202,36 +202,48 @@ export function TableScreen({ navigation, route }: Props) {
     for (let i = 0; i < settings.numOpponents; i++) {
       players.push({ id: `bot-${i}`, name: BOT_NAMES[i % BOT_NAMES.length], isBot: true });
     }
-    const game = createGame(
-      {
-        smallBlind: settings.smallBlind,
-        bigBlind: settings.bigBlind,
-        ante: settings.ante,
-        startingStack: settings.startingStack,
-        maxPlayers: Math.max(settings.numOpponents + 1, settings.maxPlayers),
-        turnTimerSec: settings.turnTimerSec,
-      },
-      players,
-      seed,
-    );
     /*
      * A table that can never deal must not take the app down with it.
      *
-     * This throws when fewer than two seats have chips, which a room reaches
-     * on its own: a guest busts, or a saved game is resumed after one. It used
-     * to escape a useState initialiser and land on the error boundary, so the
-     * player got a red screen instead of being told the table was finished.
-     * Returning the undealt game leaves handNumber at 0, which the effect
-     * below treats as "this table is over".
+     * startHand throws when fewer than two seats have chips, which a room
+     * reaches on its own: a guest busts, or a saved game is resumed after one.
+     * createGame throws on a config it cannot normalise. Both used to escape
+     * this useState initialiser and land on the error boundary, so the player
+     * got a red screen with engine text instead of being told the table was
+     * finished. Returning an undealt game leaves handNumber at 0, which the
+     * effect below turns into a plain "Table over".
      */
     try {
-      return startHand(game);
+      const game = createGame(
+        {
+          smallBlind: settings.smallBlind,
+          bigBlind: settings.bigBlind,
+          ante: settings.ante,
+          startingStack: settings.startingStack,
+          maxPlayers: Math.max(settings.numOpponents + 1, settings.maxPlayers),
+          turnTimerSec: settings.turnTimerSec,
+        },
+        players,
+        seed,
+      );
+      try {
+        return startHand(game);
+      } catch (error) {
+        captureError(error, { tags: { area: 'table', operation: 'start-first-hand' } });
+        return game;
+      }
     } catch (error) {
-      captureError(error, { tags: { area: 'table', operation: 'start-first-hand' } });
-      return game;
+      captureError(error, { tags: { area: 'table', operation: 'create-game' } });
+      // Nothing about the requested table was usable, so stand up the
+      // smallest valid one purely so there is a state to render the message
+      // over. It has one seat, so it can never deal, which is the point.
+      return createGame(
+        { smallBlind: 1, bigBlind: 2, startingStack: 100, maxPlayers: 2, turnTimerSec: 30 },
+        [{ id: HUMAN_ID, name: profile.name }],
+        seed,
+      );
     }
   });
-
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
