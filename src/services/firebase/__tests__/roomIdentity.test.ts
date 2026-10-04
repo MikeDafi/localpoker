@@ -35,6 +35,10 @@ vi.mock('../../telemetry', () => ({
   captureError: vi.fn(),
 }));
 
+vi.mock('../push', () => ({
+  sendPush: vi.fn(),
+}));
+
 vi.mock('firebase/database', () => ({
   ref: (_db: unknown, path?: string) => ({ path: path ?? '' }),
   set: async (r: { path: string }, value: unknown) => { writes.push({ path: r.path, value }); },
@@ -83,6 +87,14 @@ const writtenValueAt = (path: string): unknown => {
 
   return undefined;
 };
+
+const mergedRootUpdates = (): Record<string, unknown> =>
+  writes
+    .filter((write) => write.path === '')
+    .reduce<Record<string, unknown>>((merged, write) => ({
+      ...merged,
+      ...(write.value as Record<string, unknown>),
+    }), {});
 
 describe('room writes are keyed by auth.uid', () => {
   beforeEach(() => {
@@ -143,6 +155,81 @@ describe('room writes are keyed by auth.uid', () => {
     // Better to surface a clear error than write something the rules reject.
     expect(result.ok).toBe(false);
     expect(writes).toHaveLength(0);
+  });
+
+  it('re-enters an existing host lobby by seating the host and refreshing discovery', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'lobby',
+      settingsJson: '{"smallBlind":1,"bigBlind":2}',
+      visibility: 'public',
+      hostName: 'Old Name',
+      players: {},
+      actionSeq: 0,
+      invited: { oldfriend: true },
+    });
+    const { createRoom } = await import('../roomSync');
+
+    const result = await createRoom(
+      'ROOM12',
+      player,
+      '{"smallBlind":10,"bigBlind":20,"startingStack":3000}',
+      { visibility: 'private', friendUids: ['newfriend'] },
+    );
+
+    expect(result.ok).toBe(true);
+    const updates = mergedRootUpdates();
+    expect(updates['localpoker/rooms/ROOM12/settingsJson']).toBe('{"smallBlind":10,"bigBlind":20,"startingStack":3000}');
+    expect(updates[`localpoker/rooms/ROOM12/players/${AUTH_UID}`]).toMatchObject({
+      id: AUTH_UID,
+      connected: true,
+      isHost: true,
+    });
+    expect(updates[`localpoker/userRooms/${AUTH_UID}/ROOM12`]).toEqual({
+      code: 'ROOM12',
+      role: 'host',
+      updatedAt: expect.any(Number),
+    });
+    expect(updates['localpoker/rooms/ROOM12/invited']).toEqual({ newfriend: true });
+    expect(updates['localpoker/publicRooms/ROOM12']).toBeNull();
+    expect(writtenValueAt('localpoker/roomInvites/oldfriend/ROOM12')).toBeNull();
+    expect(updates['localpoker/roomInvites/newfriend/ROOM12']).toMatchObject({
+      code: 'ROOM12',
+      hostUid: AUTH_UID,
+      status: 'lobby',
+      visibility: 'private',
+      smallBlind: 10,
+      bigBlind: 20,
+      startingStack: 3000,
+    });
+  });
+
+  it('can recover this host lobby after the settings route ended it', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'ended',
+      endedReason: 'Host left the room.',
+      endedAt: 123,
+      settingsJson: '{}',
+      players: {},
+      actionSeq: 0,
+    });
+    const { createRoom } = await import('../roomSync');
+
+    const result = await createRoom('ROOM12', player, '{"smallBlind":5,"bigBlind":10}');
+
+    expect(result.ok).toBe(true);
+    const updates = mergedRootUpdates();
+    expect(updates['localpoker/rooms/ROOM12/status']).toBe('lobby');
+    expect(updates['localpoker/rooms/ROOM12/endedReason']).toBeNull();
+    expect(updates['localpoker/rooms/ROOM12/endedAt']).toBeNull();
+    expect(updates[`localpoker/rooms/ROOM12/players/${AUTH_UID}`]).toMatchObject({
+      id: AUTH_UID,
+      connected: true,
+      isHost: true,
+    });
   });
 
   it('stamps actions with the auth uid even if the caller supplies another id', async () => {

@@ -16,6 +16,7 @@ import { sendPush } from './push';
 import type { RoomAction, RoomPlayer, RoomPrivateView, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
+import { isEndedRoomReclaimable, planHostedRoomOpen } from '../../game/lobbyRoom';
 import {
   applyConnectionStatusToGameState,
   redactGameState,
@@ -31,7 +32,6 @@ type PushActionResult = Result & { action?: RoomAction };
 const NOT_CONFIGURED_REASON =
   'Firebase is not configured. Set EXPO_PUBLIC_FIREBASE_* variables to enable online play.';
 const INVALID_KEY_RE = /[.#$\/\[\]]/;
-const ENDED_ROOM_RECLAIM_MS = 24 * 60 * 60 * 1000;
 const MAX_ACTION_SEQ = Number.MAX_SAFE_INTEGER - 1;
 const ACTION_PUSH_RETRIES = 3;
 
@@ -174,9 +174,7 @@ const isRoomAction = (value: unknown): value is RoomAction => {
 };
 
 const isReclaimableEndedRoom = (room: Partial<RoomState> | null): boolean =>
-  room?.status === 'ended' &&
-  typeof room.endedAt === 'number' &&
-  Date.now() - room.endedAt >= ENDED_ROOM_RECLAIM_MS;
+  isEndedRoomReclaimable(room);
 
 const registerDisconnect = async (
   db: Database,
@@ -469,29 +467,62 @@ export const createRoom = async (
     return notSignedInResult();
   }
 
+  const visibility: RoomVisibility = options.visibility === 'public' ? 'public' : 'private';
+  const hostPlayer = toDbPlayer(host, { id: hostId, connected: true, isHost: true });
+  const invitedUids = (options.friendUids ?? []).filter((uid) => uid && uid !== hostId);
+  const invitedMap = invitedUids.length
+    ? Object.fromEntries(invitedUids.map((uid) => [uid, true]))
+    : null;
+
   try {
     const roomRef = ref(db, roomPath(roomCode));
     const existing = await get(roomRef);
     if (existing.exists()) {
       const existingRoom = existing.val() as Partial<RoomState> | null;
-      // Re-entering a lobby you already host is not a collision, it is the
-      // normal result of stepping back into Game Setup to change the blinds
-      // and returning. Treating it as one meant the host was told "Room
-      // already exists" about their own table, and editing settings after
-      // creating a room was impossible. Refresh the settings in place and
-      // leave the players who have already joined exactly where they are.
-      if (existingRoom?.hostId === hostId && existingRoom?.status === 'lobby') {
-        await update(roomRef, {
-          settingsJson,
-          visibility: options.visibility === 'public' ? 'public' : 'private',
-          hostName: host.name,
-        });
+      const plan = planHostedRoomOpen(existingRoom, hostId);
+      if (plan.type === 'attach') {
+        const nextInvitedUids = new Set(invitedUids);
+        const staleInviteUids = invitedUidsOf(existingRoom).filter((uid) => !nextInvitedUids.has(uid));
+        /*
+         * A settings edit returns through the host path for the same table.
+         * Refresh it in place, including the host's seat and discovery hints,
+         * instead of treating the existing code as someone else's collision.
+         */
+        const updates: Record<string, unknown> = {
+          [publicRoomPath(roomCode)]: null,
+          [`${roomPath(roomCode)}/settingsJson`]: settingsJson,
+          [`${roomPath(roomCode)}/visibility`]: visibility,
+          [`${roomPath(roomCode)}/hostName`]: host.name,
+          [`${roomPath(roomCode)}/invited`]: invitedMap,
+          [playerPath(roomCode, hostId)]: hostPlayer,
+          [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
+        };
+        if (plan.reopenEnded) {
+          updates[`${roomPath(roomCode)}/status`] = 'lobby';
+          updates[`${roomPath(roomCode)}/endedReason`] = null;
+          updates[`${roomPath(roomCode)}/endedAt`] = null;
+          updates[`${roomPath(roomCode)}/actions`] = null;
+          updates[`${roomPath(roomCode)}/publicState`] = null;
+          updates[`${roomPath(roomCode)}/shown`] = null;
+        }
+        await update(ref(db), updates);
+        for (const uid of staleInviteUids) {
+          try {
+            await set(ref(db, roomInvitePath(uid, roomCode)), null);
+          } catch (error) {
+            /*
+             * Invitees can delete their own hints, so a missing stale hint must
+             * not block the host from returning to the lobby they still own.
+             */
+            reportFirebaseError('refresh-room-discovery-teardown', error);
+          }
+        }
         await publishDiscovery(db, roomCode, hostId, host.name, options, 'lobby', settingsJson);
-        await registerDisconnect(db, roomCode, hostId);
+        await registerDisconnect(db, roomCode, hostId, true);
         return { ok: true };
       }
-      if (!isReclaimableEndedRoom(existingRoom)) {
-        return { ok: false, reason: 'Room already exists.' };
+      if (plan.type === 'reject') {
+        return { ok: false, reason: plan.reason };
       }
     }
 
@@ -523,12 +554,6 @@ export const createRoom = async (
       }
     }
 
-    const visibility: RoomVisibility = options.visibility === 'public' ? 'public' : 'private';
-    const hostPlayer = toDbPlayer(host, { id: hostId, connected: true, isHost: true });
-    const invitedUids = (options.friendUids ?? []).filter((uid) => uid && uid !== hostId);
-    const invitedMap = invitedUids.length
-      ? Object.fromEntries(invitedUids.map((uid) => [uid, true]))
-      : null;
     const room: RoomState = {
       code: roomCode,
       hostId,

@@ -21,6 +21,7 @@ import {
 import { captureError } from '../services/telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson } from '../game/settings';
 import { pinCosmetics } from '../game/cosmetics';
+import { shouldLeaveRoomOnLobbyUnmount } from '../game/lobbyRoom';
 import type { GameSettings } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
@@ -67,6 +68,7 @@ export function LobbyScreen({ navigation, route }: Props) {
   const [status, setStatus] = useState<string>(online ? 'Connecting…' : 'Offline');
   const [connected, setConnected] = useState(false);
   const navigatedRef = useRef(false);
+  const preserveRoomOnUnmountRef = useRef(false);
 
   /**
    * The table's rules come from the room, not from this device.
@@ -158,7 +160,10 @@ export function LobbyScreen({ navigation, route }: Props) {
     return () => {
       cancelled = true;
       if (unsub) unsub();
-      if (online && !navigatedRef.current) {
+      if (shouldLeaveRoomOnLobbyUnmount({
+        online,
+        preservingRoom: navigatedRef.current || preserveRoomOnUnmountRef.current,
+      })) {
         leaveRoom(roomCode, me.id).catch((error) => {
           captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-room-cleanup' } });
         });
@@ -240,6 +245,12 @@ export function LobbyScreen({ navigation, route }: Props) {
    * have already joined keep their seats.
    */
   const editSettings = () => {
+    /*
+     * Game Setup is still part of hosting this lobby. Running the normal
+     * unmount cleanup here ends the room, withdraws invites, and makes the
+     * return trip look like a duplicate create.
+     */
+    preserveRoomOnUnmountRef.current = true;
     navigation.replace('GameSetup', { mode: 'friends', roomCode });
   };
 
