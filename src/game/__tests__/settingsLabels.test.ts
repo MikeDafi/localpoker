@@ -171,15 +171,20 @@ describe('cosmetic setting options', () => {
   const values = (key: string, owned: readonly string[] = []) =>
     availableSettingOptions(field(key), owned).map((option) => option.value);
 
+  /*
+   * "Equipped" used to head each of these lists, following whatever was worn
+   * in the Store. It was one indirection too many: the setting said Equipped
+   * and you had to open another screen to find out what that meant. The
+   * pickers now name real felts, backs and chip sets.
+   */
   it('starts players with one felt, two backs, and one chip set', () => {
-    expect(values('feltStyle')).toEqual(['equipped', 'classic']);
-    expect(values('cardBack')).toEqual(['equipped', 'blue', 'red']);
-    expect(values('chipStyle')).toEqual(['equipped', 'classic']);
+    expect(values('feltStyle')).toEqual(['classic']);
+    expect(values('cardBack')).toEqual(['blue', 'red']);
+    expect(values('chipStyle')).toEqual(['classic']);
   });
 
   it('adds bought card backs to Settings without offering unowned ones', () => {
     expect(values('cardBack', ['black', 'card-midnight'])).toEqual([
-      'equipped',
       'blue',
       'red',
       'black',
@@ -189,11 +194,10 @@ describe('cosmetic setting options', () => {
 
   it('adds only owned table and chip styles', () => {
     expect(values('feltStyle', ['table-miami', 'table-lunar'])).toEqual([
-      'equipped',
       'classic',
       'table-miami',
       'table-lunar',
     ]);
-    expect(values('chipStyle', ['chips-candy'])).toEqual(['equipped', 'classic', 'chips-candy']);
+    expect(values('chipStyle', ['chips-candy'])).toEqual(['classic', 'chips-candy']);
   });
 });

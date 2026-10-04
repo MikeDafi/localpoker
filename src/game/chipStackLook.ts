@@ -83,3 +83,38 @@ function parseHex(hex: string): [number, number, number] | null {
     parseInt(body.slice(4, 6), 16),
   ];
 }
+
+/**
+ * How big the pot figure is drawn, by how big the pot is.
+ *
+ * A pot of 30 and a pot of 30,000 were printed at the same size, so the one
+ * number on the table that says how much the hand matters said it only in
+ * digits you had to stop and read. Size carries it before the digits do.
+ *
+ * Tiers rather than a continuous scale: a smoothly growing number is never
+ * quite the same size twice, which reads as drift rather than as meaning, and
+ * it would reflow the pill on nearly every bet.
+ *
+ * Measured in big blinds, not in chips, because 1,000 is a monster at 5/10
+ * and a limp at 500/1000. A pot is big or small relative to the stakes.
+ */
+export const POT_SIZE_TIERS = [
+  { bigBlinds: 0, fontSize: 22 },
+  { bigBlinds: 8, fontSize: 26 },
+  { bigBlinds: 25, fontSize: 31 },
+  { bigBlinds: 60, fontSize: 36 },
+  { bigBlinds: 150, fontSize: 42 },
+] as const;
+
+export function potFontSize(amount: number, bigBlind: number): number {
+  const base: number = POT_SIZE_TIERS[0].fontSize;
+  if (!Number.isFinite(amount) || amount <= 0) return base;
+  // A nonsense big blind must not turn the pot into a screenful of digits.
+  const bb = Number.isFinite(bigBlind) && bigBlind > 0 ? bigBlind : 1;
+  const inBigBlinds = amount / bb;
+  let size = base;
+  for (const tier of POT_SIZE_TIERS) {
+    if (inBigBlinds >= tier.bigBlinds) size = tier.fontSize;
+  }
+  return size;
+}

@@ -9,6 +9,7 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { seatRingSlot } from '../game/seatRing';
+import { potFontSize } from '../game/chipStackLook';
 import { applyOutfit } from '../game/outfits';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
@@ -2428,7 +2429,12 @@ export function TableScreen({ navigation, route }: Props) {
             <View style={styles.potWrap}>
               <View style={styles.potCenter}>
                 <Text style={styles.potCenterLabel}>Pot</Text>
-                <AnimatedNumber value={displayedPot} style={styles.potCenterValue} />
+                {/* Sized by how big the pot is in big blinds, so the number
+                    says "this hand matters" before it is read. */}
+                <AnimatedNumber
+                  value={displayedPot}
+                  style={[styles.potCenterValue, { fontSize: potFontSize(displayedPot, settings.bigBlind) }]}
+                />
               </View>
             </View>
           )}
@@ -2715,16 +2721,43 @@ export function TableScreen({ navigation, route }: Props) {
                 No rebuys in tournament play.
               </Text>
             ) : null}
-            {state.winners.map((w) => {
-              const p = state.players.find((pp) => pp.id === w.playerId);
-              const name = p ? visiblePlayer(p).name : 'Player';
-              return (
-                <Text key={w.playerId} style={styles.resultLine} numberOfLines={1}>
-                  {name} wins {w.amount.toLocaleString()}
-                  {w.hand ? ` · ${handName(w.hand.category)}` : ''}
-                </Text>
-              );
-            })}
+            {/*
+              * Per run when the hand was run more than once.
+              *
+              * The aggregate was actively misleading: a player who won one
+              * run with two pair and lost the other to a flush was printed as
+              * "wins 60 - Two Pair" next to a board showing the flush, with
+              * no mention of which run either belonged to. `runResults`
+              * already scopes the board and the winners per run, so say so.
+              */}
+            {runResults && runResults.length > 1
+              ? runResults.map((run, runIndex) => (
+                <View key={`run-${runIndex}`} style={styles.runResultRow}>
+                  <Text style={styles.runResultTag}>{`Run ${runIndex + 1}`}</Text>
+                  <Text style={styles.resultLine} numberOfLines={1}>
+                    {run.winners.length === 0
+                      ? 'No winner'
+                      : run.winners
+                        .map((w) => {
+                          const p = state.players.find((pp) => pp.id === w.playerId);
+                          const name = p ? visiblePlayer(p).name : 'Player';
+                          const hand = w.hand ? ` \u00b7 ${handName(w.hand.category)}` : '';
+                          return `${name} ${w.amount.toLocaleString()}${hand}`;
+                        })
+                        .join(', ')}
+                  </Text>
+                </View>
+              ))
+              : state.winners.map((w) => {
+                const p = state.players.find((pp) => pp.id === w.playerId);
+                const name = p ? visiblePlayer(p).name : 'Player';
+                return (
+                  <Text key={w.playerId} style={styles.resultLine} numberOfLines={1}>
+                    {name} wins {w.amount.toLocaleString()}
+                    {w.hand ? ` \u00b7 ${handName(w.hand.category)}` : ''}
+                  </Text>
+                );
+              })}
 
             {!animsOff && !rebuyMessage && (!roomCode || !firebaseOnline || isOnlineHost) && (
               <View style={{ marginTop: spacing.xs }}>
@@ -2984,6 +3017,18 @@ const styles = StyleSheet.create({
   resultHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   resultTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.onDark, textAlign: 'center' },
   resultLine: { fontFamily: fonts.medium, fontSize: 12.5, color: colors.onDarkSoft, textAlign: 'center', marginTop: 1, ...numeric },
+  runResultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 1 },
+  runResultTag: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    color: colors.gold,
+    borderWidth: 1,
+    borderColor: 'rgba(214,180,92,0.5)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
   coinRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   coin: { width: 17, height: 17, borderRadius: 8.5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.goldDeep },
   coinT: { fontFamily: fonts.bold, color: '#2A2210', fontSize: 11 },

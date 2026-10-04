@@ -3,6 +3,7 @@ import { GAME_MODE_OPTIONS, isGameMode, type GameMode } from './gameMode';
 import {
   CARD_BACK_PALETTES,
   CHIP_PALETTES,
+  CLASSIC_CARD_BACK,
   CLASSIC_CHIPS,
   CLASSIC_FELT,
   FELT_PALETTES,
@@ -66,9 +67,15 @@ export interface GameSettings {
   cardBack: string;
   /**
    * The felt and the chips, as properties of the table rather than of the
-   * player looking at it. 'equipped' follows whatever is worn in the Store,
-   * which is what most people will expect; naming one pins the table to it,
-   * which is what makes it carry to everyone in an online room.
+   * player looking at it, so naming one pins the table to it and that choice
+   * carries to everyone in an online room.
+   *
+   * These used to default to 'equipped', which followed whatever was worn in
+   * the Store. That was one indirection too many: the setting said "Equipped"
+   * and you had to go to another screen to find out what that meant. The
+   * picker now lists the actual felts and chips you own. 'equipped' is still
+   * *accepted*, because older saves carry it and `resolveFelt` and friends
+   * still understand it, it is simply no longer offered.
    */
   feltStyle: string;
   chipStyle: string;
@@ -122,9 +129,9 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   botSpeed: 'normal',
   mixedDifficulty: false,
 
-  cardBack: 'equipped',
-  feltStyle: 'equipped',
-  chipStyle: 'equipped',
+  cardBack: CLASSIC_CARD_BACK,
+  feltStyle: CLASSIC_FELT,
+  chipStyle: CLASSIC_CHIPS,
   cardFace: 'classic',
 
   soundEnabled: true,
@@ -203,9 +210,9 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'appearance', title: 'Appearance', icon: '🎨',
     fields: [
-      { key: 'cardBack', label: 'Card Back', type: 'select', help: 'The back printed on every card at this table. Equipped follows the Store; anything you own can be pinned instead, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'equipped', label: 'Equipped' }, { value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }, { value: 'card-sunrise', label: 'Sunrise' }, { value: 'card-nebula', label: 'Neon Nebula' }, { value: 'card-royal-holo', label: 'Royal Holo' }, { value: 'card-lucky-koi', label: 'Lucky Koi' }, { value: 'card-midnight', label: 'Midnight Matrix' }] },
-      { key: 'feltStyle', label: 'Felt', type: 'select', help: 'The cloth this table is played on. Equipped follows the Store; anything you own can be pinned to the table instead, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'equipped', label: 'Equipped' }, { value: 'classic', label: 'Classic' }, { value: 'table-emerald', label: 'Emerald' }, { value: 'table-miami', label: 'Miami' }, { value: 'table-velvet', label: 'Velvet' }, { value: 'table-sakura', label: 'Sakura' }, { value: 'table-lunar', label: 'Lunar' }] },
-      { key: 'chipStyle', label: 'Chips', type: 'select', help: 'The chip set used for every bet at this table.', options: [{ value: 'equipped', label: 'Equipped' }, { value: 'classic', label: 'Classic' }, { value: 'chips-candy', label: 'Candy' }, { value: 'chips-obsidian', label: 'Obsidian' }, { value: 'chips-circuit', label: 'Circuit' }, { value: 'chips-diamond', label: 'Diamond' }, { value: 'chips-golden-tiki', label: 'Golden Tiki' }] },
+      { key: 'cardBack', label: 'Card Back', type: 'select', help: 'The back printed on every card at this table. Anything you own from the Store shows up here, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }, { value: 'card-sunrise', label: 'Sunrise' }, { value: 'card-nebula', label: 'Neon Nebula' }, { value: 'card-royal-holo', label: 'Royal Holo' }, { value: 'card-lucky-koi', label: 'Lucky Koi' }, { value: 'card-midnight', label: 'Midnight Matrix' }] },
+      { key: 'feltStyle', label: 'Felt', type: 'select', help: 'The cloth this table is played on. Anything you own from the Store shows up here, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'classic', label: 'Classic' }, { value: 'table-emerald', label: 'Emerald' }, { value: 'table-miami', label: 'Miami' }, { value: 'table-velvet', label: 'Velvet' }, { value: 'table-sakura', label: 'Sakura' }, { value: 'table-lunar', label: 'Lunar' }] },
+      { key: 'chipStyle', label: 'Chips', type: 'select', help: 'The chip set used for every bet at this table. Anything you own from the Store shows up here.', options: [{ value: 'classic', label: 'Classic' }, { value: 'chips-candy', label: 'Candy' }, { value: 'chips-obsidian', label: 'Obsidian' }, { value: 'chips-circuit', label: 'Circuit' }, { value: 'chips-diamond', label: 'Diamond' }, { value: 'chips-golden-tiki', label: 'Golden Tiki' }] },
     ],
   },
   {
@@ -243,7 +250,7 @@ export function availableSettingOptions(
   const access = COSMETIC_SETTING_ACCESS[field.key];
   if (!access) return options;
 
-  const usable = new Set(['equipped', ...access.freeIds]);
+  const usable = new Set<string>(access.freeIds);
   for (const id of ownedCosmeticIds) {
     if (id in access.known) usable.add(id);
   }

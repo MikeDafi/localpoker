@@ -44,8 +44,14 @@ type IconComponent = React.ComponentType<{ size?: number; color?: string }>;
  * confirmation are table rules, they are already offered in Game Setup where
  * the rest of the table is configured, and having them in two places meant
  * two screens that could disagree about the same game.
+ *
+ * `appearance` is absent for exactly the same reason. The card back, the felt
+ * and the chips are properties of the table being played on, not of the
+ * person looking at it: in an online room everyone sees the host's choice, so
+ * offering them here read as a personal preference that would then be
+ * silently overridden. They live in Game Setup with the rest of the table.
  */
-const APP_PREFERENCE_SECTION_IDS = ['sound', 'animations', 'a11y', 'appearance'] as const;
+const APP_PREFERENCE_SECTION_IDS = ['sound', 'animations', 'a11y'] as const;
 type AppPreferenceSectionId = (typeof APP_PREFERENCE_SECTION_IDS)[number];
 
 const APP_PREFERENCE_SECTION_SET = new Set<string>(APP_PREFERENCE_SECTION_IDS);
@@ -53,7 +59,6 @@ const APP_SECTION_ICONS: Record<AppPreferenceSectionId, IconComponent> = {
   sound: SoundIcon,
   animations: SparklesIcon,
   a11y: AccessibilityIcon,
-  appearance: PaletteIcon,
 };
 
 export function SettingsScreen({ navigation }: Props) {
