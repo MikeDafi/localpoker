@@ -27,6 +27,7 @@ import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings 
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { chipSoundsFor, chipsCommitted } from '../game/betSound';
+import { playerTapActions } from '../game/playerActions';
 import { resolveCardBack, resolveFelt } from '../game/cosmetics';
 import { captureError } from '../services/telemetry';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
@@ -1434,33 +1435,27 @@ export function TableScreen({ navigation, route }: Props) {
   };
 
   const openPlayerSafety = (player: GameState['players'][number]) => {
-    const human_ = player.id === human.id;
-    if (human_ || player.isBot) {
-      /*
-       * Stats are the only thing behind tapping yourself or a bot, so with the
-       * overlay switched off there is nothing to open. It used to ignore the
-       * setting entirely: the stats button in the corner disappeared, but
-       * tapping a seat still brought the same panel up.
-       */
-      if (!settings.showLiveStats) return;
-      setStatsFocus(player.id);
-      setStatsOpen(true);
-      return;
-    }
+    const actions = playerTapActions({
+      self: player.id === human.id,
+      bot: !!player.isBot,
+      showLiveStats: settings.showLiveStats,
+    });
+    if (actions.length === 0) return;
+    const openStats = () => { setStatsFocus(player.id); setStatsOpen(true); };
+    // Nothing to choose between, so do not make them choose.
+    if (actions.length === 1 && actions[0] === 'stats') { openStats(); return; }
     showAlert(isBlocked(player.id) ? 'Blocked player' : player.name, undefined, [
-      /*
-       * Reporting and blocking are not stats and must stay reachable whatever
-       * the overlay is set to; turning stats off is a preference, not a reason
-       * to lose the way to deal with someone.
-       */
-      ...(settings.showLiveStats
+      ...(actions.includes('stats') ? [{ text: 'View stats', onPress: openStats }] : []),
+      ...(actions.includes('report')
+        ? [{ text: 'Report offensive content', onPress: () => reportTablePlayer(player) }]
+        : []),
+      ...(actions.includes('block')
         ? [{
-            text: 'View stats',
-            onPress: () => { setStatsFocus(player.id); setStatsOpen(true); },
+            text: 'Block and leave table',
+            style: 'destructive' as const,
+            onPress: () => confirmBlockTablePlayer(player),
           }]
         : []),
-      { text: 'Report offensive content', onPress: () => reportTablePlayer(player) },
-      { text: 'Block and leave table', style: 'destructive' as const, onPress: () => confirmBlockTablePlayer(player) },
       { text: 'Cancel', style: 'cancel' as const },
     ]);
   };
