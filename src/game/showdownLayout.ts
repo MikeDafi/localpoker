@@ -95,13 +95,26 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
     label: (winner: T) => string;
     /** False when the pot was taken without a showdown, so nothing is tabled. */
     contested?: boolean;
+    /**
+     * Who actually turned their hand over.
+     *
+     * Omitted, every hand still in the pot is laid out, which is what this did
+     * before showdowns were walked in order. Supplied, a hand that was mucked
+     * stays face down: throwing it away unseen is the whole point of being
+     * asked in turn, and showing it anyway would hand the table information
+     * its owner just paid to keep.
+     */
+    shownIds?: readonly string[];
   },
 ): ShowdownWinnerHand[] {
   const rows: ShowdownWinnerHand[] = [];
   const taken = new Set<string>();
+  const shown = options.shownIds ? new Set(options.shownIds) : null;
 
   const tabled = (p: { id: string; holeCards: Card[] }): boolean =>
-    p.holeCards.length >= 2 && (p.id !== options.localPlayerId || options.localCardsShown);
+    p.holeCards.length >= 2 &&
+    (shown === null || shown.has(p.id)) &&
+    (p.id !== options.localPlayerId || options.localCardsShown);
 
   for (const w of winners) {
     if (!w.hand?.cards?.length) continue;

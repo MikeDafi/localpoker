@@ -28,6 +28,14 @@ import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { chipSoundsFor, chipsCommitted } from '../game/betSound';
 import { playerTapActions } from '../game/playerActions';
+import { botShowsHand, canMuck, showdownOrder } from '../game/showdownOrder';
+import {
+  advanceReveal,
+  awaitingChoiceFrom,
+  pendingPlayer,
+  revealComplete,
+  startReveal,
+} from '../game/showdownReveal';
 import { resolveCardBack, resolveFelt } from '../game/cosmetics';
 import { captureError } from '../services/telemetry';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
@@ -35,7 +43,7 @@ import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
 import { boardDealDelay } from '../game/boardDeal';
-import { isRunningOut, runoutAction, runoutFelt, runoutLabel } from '../game/runout';
+import { isRunningOut, runoutAction, runoutFelt, runoutLabel, SHOWDOWN_STEP_MS, SHOW_CHOICE_MS } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
 import {
   actionReadDelayMs,
@@ -53,7 +61,7 @@ import {
 import { applyHostIntent, hydrateGameState } from '../game/onlineSync';
 import type { Difficulty } from '../engine/bot';
 import {
-  createGame, startHand, canStartHand, applyAction, legalActions, decideAction, handName, evaluateHand, randomFloat,
+  createGame, startHand, canStartHand, applyAction, legalActions, decideAction, handName, evaluateHand, compareHands, randomFloat,
   type GameState, type PlayerAction, type PlayerInput,
 } from '../engine';
 import {
@@ -519,9 +527,23 @@ export function TableScreen({ navigation, route }: Props) {
     [state, runningOut, revealedBoard],
   );
 
-  const human = felt.players.find((p) => p.id === localPlayerId)
-    ?? felt.players.find((p) => p.id === HUMAN_ID)
-    ?? felt.players[0]!;
+  /*
+   * Which seat is mine.
+   *
+   * In a room this is the account and nothing else. It used to fall back to
+   * the generic local id and then to whoever happened to be sitting first,
+   * which was fine for a local game and wrong in every way for a room: when
+   * the host left and sync dropped, a guest stopped finding their own seat,
+   * fell through both fallbacks, and was rendered as the host. They were shown
+   * the host's stack, the host's hand name, and would have been shown the
+   * host's cards. A seat that cannot be found is not a seat to borrow.
+   */
+  const localSeat = felt.players.find((p) => p.id === localPlayerId);
+  const notSeated = !!roomCode && !localSeat;
+  const human = localSeat
+    ?? (roomCode
+      ? felt.players[0]!
+      : felt.players.find((p) => p.id === HUMAN_ID) ?? felt.players[0]!);
   const current = felt.players[felt.currentPlayerIndex];
   const isAwaitingOnlineState = !!roomCode && firebaseOnline && !onlineSyncActive;
   const isHumanTurn = current?.id === human?.id && !handOver && !isAwaitingOnlineState;
@@ -609,16 +631,43 @@ export function TableScreen({ navigation, route }: Props) {
     return keys;
   }, [isShowdown, felt.winners]);
 
-  // Whether the human's cards are visible to the table at showdown.
-  // Mucking is the default: you only ever expose your hand by explicitly tapping
-  // "Show cards" (or by turning Auto-muck off, which tables a winning hand).
-  // A hand that was turned up for a run-out is already public, and auto-muck
-  // cannot put it back.
+  /*
+   * The showdown, walked in order rather than flipped all at once.
+   *
+   * Who shows first is a real rule: the last player to bet the river has to
+   * back the claim up, and if it was checked through it starts left of the
+   * button. Everyone after them decides having already seen what is face up,
+   * which is the only reason the order is worth having.
+   */
+  const revealOrder = useMemo(
+    () =>
+      showdownOrder({
+        players: felt.players,
+        dealerIndex: felt.dealerIndex,
+        lastAggressorIndex: felt.lastAggressorIndex ?? null,
+        winnerIds: felt.winners.filter((w) => w.amount > 0).map((w) => w.playerId),
+      }),
+    [felt.players, felt.dealerIndex, felt.lastAggressorIndex, felt.winners],
+  );
+  const [revealProgress, setRevealProgress] = useState(startReveal);
+  /** Hands already face up, which is what the layout below is allowed to show. */
+  const revealShown = contestedShowdown ? revealProgress.shown : undefined;
+
+  /*
+   * Whether the human's cards are visible to the table.
+   *
+   * At a contested showdown this is no longer a setting, it is the answer they
+   * gave when their turn came round: auto-muck decides what happens when they
+   * say nothing, and the order decides whether they were ever asked. A hand
+   * turned up for a run-out is already public and nothing can put it back.
+   */
   const humanCardsShown = handsTabled && !human.folded
     ? true
-    : isShowdown
-      ? reveal === 'show' || (reveal === 'auto' && !settings.autoMuck && humanWon)
-      : true;
+    : contestedShowdown
+      ? revealProgress.shown.includes(human.id)
+      : isShowdown
+        ? reveal === 'show' || (reveal === 'auto' && !settings.autoMuck && humanWon)
+        : true;
 
   /**
    * The hand that gets laid out in the middle at showdown: the winner's two hole
@@ -635,11 +684,94 @@ export function TableScreen({ navigation, route }: Props) {
       localCardsShown: humanCardsShown,
       label: (w) => handName(w.hand!.category),
       contested: contestedShowdown,
+      shownIds: revealShown,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown]);
+  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
+
+  /*
+   * Start every hand with nothing shown, so the previous showdown's decisions
+   * cannot leak into the next one.
+   */
+  useEffect(() => {
+    setRevealProgress(startReveal());
+  }, [felt.handNumber]);
+
+  /** Whether a hand is still unbeaten by anything already face up. */
+  const stillBestAgainstShown = useCallback(
+    (playerId: string): boolean => {
+      const me = felt.players.find((p) => p.id === playerId);
+      if (!me || me.holeCards.length < 2 || felt.board.length < 5) return true;
+      const mine = evaluateHand([...me.holeCards, ...felt.board]);
+      return !revealProgress.shown.some((id) => {
+        const other = felt.players.find((p) => p.id === id);
+        if (!other || other.holeCards.length < 2) return false;
+        return compareHands(evaluateHand([...other.holeCards, ...felt.board]), mine) > 0;
+      });
+    },
+    [felt.players, felt.board, revealProgress.shown],
+  );
+
+  const awaitingShowChoice =
+    isShowdown && contestedShowdown && awaitingChoiceFrom(revealOrder, revealProgress, human.id);
+
+  /*
+   * Do not hold the table up forever waiting for an answer.
+   *
+   * Auto-muck decides what silence means, which is exactly what that setting
+   * is for: on, a hand nobody has to see goes in the muck; off, it gets
+   * tabled. Either way the next player stops waiting.
+   */
+  useEffect(() => {
+    if (!awaitingShowChoice) return undefined;
+    const timer = setTimeout(() => {
+      setRevealProgress((prev) => advanceReveal(revealOrder, prev, !settings.autoMuck));
+    }, SHOW_CHOICE_MS);
+    return () => clearTimeout(timer);
+  }, [awaitingShowChoice, revealOrder, settings.autoMuck]);
+
+  const answerShowChoice = (show: boolean) => {
+    sound.play('tap');
+    setRevealProgress((prev) => advanceReveal(revealOrder, prev, show));
+    if (show && roomCode && firebaseOnline) void revealOwnHand(roomCode);
+  };
+
+  /*
+   * Step through the order, pausing on anyone who has an actual decision.
+   *
+   * Bots behave like players who would rather not be laughed at: they table a
+   * hand that is still winning and throw away one that is already beaten by
+   * something face up. The pause between hands is what makes it read as a
+   * showdown rather than as a reveal.
+   */
+  useEffect(() => {
+    if (!isShowdown || !contestedShowdown) return undefined;
+    if (revealComplete(revealOrder, revealProgress)) return undefined;
+    const pending = pendingPlayer(revealOrder, revealProgress);
+    if (pending === null) return undefined;
+    if (pending === human.id && canMuck(revealOrder, pending)) return undefined;
+
+    const timer = setTimeout(() => {
+      setRevealProgress((prev) => {
+        const at = pendingPlayer(revealOrder, prev);
+        if (at === null || at !== pending) return prev;
+        const show =
+          at === human.id
+            ? true // forced: a winner or the player who made the claim
+            : botShowsHand({ order: revealOrder, playerId: at, stillBest: stillBestAgainstShown(at) });
+        return advanceReveal(revealOrder, prev, show);
+      });
+    }, SHOWDOWN_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [
+    isShowdown,
+    contestedShowdown,
+    revealOrder,
+    revealProgress,
+    human.id,
+    stillBestAgainstShown,
+  ]);
 
   /*
    * Checking, folding and putting chips in each sound like themselves.
@@ -1784,6 +1916,33 @@ export function TableScreen({ navigation, route }: Props) {
     felt,
   ]);
 
+  /*
+   * No seat here any more.
+   *
+   * Reached when the room's state no longer holds this player: the host ended
+   * the table, or removed them from it. Every hook above has already run, so
+   * this is only a question of what to draw, and the answer is not the table.
+   * Rendering it would mean rendering somebody else's hand.
+   */
+  if (notSeated) {
+    return (
+      <ScreenBackground variant="felt" edges={['top', 'bottom']}>
+        <View style={styles.notSeated}>
+          <Text style={styles.notSeatedTitle}>You are no longer at this table</Text>
+          <Text style={styles.notSeatedBody}>
+            The host ended the table or your seat was taken. Your chips and stats are safe.
+          </Text>
+          <WiiButton
+            label="Back to menu"
+            variant="green"
+            size="lg"
+            onPress={() => { clearSavedGame(); navigation.replace('Home'); }}
+          />
+        </View>
+      </ScreenBackground>
+    );
+  }
+
   return (
     <ScreenBackground variant="felt" edges={['top', 'bottom']}>
       <View style={styles.topBar}>
@@ -2147,9 +2306,35 @@ export function TableScreen({ navigation, route }: Props) {
                 This panel is the one thing tall enough to reach the hole
                 cards above it, so every row it does not take is a row the
                 cards keep. */}
+            {/*
+              * Your turn to show or muck.
+              *
+              * Only appears when there is a real choice: forced hands are
+              * tabled without asking. Seeing what is already face up before
+              * answering is the whole point of the order.
+              */}
+            {awaitingShowChoice && (
+              <View style={styles.showChoiceRow}>
+                <Text style={styles.showChoiceLabel}>Show your hand?</Text>
+                <WiiButton label="Show" variant="blue" onPress={() => answerShowChoice(true)} />
+                <WiiButton label="Muck" variant="white" onPress={() => answerShowChoice(false)} />
+              </View>
+            )}
             <View style={styles.nextRow}>
               <WiiButton
-                label={roomCode && !isOnlineHost ? 'Waiting for host…' : 'Next Hand'}
+                label={
+                  /*
+                   * Say what is actually being waited on. A guest was always
+                   * told "Waiting for host", including while the table sat on
+                   * a rebuy window, which made it look like the host was idle
+                   * when the table was waiting for somebody to buy back in.
+                   */
+                  rebuyState.phase === 'waiting'
+                    ? 'Waiting for players…'
+                    : roomCode && !isOnlineHost
+                      ? 'Waiting for host…'
+                      : 'Next Hand'
+                }
                 variant="green"
                 size="lg"
                 style={styles.nextBtn}
@@ -2312,6 +2497,11 @@ const styles = StyleSheet.create({
   nextBtn: { flex: 1 },
   // 44pt because that is the smallest target iOS considers reachable, and the
   // button is now a circle with no words to widen it.
+  showChoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  showChoiceLabel: { fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkSoft },
+  notSeated: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
+  notSeatedTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, textAlign: 'center' },
+  notSeatedBody: { fontFamily: fonts.regular, fontSize: 14, color: colors.onDarkSoft, textAlign: 'center', marginBottom: spacing.md },
   muckBtn: { width: 62, height: 62, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   adWrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.xs },
 });

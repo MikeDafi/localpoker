@@ -49,6 +49,22 @@ export const RUNOUT_RESULT_MS = 750;
 export const SHOWDOWN_SETTLE_MS = 1000;
 
 /**
+ * The beat between one hand being tabled and the next being asked.
+ *
+ * Long enough to read the hand that just appeared, because the next player's
+ * decision is supposed to be a reaction to it, and short enough that a
+ * four-way showdown does not become a wait.
+ */
+export const SHOWDOWN_STEP_MS = 850;
+
+/**
+ * How long a player gets to decide whether to show a hand nobody can make
+ * them show. Long enough to think about it, short enough that the rest of the
+ * table is not held hostage by somebody who put their phone down.
+ */
+export const SHOW_CHOICE_MS = 6000;
+
+/**
  * Sound played as a street is waited on, not as it lands.
  *
  * The river gets the urgent cue because by then the hand is one card from over.
