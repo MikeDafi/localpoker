@@ -504,3 +504,61 @@ describe('fitBoardCard', () => {
     expect(fitBoardCard({ ...base, ceiling: 40.9, rowBottom: pinned(188) })).toBe(40);
   });
 });
+
+describe('only hands that were actually shown get laid out', () => {
+  /*
+   * The row under the board used to hold every hand still in the pot, which
+   * is not what a showdown does. Hands are tabled in turn and a player who is
+   * not obliged to show can throw theirs away; printing it under the board
+   * anyway hands the table information its owner just paid to keep.
+   *
+   * `shownIds` is what the table passes once it has walked the order.
+   */
+  const alice = player('alice', [card(14, 's'), card(13, 's')]);
+  const bob = player('bob', [card(14, 'h'), card(13, 'h')]);
+  const carol = player('carol', [card(9, 'd'), card(8, 'd')]);
+
+  const pickShown = (shownIds: string[]) =>
+    selectShowdownHands([winner('alice', 'Flush')], [alice, bob, carol], {
+      localPlayerId: 'nobody',
+      localCardsShown: false,
+      label: (w) => w.label,
+      contested: true,
+      shownIds,
+    });
+
+  it('leaves out a hand that was mucked', () => {
+    const rows = pickShown(['alice', 'bob']);
+    expect(rows.map((r) => r.playerId)).toEqual(['alice', 'bob']);
+    expect(rows.map((r) => r.playerId)).not.toContain('carol');
+  });
+
+  it('shows nothing but the winner when everyone else mucked', () => {
+    const rows = pickShown(['alice']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].playerId).toBe('alice');
+    expect(rows[0].outcome).toBe('won');
+  });
+
+  it('still marks a shown loser as beaten', () => {
+    const rows = pickShown(['alice', 'carol']);
+    const carolRow = rows.find((r) => r.playerId === 'carol');
+    expect(carolRow?.outcome).toBe('lost');
+  });
+
+  it('lays out every hand when the table did not walk an order', () => {
+    // Omitted entirely, the old behaviour stands: an all-in run-out tables
+    // every hand because nobody had a decision to make.
+    const rows = selectShowdownHands([winner('alice', 'Flush')], [alice, bob, carol], {
+      localPlayerId: 'nobody',
+      localCardsShown: false,
+      label: (w) => w.label,
+      contested: true,
+    });
+    expect(rows).toHaveLength(3);
+  });
+
+  it('never lays out a hand nobody showed', () => {
+    expect(pickShown([])).toHaveLength(0);
+  });
+});
