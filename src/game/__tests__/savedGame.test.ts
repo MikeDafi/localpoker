@@ -25,6 +25,25 @@ describe('isResumable', () => {
   it('refuses nothing saved', () => {
     expect(isResumable(null)).toBe(false);
   });
+
+  /*
+   * The staleness deadline is about being dropped, not about choosing to put
+   * the game down. Pressing back used to end the table outright; now it keeps
+   * the seat, and the deadline would have thrown that seat away 15 seconds
+   * later, which is the whole bug.
+   */
+  it('keeps a seat the player stepped away from, however long ago', () => {
+    const saved = base({ roomCode: 'ABCD', steppedAway: true });
+    expect(isResumable(saved, saved.savedAt + STALE_FRIENDS_RESUME_MS * 1000)).toBe(true);
+  });
+
+  it('still applies the deadline when the player did not step away', () => {
+    const dropped = base({ roomCode: 'ABCD' });
+    const away = base({ roomCode: 'ABCD', steppedAway: true });
+    const later = dropped.savedAt + STALE_FRIENDS_RESUME_MS + 1;
+    expect(isResumable(dropped, later)).toBe(false);
+    expect(isResumable(away, later)).toBe(true);
+  });
 });
 
 describe('resumedTurnStartedAt', () => {

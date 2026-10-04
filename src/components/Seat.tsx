@@ -82,15 +82,21 @@ const BET_SLOT_H = 28;
 const SEAT_CARD = 26;
 
 /**
- * How much bigger it gets once its owner turns it over.
+ * How much bigger a card gets once its owner turns it over, on the screens of
+ * everybody except the person who turned it.
  *
- * Doubling was not enough. At 52 points a rank is still something you squint
- * at from across a table, and the whole purpose of showing a card is that
- * everybody else reads it without effort. Four times the face down size puts
- * it near the size of your own hole cards, which is the right comparison:
- * this is a card you are meant to be looking at.
+ * An opponent's cards are tiny, which is enough to say "two cards, face down"
+ * and nowhere near enough to read a rank across the table. Turning one over is
+ * a deliberate act aimed at the other players, so if they cannot read it the
+ * act does nothing.
+ *
+ * It used to be 4, and it was never applied: the constant lived on the branch
+ * that draws a non-compact seat, and the only non-compact seat is the hero's
+ * own, which never renders cards here. Every opponent is compact, and the
+ * compact branch drew a shown card at 24pt against 18pt face down. So the card
+ * that mattered barely moved while the code claimed it quadrupled.
  */
-const EXPOSED_CARD_SCALE = 4;
+const EXPOSED_CARD_SCALE = 2.5;
 
 export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
@@ -130,7 +136,18 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
   const cardFaceUp = (index: number): boolean => !!showCards || shownCards?.[index] === true;
   /** Turned over by its owner mid hand, rather than tabled at a showdown. */
   const deliberatelyShown = (index: number): boolean => !showCards && shownCards?.[index] === true;
-  const seatCardSize = (index: number): number => (deliberatelyShown(index) ? SEAT_CARD * EXPOSED_CARD_SCALE : SEAT_CARD);
+  const anyDeliberatelyShown = !showCards && shownCards?.some(Boolean) === true;
+  /*
+   * The size a card jumps to when its owner turns it over, measured against
+   * the 18pt it sits at face down.
+   *
+   * Showing a card is aimed at the rest of the table, so the only size that
+   * matters is the size it is on *their* screens. The person who showed it
+   * already knows what it is, which is why their own copy no longer grows.
+   */
+  const seatCardSize = (index: number): number => (
+    deliberatelyShown(index) ? Math.round(HOLE_SIZE * HOLE_MIN * EXPOSED_CARD_SCALE) : HOLE_SIZE
+  );
 
   // The ring is the avatar plus a fixed border allowance.
   const ringSize = avatarSize + 10;
@@ -145,14 +162,24 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
         {hasHoleCardsToDisplay && !dimmed && !handOff && (
           <Animated.View
             key={dealKey}
-            style={[styles.cCards, anyCardShown && styles.cCardsShown, holeStyle]}
+            style={[
+              styles.cCards,
+              anyCardShown && styles.cCardsShown,
+              // A card turned over on purpose is drawn large, so the group it
+              // sits in has to move clear of the avatar rather than tuck
+              // behind it. Centred on the pod, not pushed further right: the
+              // seats are packed to within a pod's width of each other, and
+              // anything reaching outside `cWrap` lands on a neighbour.
+              anyDeliberatelyShown && styles.cCardsExposed,
+              holeStyle,
+            ]}
             pointerEvents="none"
           >
-            <View style={{ transform: [{ rotate: '-6deg' }] }}>
+            <View style={{ transform: [{ rotate: anyDeliberatelyShown ? '-3deg' : '-6deg' }] }}>
               <DealtCard
                 rank={cardsToDisplay[0]?.rank}
                 suit={cardsToDisplay[0]?.suit as any}
-                size={HOLE_SIZE}
+                size={seatCardSize(0)}
                 dimmed={dimmed}
                 back={back}
                 faceUp={cardFaceUp(0)}
@@ -162,11 +189,14 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
                 fromY={dealFrom?.y ?? 120}
               />
             </View>
-            <View style={{ marginLeft: -HOLE_SIZE * 0.6, transform: [{ rotate: '10deg' }] }}>
+            <View style={{
+              marginLeft: -seatCardSize(1) * (anyDeliberatelyShown ? 0.2 : 0.6),
+              transform: [{ rotate: anyDeliberatelyShown ? '5deg' : '10deg' }],
+            }}>
               <DealtCard
                 rank={cardsToDisplay[1]?.rank}
                 suit={cardsToDisplay[1]?.suit as any}
-                size={HOLE_SIZE}
+                size={seatCardSize(1)}
                 dimmed={dimmed}
                 back={back}
                 faceUp={cardFaceUp(1)}
@@ -414,10 +444,20 @@ const styles = StyleSheet.create({
   // as goggles/ears rather than as playing cards.
   // Rendered at full size and scaled down (see HOLE_SIZE), so the box is sized
   // for the big cards; the offsets keep the shrunken pair tucked beside the head.
-  cCards: { position: 'absolute', right: -15, top: 16, flexDirection: 'row', zIndex: 2 },
+  cCards: { position: 'absolute', right: -15, top: 16, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
   // Seats sit close together on the arc, so shown cards are only lifted a
   // little and tucked down-right: any bigger and neighbouring pods collide.
   cCardsShown: { right: -8, top: 28, zIndex: 6 },
+  /*
+   * Where a deliberately shown card goes, which is a different problem.
+   *
+   * At 2.5x it no longer fits beside the avatar, and the felt to the right
+   * belongs to the next seat along, so it is centred over the pod and lifted
+   * above everything instead. It covers the avatar and the name tag while it
+   * is up, which is the right trade: somebody chose to show this card, and
+   * the whole point is that it is the thing you look at.
+   */
+  cCardsExposed: { left: 0, right: 0, top: 10, justifyContent: 'center', zIndex: 12 },
   cAvatarWrap: { alignItems: 'center', justifyContent: 'center' },
   cGlow: {
     position: 'absolute', top: -4, left: -4, right: -4, bottom: -4,

@@ -89,23 +89,48 @@ export function ChevronLeft({ size = 26, color = '#2B3A45' }: IconProps) {
 }
 
 export function SettingsIcon({ size = 30, color = '#fff' }: IconProps) {
-  // Symmetric 8-tooth cog, generated so it renders clean at any size.
-  const cx = 12, cy = 12, outer = 11, inner = 8.4, hole = 4;
+  /*
+   * A cog, drawn as one path with a genuine hole punched through it.
+   *
+   * The previous version filled the centre with a hardcoded `#FFFFFF` circle
+   * on top of a `color` body. Every place this is used draws it white on a
+   * dark button, so the hole was white on white: invisible. What was left was
+   * a spiky white disc, which is why it did not read as a gear. The teeth
+   * were part of it too, built from a 0.13 radian half width that made eight
+   * thin spikes rather than eight teeth.
+   *
+   * `fillRule="evenodd"` is what makes the hole real, so the button's own
+   * colour shows through and the icon works on any background.
+   */
+  const cx = 12, cy = 12;
+  const tip = 11.2;     // how far a tooth reaches
+  const body = 8.2;     // the solid disc the teeth stand on
+  const hole = 3.6;     // the bore through the middle
+  const teeth = 8;
+  const half = Math.PI / teeth;   // angular half-pitch, one tooth plus one gap
+  const at = (ang: number, r: number) => `${(cx + Math.cos(ang) * r).toFixed(2)} ${(cy + Math.sin(ang) * r).toFixed(2)}`;
+
   let d = '';
-  for (let i = 0; i < 8; i++) {
-    const a0 = (i / 8) * Math.PI * 2;
-    const a1 = ((i + 0.5) / 8) * Math.PI * 2;
-    const a2 = ((i + 1) / 8) * Math.PI * 2;
-    const w = 0.13;
-    const p = (ang: number, r: number) => `${(cx + Math.cos(ang) * r).toFixed(2)} ${(cy + Math.sin(ang) * r).toFixed(2)}`;
-    d += `${i === 0 ? 'M' : 'L'} ${p(a0 - w, outer)} L ${p(a0 + w, outer)} L ${p(a1 - w, inner)} L ${p(a1 + w, inner)} `;
-    d += `L ${p(a2 - w, outer)} `;
+  for (let i = 0; i < teeth; i++) {
+    const mid = (i / teeth) * Math.PI * 2;
+    // Wider at the root than at the tip, which is what a tooth looks like and
+    // what stops the gaps closing up at small sizes.
+    const root = half * 0.58;
+    const crown = half * 0.38;
+    d += `M ${at(mid - root, body - 0.6)} `;
+    d += `L ${at(mid - crown, tip)} `;
+    d += `L ${at(mid + crown, tip)} `;
+    d += `L ${at(mid + root, body - 0.6)} Z `;
   }
-  d += 'Z';
+  // The disc, then the bore. Drawn as two arc pairs because a circle element
+  // cannot take part in the same path's fill rule.
+  const circle = (r: number) =>
+    `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z `;
+  d += circle(body) + circle(hole);
+
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Path d={d} fill={color} />
-      <Circle cx={cx} cy={cy} r={hole} fill="#FFFFFF" />
+      <Path d={d} fill={color} fillRule="evenodd" />
     </Svg>
   );
 }

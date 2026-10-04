@@ -5,12 +5,25 @@ export const STALE_FRIENDS_RESUME_MS = 15_000;
 
 /**
  * Whether a saved game may be resumed. Local (vs-bots) games are always
- * resumable. A friends-room game (has a roomCode) is NOT resumable once it's
- * older than 15s, because a real-time table won't have waited for you.
+ * resumable.
+ *
+ * A friends-room game is the interesting case. The rule used to be that it
+ * went stale after 15 seconds, on the reasoning that a real-time table will
+ * not have waited for you. That is true when you were dropped, and wrong when
+ * you stepped away on purpose: the host's device *is* the table, so a host who
+ * walks to the home screen has not ended anything, and a guest's seat is still
+ * theirs. The 15 second rule was quietly the reason that going back and
+ * returning left people with no way in.
+ *
+ * So a deliberate step away stays resumable with no deadline. Whether the room
+ * is actually still there is a question only the room can answer, and the
+ * table screen already asks it and says so, which is a better place for the
+ * answer than a guess made from a timestamp.
  */
 export function isResumable(saved: SavedGame | null | undefined, now: number = Date.now()): boolean {
   if (!saved) return false;
   if (saved.roomCode) {
+    if (saved.steppedAway) return true;
     return now - saved.savedAt <= STALE_FRIENDS_RESUME_MS;
   }
   return true;

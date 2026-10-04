@@ -229,11 +229,18 @@ export function EmoteBar({
 }
 
 const styles = StyleSheet.create({
+  /*
+   * The same 36pt as the gear above it.
+   *
+   * These two sit in one column at the edge of the felt and were 48 and 36,
+   * which read as a mistake rather than a hierarchy. The gear's size won
+   * because it is the one that has to stay out of the way.
+   */
   fab: {
-    width: 48, height: 48, borderRadius: radii.pill, backgroundColor: colors.surface,
+    width: 36, height: 36, borderRadius: radii.pill, backgroundColor: colors.surface,
     borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center',
   },
-  fabIcon: { fontSize: 22 },
+  fabIcon: { fontSize: 17 },
   fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.scrim },
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },

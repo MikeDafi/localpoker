@@ -449,7 +449,6 @@ export function TableScreen({ navigation, route }: Props) {
   const [sessionHands, setSessionHands] = useState(0);
   const [statsOpen, setStatsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [codeShown, setCodeShown] = useState(false);
   /** Which player the stats panel opens on, set by tapping their seat. */
   const [statsFocus, setStatsFocus] = useState<string | null>(null);
   // The result panel is bottom-anchored and its height depends on how many
@@ -1697,45 +1696,83 @@ export function TableScreen({ navigation, route }: Props) {
     });
   };
 
-  const leave = () => {
-    if (roomCode && firebaseOnline) {
-      showAlert(
-        'Leave table?',
-        isOnlineHost ? 'Leaving will end the room for everyone.' : 'You can rejoin later with the room code if the host keeps playing.',
-        [
-          { text: 'Stay', style: 'cancel' },
-          {
-            text: 'Leave',
-            style: 'destructive',
-            onPress: () => {
-              const leavePromise = isOnlineHost
-                ? endRoom(roomCode, 'Host left the table.')
-                : leaveRoom(roomCode, human.id).then(() => ({ ok: true }));
-              leavePromise
-                .catch((error) => {
-                  captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-online-table' } });
-                })
-                .finally(() => {
-                  /*
-                   * The room is gone, so the saved game pointing at it is a
-                   * shortcut on the home screen to a table that no longer
-                   * exists. Offline games are deliberately kept, because
-                   * resuming one is the whole point of saving it.
-                   */
-                  clearSavedGame();
-                  navigation.replace('Home');
-                });
-            },
-          },
-        ],
-      );
+  /**
+   * What the back arrow does, which is not leaving.
+   *
+   * It used to call straight into `leave()`, and for a host `leave()` calls
+   * `endRoom`, so pressing back destroyed the table for everybody. Coming back
+   * then found a room that no longer existed, which is why a returning player
+   * was shown their own turn with no buttons under it: the local state still
+   * said it was their action, and there was no longer a room to send it to.
+   *
+   * Going to the home screen is not a statement about the game. The seat stays
+   * yours, the room stays yours if you were hosting, and the saved game is
+   * marked so the home screen offers it back without the staleness deadline
+   * meant for a player who was dropped.
+   */
+  const promptBack = () => {
+    sound.play('tap');
+    if (!roomCode || !firebaseOnline) {
+      // Nothing to hold open: a bots game is saved either way, so going back
+      // needs no decision.
+      navigation.replace('Home');
       return;
     }
+    showAlert(
+      'Going back',
+      isOnlineHost
+        ? 'Keep the table open and come back to it, or close it for everyone.'
+        : 'Keep your seat and come back to it, or give it up.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep my seat', onPress: () => stepAway() },
+        {
+          text: isOnlineHost ? 'Close the table' : 'Give up my seat',
+          style: 'destructive',
+          onPress: () => leaveForGood(),
+        },
+      ],
+    );
+  };
 
-    showAlert('Leave table?', 'Your game is saved. You can resume it from the home screen.', [
-      { text: 'Stay', style: 'cancel' },
-      { text: 'Leave', style: 'destructive', onPress: () => navigation.replace('Home') },
-    ]);
+  /** Go to the home screen with the table still standing behind you. */
+  const stepAway = () => {
+    const s = snapshot.current;
+    saveGame({
+      stateJson: JSON.stringify(s.state),
+      settings: s.settings,
+      seed: s.seed,
+      roomCode: s.roomCode,
+      handNumber: s.state.handNumber,
+      savedAt: Date.now(),
+      turnStartedAt: s.turnStartedAt,
+      ...(s.tournamentStartedAt !== null ? { tournamentStartedAt: s.tournamentStartedAt } : {}),
+      steppedAway: true,
+    });
+    navigation.replace('Home');
+  };
+
+  /** Actually give the seat up, which for a host closes the room. */
+  const leaveForGood = () => {
+    const leavePromise = isOnlineHost && roomCode
+      ? endRoom(roomCode, 'Host left the table.')
+      : roomCode
+        ? leaveRoom(roomCode, human.id).then(() => ({ ok: true }))
+        : Promise.resolve({ ok: true });
+    leavePromise
+      .catch((error) => {
+        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-online-table' } });
+      })
+      .finally(() => {
+        /*
+         * The seat is gone, so the saved game pointing at it is a shortcut on
+         * the home screen to a table this player is no longer at. Offline
+         * games are deliberately kept, because resuming one is the whole
+         * point of saving it.
+         */
+        clearSavedGame();
+        navigation.replace('Home');
+      });
   };
 
   const opponents = felt.players.filter((p) => p.id !== human.id);
@@ -2415,7 +2452,7 @@ export function TableScreen({ navigation, route }: Props) {
     <ScreenBackground variant="felt" edges={['top', 'bottom']}>
       <View style={styles.topBar}>
         <Pressable
-          onPress={leave}
+          onPress={promptBack}
           style={[styles.iconBtn, shadows.soft]}
           hitSlop={8}
           accessibilityRole="button"
@@ -2691,10 +2728,6 @@ export function TableScreen({ navigation, route }: Props) {
                 // anything to reveal them.
                 showToTable={isShowdown && reveal === 'show'}
                 forceOpen={reveal !== 'show' ? forceOpen : false}
-                // Only a card turned over by hand mid hand gets enlarged. At a
-                // showdown every card is open and scaling them all would say
-                // nothing about who chose to show what.
-                emphasize={openAlways ? undefined : humanCardExposure}
                 // thrown down from the middle of the felt, which sits above this row
                 fromY={-(tableH * 0.5 + 40)}
                 back={cardBack}
@@ -3024,15 +3057,12 @@ export function TableScreen({ navigation, route }: Props) {
 
       <TableMenu
         visible={menuOpen}
-        onClose={() => { setMenuOpen(false); setCodeShown(false); }}
+        onClose={() => setMenuOpen(false)}
         roomCode={roomCode}
-        codeShown={codeShown}
-        onRevealCode={() => setCodeShown(true)}
         isHost={!roomCode || isOnlineHost}
         settings={settings}
         ownedCosmeticIds={cosmetics.ownedCosmeticIds}
         onChange={(patch) => updateSettings(pickMidGameSafe(patch))}
-        onLeave={() => { setMenuOpen(false); leave(); }}
       />
     </ScreenBackground>
   );
@@ -3054,24 +3084,18 @@ function TableMenu({
   visible,
   onClose,
   roomCode,
-  codeShown,
-  onRevealCode,
   isHost,
   settings,
   ownedCosmeticIds,
   onChange,
-  onLeave,
 }: {
   visible: boolean;
   onClose: () => void;
   roomCode?: string;
-  codeShown: boolean;
-  onRevealCode: () => void;
   isHost: boolean;
   settings: GameSettings;
   ownedCosmeticIds: readonly string[];
   onChange: (patch: Partial<GameSettings>) => void;
-  onLeave: () => void;
 }) {
   if (!visible) return null;
 
@@ -3101,18 +3125,21 @@ function TableMenu({
           <Text style={styles.menuTitle}>Table</Text>
 
           {roomCode ? (
-            <Pressable
-              style={styles.menuRow}
-              onPress={onRevealCode}
-              accessibilityRole="button"
-              accessibilityLabel={codeShown ? `Room code ${roomCode}` : 'Show game code'}
-            >
+            <View style={styles.menuRow} accessibilityLabel={`Room code ${roomCode}`}>
               <Text style={styles.menuRowLabel}>Game code</Text>
-              {/* Hidden until asked for: the reason it left the header is
-                  that it was on screen for people sitting next to you during
-                  every hand, and a room code is what lets someone in. */}
-              <Text style={styles.menuRowValue}>{codeShown ? `#${roomCode}` : 'Show'}</Text>
-            </Pressable>
+              {/*
+                * Simply shown.
+                *
+                * It used to sit behind a Show button, on the reasoning that a
+                * room code is what lets someone in and it should not be on
+                * screen next to a stranger. That reasoning already paid for
+                * itself when the code left the header: this sheet only opens
+                * when you ask it to, and the person who opened it is the
+                * person who wants the code. Making them tap twice for it
+                * protected nothing and just made it hard to read out.
+                */}
+              <Text style={styles.menuRowValue}>#{roomCode}</Text>
+            </View>
           ) : null}
 
           {isHost ? (
@@ -3155,9 +3182,17 @@ function TableMenu({
             </>
           ) : null}
 
+          {/*
+            * No Leave game button here any more.
+            *
+            * Leaving now lives on the back arrow, which is where people were
+            * already reaching when they meant "put this down for a minute".
+            * Burying the real leave in a menu and making the obvious control
+            * destroy the table was the wrong way round, so the arrow asks
+            * which one you meant instead.
+            */}
           <View style={styles.menuActions}>
             <WiiButton label="Close" size="sm" variant="white" onPress={onClose} />
-            <WiiButton label="Leave game" size="sm" variant="red" onPress={onLeave} />
           </View>
         </Pressable>
       </Pressable>
@@ -3269,7 +3304,15 @@ const styles = StyleSheet.create({
   exposeBtnDone: { borderColor: colors.surfaceBorder, backgroundColor: colors.surface },
   exposeBtnText: { fontFamily: fonts.bold, fontSize: 11, color: colors.gold },
   exposeBtnTextDone: { color: colors.onDarkMuted },
-  emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 6 },
+  /*
+   * Lifted clear of the turn timer.
+   *
+   * At `bottom: 6` the chat button sat on top of the countdown bar and the
+   * "Your turn" line beneath the hole cards, so the one thing on screen with
+   * a deadline on it was the thing being covered. The stack is anchored high
+   * enough now that the timer always has the row to itself.
+   */
+  emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 46 },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },
   rebuyNotice: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, textAlign: 'center', marginTop: spacing.xs },

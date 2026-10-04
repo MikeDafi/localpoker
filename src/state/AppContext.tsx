@@ -229,6 +229,16 @@ export interface SavedGame {
   turnStartedAt?: number;
   /** Host-published start time for tournament blind levels. */
   tournamentStartedAt?: number;
+  /*
+   * Set when the player chose to step away from an online table rather than
+   * leave it.
+   *
+   * Going to the home screen is not leaving: the seat is still theirs, and if
+   * they were hosting, the room is still theirs too. This is what tells
+   * `isResumable` not to apply the staleness deadline meant for a player who
+   * was dropped.
+   */
+  steppedAway?: boolean;
 }
 
 interface AppContextValue {
