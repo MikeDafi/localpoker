@@ -10,6 +10,7 @@ import { AnimatedPal } from '../components/AnimatedPal';
 import { AdBanner } from '../components/AdBanner';
 import { colors, fonts, radii, spacing } from '../theme/theme';
 import { useApp } from '../state/AppContext';
+import { applyOutfit } from '../game/outfits';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
 import {
@@ -48,14 +49,16 @@ export function LobbyScreen({ navigation, route }: Props) {
     palSeed: profile.id,
     // Carried into the room so everyone at the table draws the Pal this
     // player actually designed, rather than a doodle derived from their id.
-    palJson: JSON.stringify(profile.pal),
+    // Dressed in the equipped outfit, so the rest of the table sees what was
+    // bought: the outfit is part of the Pal, not a local decoration.
+    palJson: JSON.stringify(applyOutfit(profile.pal, cosmetics.equippedByCategory.outfits)),
     seatIndex: 0,
     // The table's buy-in, not the app default. Hardcoding the default meant
     // the lobby advertised one stack and the host dealt another.
     chips: (hostSettings ?? DEFAULT_GAME_SETTINGS).startingStack,
     connected: true,
     isHost: host,
-  }), [profile.id, profile.name, profile.pal, host, hostSettings]);
+  }), [profile.id, profile.name, profile.pal, host, hostSettings, cosmetics.equippedByCategory.outfits]);
 
   /**
    * Players are stored under their Firebase `auth.uid`, because that is what the

@@ -9,6 +9,7 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { seatRingSlot } from '../game/seatRing';
+import { applyOutfit } from '../game/outfits';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
 import { blindsForMode, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
@@ -204,7 +205,14 @@ export function TableScreen({ navigation, route }: Props) {
   const animsOff = settings.animationSpeed === 'off' || settings.reduceMotion;
 
   const pals = useMemo<Record<string, PalConfig>>(() => {
-    const map: Record<string, PalConfig> = { [HUMAN_ID]: profile.pal, [localPlayerId]: profile.pal };
+    /*
+     * The outfit is applied here rather than at each seat, so every surface
+     * that draws the local Pal draws the dressed one. Outfits were sold for
+     * up to 5,000 coins while `equippedByCategory.outfits` was read nowhere
+     * at all, so a bought outfit changed nothing.
+     */
+    const dressed = applyOutfit(profile.pal, cosmetics.equippedByCategory.outfits);
+    const map: Record<string, PalConfig> = { [HUMAN_ID]: dressed, [localPlayerId]: dressed };
     for (let i = 0; i < settings.numOpponents; i++) map[`bot-${i}`] = palFromSeed(`bot-${i}-${seed}`);
     Object.values(room?.players ?? {}).forEach((player) => {
       if (player.id !== localPlayerId) {
@@ -218,7 +226,7 @@ export function TableScreen({ navigation, route }: Props) {
       }
     });
     return map;
-  }, [profile.pal, settings.numOpponents, seed, localPlayerId, room?.players]);
+  }, [profile.pal, cosmetics.equippedByCategory.outfits, settings.numOpponents, seed, localPlayerId, room?.players]);
 
   const botDiff = useMemo<Record<string, Difficulty>>(() => {
     const map: Record<string, Difficulty> = {};
