@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Defs, Ellipse, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, Ellipse, LinearGradient, Path, Stop } from 'react-native-svg';
 import { colors, fonts } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { resolveChips, type ChipPalette } from '../game/cosmetics';
-import { compactChipCount, shade, vivid } from '../game/chipStackLook';
+import { chipStackGeometry, compactChipCount, shade, vivid } from '../game/chipStackLook';
 
 /**
  * Denominations, coloured by whichever chip set the table is using.
@@ -42,109 +42,131 @@ function breakdown(amount: number, palette: ChipPalette): { color: string; edge:
 /**
  * A poker chip seen from slightly above, which is how one actually looks.
  *
- * It used to be a flat pill: a rounded rectangle with a line across it. That
- * reads as a counter rather than a chip, because the two things the eye uses
- * to recognise one were missing. A chip has a round face you are looking down
- * on, so it is an ellipse rather than a bar, and it has thickness, so there is
- * a wall under that face with the light catching it.
+ * It reads as depth because the only complete face is the top ellipse. Every
+ * chip under it contributes a curved wall slice, so the pile recedes in the
+ * same direction as a real stack instead of repeating flat discs.
  *
  * Drawn from geometry rather than from an image, for the same reason the card
  * backs are: no licence, and it stays sharp at any size.
  */
-/**
- * How much of each chip the one above it covers.
- *
- * A chip is now 0.77 of its width tall, face plus wall, so hiding 0.60 of it
- * leaves exactly the wall showing. That is what a stack looks like: one face
- * on top and a row of edges under it, rather than a pile of whole chips.
- */
-const CHIP_OVERLAP = 0.6;
-
-function Chip({ color, edge, size = 22, index = 0 }: { color: string; edge: string; size?: number; index?: number }) {
-  const rx = size / 2;
-  const ry = size * 0.3;
-  const wall = Math.max(2, size * 0.17);
-  const h = ry * 2 + wall;
-  // Where the wall begins at a given x: the underside of the face.
-  const wallTop = (x: number) => ry + ry * Math.sqrt(Math.max(0, 1 - ((x - rx) / rx) ** 2));
-  // The pale blocks around a chip's edge. Four read as a chip; more at this
-  // size just turns the wall into a dotted line.
-  const spots = [0.18, 0.4, 0.62, 0.84].map((t) => t * size);
-  const spotW = Math.max(1.5, size * 0.11);
-
-  /*
-   * Every chip in a stack used to be painted identically, so a stack was one
-   * picture repeated rather than a column of separate objects. Alternating the
-   * face by a hair is what separates them, the same way real chips never sit
-   * perfectly flush.
-   */
+function ChipPile({ color, edge, size = 22, count = 1 }: { color: string; edge: string; size?: number; count?: number }) {
+  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  if (count <= 0) return null;
+  const geometry = chipStackGeometry(size, count);
   const face = vivid(color, 0.32);
-  const faceTop = shade(face, index % 2 === 0 ? 0.26 : 0.2);
-  const faceBottom = shade(face, -0.16);
-  const wallLit = shade(edge, 0.1);
-  const wallDark = shade(edge, -0.42);
-  // Unique per rendered chip: two gradients with the same id in one tree make
-  // every chip take whichever was mounted last.
-  const uid = React.useId();
+  const faceTop = shade(face, 0.3);
+  const faceBottom = shade(face, -0.18);
+  const wallLit = shade(color, 0.08);
+  const wallMid = shade(color, -0.22);
+  const wallDark = shade(color, -0.52);
+  const edgeSpot = shade(vivid(edge, 0.2), 0.18);
+  const rim = shade(edge, -0.12);
+  const seamLight = shade(edgeSpot, 0.28);
+  const seamDark = shade(edge, -0.56);
+  /*
+   * Unique per rendered pile: duplicate gradient ids make separate stacks
+   * borrow each other's last-mounted colours inside the same Svg tree.
+   */
 
   return (
-    <Svg width={size} height={h}>
+    <Svg width={geometry.width} height={geometry.height}>
       <Defs>
         <LinearGradient id={`face-${uid}`} x1="0.2" y1="0" x2="0.8" y2="1">
           <Stop offset="0" stopColor={faceTop} />
           <Stop offset="0.55" stopColor={face} />
           <Stop offset="1" stopColor={faceBottom} />
         </LinearGradient>
-        <LinearGradient id={`wall-${uid}`} x1="0" y1="0" x2="0" y2="1">
+        <LinearGradient id={`wall-${uid}`} x1="0.12" y1="0" x2="0.82" y2="1">
           <Stop offset="0" stopColor={wallLit} />
+          <Stop offset="0.45" stopColor={wallMid} />
           <Stop offset="1" stopColor={wallDark} />
         </LinearGradient>
       </Defs>
-      {/* The wall, traced under the face and down to the base. */}
-      <Path
-        d={`M0,${ry} A${rx},${ry} 0 0 0 ${size},${ry} L${size},${ry + wall} A${rx},${ry} 0 0 1 0,${ry + wall} Z`}
-        fill={`url(#wall-${uid})`}
+      <Ellipse
+        cx={geometry.rx}
+        cy={geometry.height - geometry.faceRy * 0.08}
+        rx={geometry.rx * 0.86}
+        ry={geometry.faceRy * 0.32}
+        fill="rgba(0,0,0,0.18)"
       />
-      {spots.map((x, i) => (
-        <Rect
-          key={i}
-          x={Math.max(0, x - spotW / 2)}
-          y={wallTop(x) - 0.5}
-          width={spotW}
-          height={wall}
-          fill="rgba(255,255,255,0.72)"
-          rx={spotW * 0.25}
-        />
+      {geometry.walls.map((wall) => (
+        <React.Fragment key={wall.chipIndexFromTop}>
+          <Path d={wall.path} fill={`url(#wall-${uid})`} />
+          <Path d={wall.path} fill="rgba(0,0,0,0.45)" opacity={wall.shadowOpacity} />
+          {wall.spotPaths.map((path, i) => (
+            <Path
+              key={`${wall.chipIndexFromTop}-${i}`}
+              d={path}
+              fill={edgeSpot}
+              opacity={0.9}
+              stroke="rgba(255,255,255,0.26)"
+              strokeWidth={geometry.strokeWidth * 0.32}
+            />
+          ))}
+          {!geometry.drawSeams && (
+            <Path
+              d={wall.frontRimPath}
+              fill="none"
+              stroke={shade(edge, -0.32)}
+              strokeWidth={geometry.strokeWidth * 0.7}
+              opacity={0.65}
+            />
+          )}
+        </React.Fragment>
       ))}
-      {/* The face, and the dashed ring every chip has printed round it. */}
+      {geometry.drawSeams &&
+        geometry.walls.map((wall) => (
+          <React.Fragment key={`seams-${wall.chipIndexFromTop}`}>
+            <Path
+              d={wall.baseShadowPath}
+              fill="none"
+              stroke={seamDark}
+              strokeWidth={geometry.seamStrokeWidth}
+              opacity={0.86}
+            />
+            {wall.chipIndexFromTop > 0 && (
+              <Path
+                d={wall.topLipPath}
+                fill="none"
+                stroke={seamLight}
+                strokeWidth={geometry.seamStrokeWidth * 0.78}
+                opacity={0.9}
+              />
+            )}
+          </React.Fragment>
+        ))}
       <Ellipse
-        cx={rx}
-        cy={ry}
-        rx={rx}
-        ry={ry}
+        cx={geometry.rx}
+        cy={geometry.topFaceCy}
+        rx={geometry.rx}
+        ry={geometry.faceRy}
         fill={`url(#face-${uid})`}
-        stroke={shade(edge, -0.2)}
-        strokeWidth={Math.max(0.6, size * 0.035)}
+        stroke={rim}
+        strokeWidth={geometry.strokeWidth}
       />
       <Ellipse
-        cx={rx}
-        cy={ry}
-        rx={rx * 0.78}
-        ry={ry * 0.72}
+        cx={geometry.rx}
+        cy={geometry.topFaceCy}
+        rx={geometry.rimRx}
+        ry={geometry.rimRy}
         fill="none"
-        stroke="rgba(255,255,255,0.6)"
-        strokeWidth={Math.max(0.8, size * 0.055)}
-        strokeDasharray={`${Math.max(1.4, size * 0.1)},${Math.max(1.4, size * 0.1)}`}
+        stroke={edgeSpot}
+        strokeWidth={geometry.strokeWidth * 1.2}
+        strokeDasharray={`${geometry.dashLength},${geometry.dashLength * 0.82}`}
       />
-      <Ellipse cx={rx} cy={ry} rx={rx * 0.52} ry={ry * 0.46} fill="rgba(255,255,255,0.1)" />
-      {/* The gloss. A clay chip is slightly domed, so the light lands as a
-          crescent up and left of centre rather than across the whole face. */}
       <Ellipse
-        cx={rx * 0.74}
-        cy={ry * 0.56}
-        rx={rx * 0.56}
-        ry={ry * 0.42}
-        fill="rgba(255,255,255,0.3)"
+        cx={geometry.rx}
+        cy={geometry.topFaceCy}
+        rx={geometry.centerRx}
+        ry={geometry.centerRy}
+        fill="rgba(255,255,255,0.1)"
+      />
+      <Ellipse
+        cx={geometry.glossCx}
+        cy={geometry.glossCy}
+        rx={geometry.glossRx}
+        ry={geometry.glossRy}
+        fill="rgba(255,255,255,0.32)"
       />
     </Svg>
   );
@@ -186,11 +208,7 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact, palett
       {!compact &&
         stacks.map((s, i) => (
           <View key={i} style={styles.stack}>
-            {Array.from({ length: s.count }).map((_, j) => (
-              <View key={j} style={{ marginTop: j === 0 ? 0 : -CHIP_OVERLAP * size }}>
-                <Chip color={s.color} edge={s.edge} size={size} index={j} />
-              </View>
-            ))}
+            <ChipPile color={s.color} edge={s.edge} size={size} count={s.count} />
           </View>
         ))}
       {compact && (
@@ -204,11 +222,7 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact, palett
          * the only thing legible and the colour is what says which chips.
          */
         <View style={styles.stack}>
-          {Array.from({ length: compactChipCount(amount) }).map((_, j) => (
-            <View key={j} style={{ marginTop: j === 0 ? 0 : -CHIP_OVERLAP * size }}>
-              <Chip color={stacks[0].color} edge={stacks[0].edge} size={size} index={j} />
-            </View>
-          ))}
+          <ChipPile color={stacks[0].color} edge={stacks[0].edge} size={size} count={compactChipCount(amount)} />
         </View>
       )}
       {showLabel && (

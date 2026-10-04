@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { compactChipCount, MAX_COMPACT_CHIPS, POT_SIZE_TIERS, potFontSize, shade, vivid } from '../chipStackLook';
+import {
+  chipStackGeometry,
+  compactChipCount,
+  MAX_COMPACT_CHIPS,
+  POT_SIZE_TIERS,
+  potFontSize,
+  shade,
+  vivid,
+} from '../chipStackLook';
 
 describe('compactChipCount', () => {
   it('draws nothing for nothing', () => {
@@ -84,6 +92,83 @@ describe('potFontSize', () => {
 
   it('never exceeds the largest tier', () => {
     expect(potFontSize(10_000_000, BB)).toBe(POT_SIZE_TIERS[POT_SIZE_TIERS.length - 1].fontSize);
+  });
+
+  it('keeps the old two-argument signature unchanged', () => {
+    expect(potFontSize(70 * BB, BB)).toBe(36);
+    expect(potFontSize(200 * BB, BB)).toBe(42);
+  });
+
+  it('leaves top-tier pot text unchanged on a large phone', () => {
+    expect(potFontSize(70 * BB, BB, 440)).toBe(36);
+    expect(potFontSize(200 * BB, BB, 440)).toBe(42);
+  });
+
+  it('shrinks only the top tiers on a narrow phone', () => {
+    expect(potFontSize(30 * BB, BB, 375)).toBe(31);
+    expect(potFontSize(70 * BB, BB, 375)).toBeLessThan(36);
+    expect(potFontSize(200 * BB, BB, 375)).toBeLessThan(42);
+  });
+
+  it('scales the narrow-phone shrink between SE and Pro Max widths', () => {
+    const se = potFontSize(200 * BB, BB, 375);
+    const regular = potFontSize(200 * BB, BB, 393);
+    const max = potFontSize(200 * BB, BB, 440);
+    expect(se).toBeLessThan(regular);
+    expect(regular).toBeLessThan(max);
+  });
+});
+
+describe('chipStackGeometry', () => {
+  it('uses an ellipse for the top face and a separate wall for depth', () => {
+    const geometry = chipStackGeometry(26, 4);
+    expect(geometry.faceRy).toBeLessThan(geometry.rx);
+    expect(geometry.wallHeight).toBeGreaterThan(geometry.faceRy * 0.8);
+    expect(geometry.height).toBeCloseTo(geometry.faceRy * 2 + geometry.wallHeight + geometry.chipStep * 3);
+  });
+
+  it('returns wall slices from bottom to top so upper chips occlude lower chips', () => {
+    const geometry = chipStackGeometry(30, 5);
+    expect(geometry.walls).toHaveLength(5);
+    expect(geometry.walls[0].chipIndexFromTop).toBe(4);
+    expect(geometry.walls[0].faceCy).toBeGreaterThan(geometry.walls[geometry.walls.length - 1].faceCy);
+    expect(geometry.walls[geometry.walls.length - 1].chipIndexFromTop).toBe(0);
+  });
+
+  it('gives each visible chip segment its own seam geometry at 28pt', () => {
+    const geometry = chipStackGeometry(28, 5);
+    const topToBottom = geometry.walls.slice().reverse();
+    expect(geometry.drawSeams).toBe(true);
+    expect(geometry.seamStrokeWidth).toBeGreaterThanOrEqual(0.75);
+    for (let i = 0; i < topToBottom.length; i += 1) {
+      const wall = topToBottom[i];
+      const expectedHeight = i === topToBottom.length - 1 ? geometry.wallHeight : geometry.chipStep;
+      expect(wall.visibleHeight).toBeCloseTo(expectedHeight);
+      expect(wall.baseShadowPath).not.toBe(wall.topLipPath);
+    }
+  });
+
+  it('curves edge spots along every visible wall', () => {
+    const geometry = chipStackGeometry(24, 3);
+    for (const wall of geometry.walls) {
+      expect(wall.spotPaths).toHaveLength(5);
+      for (const path of wall.spotPaths) {
+        expect(path).toContain(`A${geometry.rx},${geometry.faceRy}`);
+      }
+    }
+  });
+
+  it('keeps edge spots separate per chip instead of one continuous stripe', () => {
+    const geometry = chipStackGeometry(28, 3);
+    const topToBottom = geometry.walls.slice().reverse();
+    expect(topToBottom[0].spotPaths[2]).not.toBe(topToBottom[1].spotPaths[2]);
+    expect(topToBottom[1].spotPaths[2]).not.toBe(topToBottom[2].spotPaths[2]);
+  });
+
+  it('drops seam strokes below the legible size instead of drawing noise', () => {
+    const geometry = chipStackGeometry(18, 5);
+    expect(geometry.drawSeams).toBe(false);
+    expect(geometry.seamStrokeWidth).toBe(0);
   });
 });
 
