@@ -3,7 +3,9 @@ import {
   applyBlindLevel,
   blindsDue,
   isEliminated,
+  handsUntilNextLevel,
   levelAt,
+  levelAtHand,
   STANDARD_STRUCTURE,
   STRUCTURES,
   tournamentWinner,
@@ -169,5 +171,51 @@ describe('moving the blinds up', () => {
 
   it('treats a missing ante as no ante', () => {
     expect(blindsDue({ smallBlind: 10, bigBlind: 20 }, { smallBlind: 10, bigBlind: 20, ante: 0 })).toBe(false);
+  });
+});
+
+describe('levelAtHand', () => {
+  /*
+   * The clock version advances whether or not anybody is playing, which on a
+   * phone means a level can pass while the app is in a pocket. Counting hands
+   * ties the climb to poker actually happening.
+   */
+  it('holds the first level for the whole of the first level', () => {
+    for (const hand of [1, 5, 10]) {
+      expect(levelAtHand(STANDARD_STRUCTURE, hand, 10).index).toBe(0);
+    }
+    expect(levelAtHand(STANDARD_STRUCTURE, 11, 10).index).toBe(1);
+  });
+
+  it('climbs the same ladder the clock climbs, antes and all', () => {
+    const byHand = levelAtHand(STANDARD_STRUCTURE, 31, 10);
+    const byClock = levelAt(STANDARD_STRUCTURE, STANDARD_STRUCTURE.levelMs * 3);
+    expect(byHand.level).toEqual(byClock.level);
+    expect(byHand.level.ante).toBeGreaterThan(0);
+  });
+
+  it('turbo reaches the same level in fewer hands', () => {
+    expect(levelAtHand(TURBO_STRUCTURE, 13, 4).index).toBe(3);
+    expect(levelAtHand(STANDARD_STRUCTURE, 13, 10).index).toBe(1);
+  });
+
+  it('stays on the last level rather than running off the ladder', () => {
+    const last = STANDARD_STRUCTURE.levels.length - 1;
+    const state = levelAtHand(STANDARD_STRUCTURE, 100_000, 10);
+    expect(state.index).toBe(last);
+    expect(state.nextLevel).toBeNull();
+  });
+
+  it('treats a zero or nonsense level length as no schedule at all', () => {
+    expect(levelAtHand(STANDARD_STRUCTURE, 500, 0).index).toBe(0);
+    expect(levelAtHand(STANDARD_STRUCTURE, 500, Number.NaN).index).toBe(0);
+    expect(levelAtHand(STANDARD_STRUCTURE, Number.NaN, 10).index).toBe(0);
+  });
+
+  it('counts down the hands left in the level', () => {
+    expect(handsUntilNextLevel(1, 10)).toBe(10);
+    expect(handsUntilNextLevel(10, 10)).toBe(1);
+    expect(handsUntilNextLevel(11, 10)).toBe(10);
+    expect(handsUntilNextLevel(5, 0)).toBeNull();
   });
 });

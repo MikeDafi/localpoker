@@ -8,16 +8,17 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiButton } from '../components/WiiButton';
 import { WiiPanel } from '../components/WiiPanel';
 import {
-  DEVICE_ONLY_SETTINGS,
-  SETTINGS_SCHEMA,
   DEFAULT_GAME_SETTINGS,
   availableSettingOptions,
+  gameSetupSectionsForMode,
   normalizeSettings,
+  resolveSettingSelection,
+  settingsForModeDefaults,
   type GameSettings,
   type SettingsSection,
   type SettingField,
 } from '../game/settings';
-import { isGameMode, settingsForMode } from '../game/gameMode';
+import { isGameMode } from '../game/gameMode';
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
 import { useHoldRepeat } from '../components/useHoldRepeat';
@@ -35,6 +36,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
   const { width } = useWindowDimensions();
   const isFriends = route.params.mode === 'friends';
   const [local, setLocal] = useState<GameSettings>(() => ({ ...settings }));
+  const setupMode = isGameMode(local.gameMode) ? local.gameMode : DEFAULT_GAME_SETTINGS.gameMode;
 
   // App-wide preferences (sound, animations, accessibility) live in Settings, not
   // in per-table Game Setup, only show game/table-relevant sections here.
@@ -42,28 +44,8 @@ export function GameSetupScreen({ navigation, route }: Props) {
   // meaningless there: the Opponents section only configures opponents that are
   // never dealt in.
   const setupSections = useMemo(
-    () => SETTINGS_SCHEMA.filter((s) => {
-      if (['sound', 'animations', 'a11y'].includes(s.id)) return false;
-      if (isFriends && s.id === 'bots') return false;
-      return true;
-    })
-      /*
-       * Strip anything that belongs to the device rather than to the table.
-       *
-       * "Notify me" turns on push for this phone and publishes a token; it
-       * follows the player, not the game, and sits in Settings. Offering it
-       * while setting up a table read as a per-table switch and would have
-       * been changed by anyone who happened to be opening a game.
-       */
-      .map((s) => ({
-        ...s,
-        fields: s.fields.filter(
-          (f) => !(DEVICE_ONLY_SETTINGS as readonly string[]).includes(f.key),
-        ),
-      }))
-      // Friends was nothing but that one toggle, so it is now an empty tab.
-      .filter((s) => s.fields.length > 0),
-    [isFriends],
+    () => gameSetupSectionsForMode(setupMode, isFriends),
+    [isFriends, setupMode],
   );
   const compact = width < 430;
   const [activeSectionId, setActiveSectionId] = useState(() => setupSections[0]?.id ?? '');
@@ -72,8 +54,8 @@ export function GameSetupScreen({ navigation, route }: Props) {
     [activeSectionId, setupSections],
   );
   const visibleFields = useMemo(
-    () => activeSection.fields.filter((field) => shouldShowField(field, isFriends)),
-    [activeSection, isFriends],
+    () => activeSection.fields,
+    [activeSection],
   );
   const summarySettings = useMemo(() => normalizeSettings(local), [local]);
 
@@ -88,7 +70,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
        * than whatever the cash game happened to be playing. Leaving the table
        * on 50/100 while the ladder starts at 10/20 would make level one a lie.
        */
-      if (key === 'gameMode' && isGameMode(value)) return settingsForMode(prev, value);
+      if (key === 'gameMode' && isGameMode(value)) return settingsForModeDefaults(prev, value);
       return { ...prev, [key]: value };
     });
   }, []);
@@ -132,7 +114,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
   const handleStart = useCallback(() => {
     const tableSettings = normalizeSettings(local);
     sound.play('start');
-    updateSettings(local);
+    updateSettings(tableSettings);
     // A friends table is not dealt from here: the host configures it, then the
     // lobby waits for the other players and creates the room with these rules.
     if (isFriends && route.params.roomCode) {
@@ -156,16 +138,10 @@ export function GameSetupScreen({ navigation, route }: Props) {
             <View style={styles.heroIntro}>
               <Text style={styles.modeLabel}>{isFriends ? 'Private friends table' : 'Quick play vs bots'}</Text>
             </View>
-            <View style={styles.stakesBadge}>
-              <Text style={styles.stakesKicker}>Stakes</Text>
-              <Text style={styles.stakesValue}>{summarySettings.smallBlind}/{summarySettings.bigBlind}</Text>
-              <Text style={styles.stakesMeta}>{formatChips(summarySettings.startingStack)} stack</Text>
-            </View>
           </View>
 
-          {/* One row, always. Stacked, the button nobody wants sat above the
-              button everybody wants, and on a short phone the green one went
-              under the fold. */}
+          {/* The action buttons stay before the stakes chip because changing
+              stakes is context, while opening the table is the decision. */}
           <View style={styles.heroActions}>
             <WiiButton
               label="Reset defaults"
@@ -181,6 +157,11 @@ export function GameSetupScreen({ navigation, route }: Props) {
               onPress={handleStart}
               style={styles.startButton}
             />
+            <View style={styles.stakesBadge}>
+              <Text style={styles.stakesKicker}>Stakes</Text>
+              <Text style={styles.stakesValue}>{summarySettings.smallBlind}/{summarySettings.bigBlind}</Text>
+              <Text style={styles.stakesMeta}>{formatChips(summarySettings.startingStack)} stack</Text>
+            </View>
           </View>
         </WiiPanel>
 
@@ -195,7 +176,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
                 key={section.id}
                 section={section}
                 active={section.id === activeSection.id}
-                count={section.fields.filter((field) => shouldShowField(field, isFriends)).length}
+                count={section.fields.length}
                 onPress={handleSectionPress}
               />
             ))}
@@ -246,12 +227,6 @@ export function GameSetupScreen({ navigation, route }: Props) {
       </View>
     </ScreenBackground>
   );
-}
-
-function shouldShowField(field: SettingField, isFriends: boolean): boolean {
-  // Quick play has no room to make public, and a friends table has no bots.
-  if (field.key === 'roomVisibility') return isFriends;
-  return !(isFriends && field.key === 'numOpponents');
 }
 
 function SectionTab({ section, active, count, onPress }: {
@@ -350,10 +325,11 @@ function FieldControl({
 
   if (field.type === 'select') {
     const options = availableSettingOptions(field, ownedCosmeticIds);
+    const selectedValue = resolveSettingSelection(field, value, ownedCosmeticIds);
     return (
       <View style={styles.optionGroup}>
         {options.map((option) => {
-          const active = option.value === value;
+          const active = option.value === selectedValue;
           return (
             <Pressable
               key={`${String(field.key)}-${String(option.value)}`}
@@ -495,6 +471,7 @@ function formatSettingValue(field: SettingField, value: number): string {
   if (key.includes('pct') || key.includes('volume') || key.includes('aggression')) return `${value}%`;
   if (key.includes('sec')) return `${value}s`;
   if (key.includes('min')) return `${value}m`;
+  if (key.includes('hands')) return `${value} hands`;
   return formatChips(value);
 }
 
@@ -541,7 +518,7 @@ const styles = StyleSheet.create({
     color: colors.inkMuted,
   },
   stakesBadge: {
-    minWidth: 112,
+    minWidth: 104,
     borderRadius: radii.lg,
     backgroundColor: colors.panelAlt,
     borderWidth: 1,
@@ -655,18 +632,20 @@ const styles = StyleSheet.create({
   heroActions: {
     marginTop: spacing.lg,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   heroActionsCompact: {
     flexDirection: 'column',
     alignItems: 'stretch',
   },
   resetButton: {
-    minWidth: 150,
+    minWidth: 132,
   },
   startButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   tabsWrap: {
     marginTop: spacing.md,

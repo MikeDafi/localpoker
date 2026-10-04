@@ -1,5 +1,5 @@
 import type { Difficulty } from '../engine/bot';
-import { GAME_MODE_OPTIONS, isGameMode, type GameMode } from './gameMode';
+import { GAME_MODE_OPTIONS, isGameMode, settingsForMode as settingsForKnownMode, type GameMode } from './gameMode';
 import {
   CARD_BACK_PALETTES,
   CHIP_PALETTES,
@@ -30,6 +30,7 @@ export interface SettingField {
   step?: number;
   options?: { value: string | number; label: string }[];
   premium?: boolean;
+  modes?: readonly GameMode[];
 }
 
 export interface SettingsSection {
@@ -49,6 +50,7 @@ export interface GameSettings {
   smallBlind: number;
   bigBlind: number;
   ante: number;
+  blindLevelLengthHands: number;
   startingStack: number;
 
   // Table
@@ -73,9 +75,9 @@ export interface GameSettings {
    * These used to default to 'equipped', which followed whatever was worn in
    * the Store. That was one indirection too many: the setting said "Equipped"
    * and you had to go to another screen to find out what that meant. The
-   * picker now lists the actual felts and chips you own. 'equipped' is still
-   * *accepted*, because older saves carry it and `resolveFelt` and friends
-   * still understand it, it is simply no longer offered.
+   * picker now lists the actual felts and chips you own. Older saves may
+   * still carry 'equipped', so `normalizeSettings` maps it back to defaults
+   * before setup renders.
    */
   feltStyle: string;
   chipStyle: string;
@@ -118,6 +120,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   smallBlind: 10,
   bigBlind: 20,
   ante: 0,
+  blindLevelLengthHands: 0,
   startingStack: 2000,
 
   maxPlayers: 6,
@@ -154,15 +157,33 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
 
 };
 
+export const BLIND_LEVEL_LENGTH_HANDS_BY_MODE: Record<GameMode, number> = {
+  cash: 0,
+  tournament: 10,
+  turbo: 4,
+};
+
+export function defaultBlindLevelLengthHands(mode: GameMode): number {
+  return BLIND_LEVEL_LENGTH_HANDS_BY_MODE[mode];
+}
+
+export function settingsForModeDefaults(settings: GameSettings, mode: GameMode): GameSettings {
+  const withMode = settingsForKnownMode(settings, mode);
+  const blindLevelLengthHands = defaultBlindLevelLengthHands(mode);
+  if (mode === 'cash') return { ...withMode, gameMode: mode, ante: 0, blindLevelLengthHands };
+  return { ...withMode, gameMode: mode, blindLevelLengthHands };
+}
+
 export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'table', title: 'Table', icon: '🎲',
     fields: [
-      { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash plays like today with rebuys. Tournaments use a fixed blind ladder and no rebuys.', options: GAME_MODE_OPTIONS },
-      { key: 'smallBlind', label: 'Small Blind', type: 'number', min: 1, max: 100000, step: 1 },
-      { key: 'bigBlind', label: 'Big Blind', type: 'number', min: 2, max: 200000, step: 1 },
-      { key: 'ante', label: 'Ante', type: 'number', min: 0, max: 100000, step: 1 },
-      { key: 'startingStack', label: 'Starting Stack', type: 'number', min: 100, max: 1000000, step: 100 },
+      { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash has a buy-in and fixed blinds. Tournament modes publish a hand-based blind schedule and busted players are out.', options: GAME_MODE_OPTIONS },
+      { key: 'smallBlind', label: 'Small Blind', type: 'number', min: 1, max: 100000, step: 1, help: 'Cash uses this as the fixed small blind. Tournament modes use it as level one.' },
+      { key: 'bigBlind', label: 'Big Blind', type: 'number', min: 2, max: 200000, step: 1, help: 'Cash uses this as the fixed big blind. Tournament modes use it as level one.' },
+      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, modes: ['tournament', 'turbo'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
+      { key: 'blindLevelLengthHands', label: 'Level Length', type: 'number', min: 1, max: 100, step: 1, modes: ['tournament', 'turbo'], help: 'Hands per blind level. All clients derive the same level from the shared hand number.' },
+      { key: 'startingStack', label: 'Buy-In / Stack', type: 'number', min: 100, max: 1000000, step: 100 },
       { key: 'turnTimerSec', label: 'Turn Timer (s)', type: 'slider', min: 5, max: 60, step: 1 },
       { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public tables are listed for anyone to join. Private tables are only shown to your friends. Whoever opens a table deals its cards, so open public tables only if you are happy for strangers to sit down.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
     ],
@@ -223,13 +244,62 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   },
 ];
 
+export function shouldShowGameSetupField(field: SettingField, input: {
+  gameMode: GameMode;
+  isFriends: boolean;
+}): boolean {
+  if ((DEVICE_ONLY_SETTINGS as readonly string[]).includes(String(field.key))) return false;
+  if (field.modes && !field.modes.includes(input.gameMode)) return false;
+  if (field.key === 'roomVisibility') return input.isFriends;
+  return !(input.isFriends && field.key === 'numOpponents');
+}
+
+export function gameSetupSectionsForMode(gameMode: GameMode, isFriends = false): SettingsSection[] {
+  const mode = isGameMode(gameMode) ? gameMode : DEFAULT_GAME_SETTINGS.gameMode;
+  return SETTINGS_SCHEMA.filter((s) => {
+    if (['sound', 'animations', 'a11y'].includes(s.id)) return false;
+    if (isFriends && s.id === 'bots') return false;
+    return true;
+  })
+    .map((s) => ({
+      ...s,
+      fields: s.fields.filter((field) => shouldShowGameSetupField(field, { gameMode: mode, isFriends })),
+    }))
+    .filter((s) => s.fields.length > 0);
+}
+
+const APPEARANCE_SETTING_KEYS = ['cardBack', 'feltStyle', 'chipStyle'] as const;
+
+function isKnownSettingOption(key: keyof GameSettings, value: unknown): boolean {
+  const field = SETTINGS_SCHEMA
+    .flatMap((section) => section.fields)
+    .find((candidate) => candidate.key === key);
+  return field?.options?.some((option) => option.value === value) ?? false;
+}
+
 export function normalizeSettings(s?: Partial<GameSettings> | null): GameSettings {
   const merged = { ...DEFAULT_GAME_SETTINGS, ...(s ?? {}) } as GameSettings & Record<string, unknown>;
   delete merged.showAvatarNames;
   if (!isGameMode(merged.gameMode)) merged.gameMode = DEFAULT_GAME_SETTINGS.gameMode;
+  const rawLevelLength = Number((s as Partial<GameSettings> | null | undefined)?.blindLevelLengthHands);
+  merged.blindLevelLengthHands = merged.gameMode === 'cash'
+    ? 0
+    : Math.max(
+      1,
+      Math.min(
+        100,
+        Math.round(rawLevelLength >= 1 ? rawLevelLength : defaultBlindLevelLengthHands(merged.gameMode)),
+      ),
+    );
+  if (merged.gameMode === 'cash') merged.ante = 0;
   if (merged.bigBlind < merged.smallBlind) merged.bigBlind = merged.smallBlind * 2;
   merged.numOpponents = Math.max(1, Math.min(8, merged.numOpponents));
   merged.maxPlayers = Math.max(merged.numOpponents + 1, merged.maxPlayers);
+  for (const key of APPEARANCE_SETTING_KEYS) {
+    if (typeof merged[key] !== 'string' || !isKnownSettingOption(key, merged[key])) {
+      merged[key] = DEFAULT_GAME_SETTINGS[key];
+    }
+  }
   return merged;
 }
 
@@ -255,6 +325,20 @@ export function availableSettingOptions(
     if (id in access.known) usable.add(id);
   }
   return options.filter((option) => typeof option.value !== 'string' || usable.has(option.value));
+}
+
+export function resolveSettingSelection(
+  field: SettingField,
+  value: unknown,
+  ownedCosmeticIds: readonly string[] = [],
+): SettingOption['value'] | null {
+  const options = availableSettingOptions(field, ownedCosmeticIds);
+  if (options.length === 0) return null;
+  if (options.some((option) => option.value === value)) return value as SettingOption['value'];
+
+  const defaultValue = DEFAULT_GAME_SETTINGS[field.key];
+  if (options.some((option) => option.value === defaultValue)) return defaultValue as SettingOption['value'];
+  return options[0].value;
 }
 
 /**

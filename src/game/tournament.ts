@@ -196,3 +196,56 @@ export function blindsDue(
   );
 }
 
+
+/**
+ * Which level a tournament is on, counted in hands rather than in minutes.
+ *
+ * The clock is the default because that is how a real tournament runs, but a
+ * phone game is not played in one sitting: people put it down mid hand, and a
+ * level that advanced while nobody was dealing meant coming back to blinds
+ * that had climbed past the stacks with no poker played in between. Counting
+ * hands ties the climb to the game actually being played.
+ *
+ * It is also the only version that is safe to compute independently on every
+ * device. Spark has no Cloud Functions, so there is no server clock: the hand
+ * number is state everyone already agrees on, while elapsed time depends on a
+ * published start and each device's own clock being right about it.
+ *
+ * Shares `structure.levels` with `levelAt` deliberately. The ladder and the
+ * antes on it are the design; how fast you walk up it is the setting.
+ */
+export function levelAtHand(
+  structure: TournamentStructure,
+  handNumber: number,
+  levelLengthHands: number,
+): LevelState {
+  const levels = structure.levels;
+  const last = levels.length - 1;
+  const hand = Number.isFinite(handNumber) ? Math.max(1, Math.floor(handNumber)) : 1;
+  const length = Number.isFinite(levelLengthHands) ? Math.floor(levelLengthHands) : 0;
+  if (length <= 0) {
+    return { index: 0, level: levels[0], msUntilNextLevel: null, nextLevel: levels[1] ?? null };
+  }
+
+  const index = Math.min(Math.floor((hand - 1) / length), last);
+  if (index >= last) {
+    return { index: last, level: levels[last], msUntilNextLevel: null, nextLevel: null };
+  }
+  return {
+    index,
+    level: levels[index],
+    // Measured in hands, so there is no millisecond answer to give. The
+    // caller that wants a countdown reads `handsUntilNextLevel`.
+    msUntilNextLevel: null,
+    nextLevel: levels[index + 1],
+  };
+}
+
+/** How many more hands until the blinds go up, for the warning on the table. */
+export function handsUntilNextLevel(handNumber: number, levelLengthHands: number): number | null {
+  const hand = Number.isFinite(handNumber) ? Math.max(1, Math.floor(handNumber)) : 1;
+  const length = Number.isFinite(levelLengthHands) ? Math.floor(levelLengthHands) : 0;
+  if (length <= 0) return null;
+  const index = Math.floor((hand - 1) / length);
+  return (index + 1) * length + 1 - hand;
+}

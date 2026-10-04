@@ -1672,6 +1672,10 @@ export function TableScreen({ navigation, route }: Props) {
         mode: settings.gameMode,
         startedAt: tournamentStartedAt,
         now: Date.now(),
+        // The hand about to be dealt, which is the one the new blinds apply
+        // to. `prev.handNumber` is the hand just finished.
+        handNumber: prev.handNumber + 1,
+        levelLengthHands: settings.blindLevelLengthHands,
       });
       const ready = dueLevel && blindsDue(prev.config, dueLevel.level)
         ? applyBlindLevel(prev, dueLevel.level)
@@ -2560,7 +2564,7 @@ export function TableScreen({ navigation, route }: Props) {
                     says "this hand matters" before it is read. */}
                 <AnimatedNumber
                   value={displayedPot}
-                  style={[styles.potCenterValue, { fontSize: potFontSize(displayedPot, settings.bigBlind) }]}
+                  style={[styles.potCenterValue, { fontSize: potFontSize(displayedPot, settings.bigBlind, width) }]}
                 />
               </View>
             </View>

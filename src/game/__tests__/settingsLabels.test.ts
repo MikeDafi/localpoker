@@ -4,7 +4,10 @@ import {
   DEVICE_ONLY_SETTINGS,
   SETTINGS_SCHEMA,
   availableSettingOptions,
+  gameSetupSectionsForMode,
   normalizeSettings,
+  resolveSettingSelection,
+  settingsForModeDefaults,
 } from '../settings';
 
 /**
@@ -123,33 +126,60 @@ describe('what Game Setup is allowed to show', () => {
    * This mirrors the filter in GameSetupScreen so that adding another
    * device-only setting cannot quietly put it back on that screen.
    */
-  const setupSections = SETTINGS_SCHEMA
-    .filter((s) => !['sound', 'animations', 'a11y'].includes(s.id))
-    .map((s) => ({
-      ...s,
-      fields: s.fields.filter((f) => !(DEVICE_ONLY_SETTINGS as readonly string[]).includes(String(f.key))),
-    }))
-    .filter((s) => s.fields.length > 0);
+  const setupKeys = (mode: 'cash' | 'tournament' | 'turbo', isFriends = false) =>
+    gameSetupSectionsForMode(mode, isFriends).flatMap((s) => s.fields.map((f) => String(f.key)));
 
   it('shows no device-only setting', () => {
-    const keys = setupSections.flatMap((s) => s.fields.map((f) => String(f.key)));
-    for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
-      expect(keys, `${deviceOnly} belongs in Settings, not Game Setup`).not.toContain(deviceOnly);
+    for (const mode of ['cash', 'tournament', 'turbo'] as const) {
+      for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
+        expect(setupKeys(mode), `${deviceOnly} belongs in Settings, not Game Setup`).not.toContain(deviceOnly);
+      }
     }
   });
 
   it('leaves no empty tab behind', () => {
     // Friends held nothing but that one toggle, so filtering the field has to
     // take the section with it rather than leave a tab with nothing in it.
-    for (const section of setupSections) {
-      expect(section.fields.length, `${section.id} is an empty tab`).toBeGreaterThan(0);
+    for (const mode of ['cash', 'tournament', 'turbo'] as const) {
+      for (const section of gameSetupSectionsForMode(mode)) {
+        expect(section.fields.length, `${section.id} is an empty tab`).toBeGreaterThan(0);
+      }
     }
   });
 
   it('still offers the table settings worth setting per game', () => {
-    const ids = setupSections.map((s) => s.id);
+    const ids = gameSetupSectionsForMode('cash').map((s) => s.id);
     expect(ids).toContain('table');
     expect(ids).toContain('bots');
+  });
+
+  it('keeps cash setup to buy-in and fixed blind controls', () => {
+    const keys = setupKeys('cash');
+    expect(keys).toEqual(expect.arrayContaining(['gameMode', 'smallBlind', 'bigBlind', 'startingStack']));
+    expect(keys).not.toContain('ante');
+    expect(keys).not.toContain('blindLevelLengthHands');
+  });
+
+  it('adds blind schedule controls for tournament modes', () => {
+    for (const mode of ['tournament', 'turbo'] as const) {
+      const keys = setupKeys(mode);
+      expect(keys).toContain('blindLevelLengthHands');
+      expect(keys).toContain('ante');
+    }
+  });
+
+  it('uses a faster hand schedule for turbo defaults', () => {
+    const tournament = settingsForModeDefaults(DEFAULT_GAME_SETTINGS, 'tournament');
+    const turbo = settingsForModeDefaults(DEFAULT_GAME_SETTINGS, 'turbo');
+    const cash = settingsForModeDefaults({ ...DEFAULT_GAME_SETTINGS, ante: 10 }, 'cash');
+    expect(tournament.blindLevelLengthHands).toBeGreaterThan(turbo.blindLevelLengthHands);
+    expect(cash.blindLevelLengthHands).toBe(0);
+    expect(cash.ante).toBe(0);
+  });
+
+  it('defaults old tournament saves to a playable schedule', () => {
+    expect(normalizeSettings({ gameMode: 'tournament' }).blindLevelLengthHands).toBe(10);
+    expect(normalizeSettings({ gameMode: 'turbo' }).blindLevelLengthHands).toBe(4);
   });
 
   it('keeps every device-only setting reachable in full Settings', () => {
@@ -157,6 +187,38 @@ describe('what Game Setup is allowed to show', () => {
     for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
       expect(all, `${deviceOnly} must still be changeable somewhere`).toContain(deviceOnly);
     }
+  });
+
+  describe('appearance selections', () => {
+    const fields = SETTINGS_SCHEMA.find((section) => section.id === 'appearance')?.fields ?? [];
+
+    it('falls back for saved profiles that predate an appearance option', () => {
+      expect(fields.map((field) => field.key)).toEqual(['cardBack', 'feltStyle', 'chipStyle']);
+      for (const field of fields) {
+        const selected = resolveSettingSelection(field, undefined, []);
+        expect(selected, `${String(field.key)} selection`).not.toBeNull();
+        expect(selected, `${String(field.key)} selection`).not.toBeUndefined();
+      }
+    });
+
+    it('falls back when a saved appearance is not currently available', () => {
+      for (const field of fields) {
+        const selected = resolveSettingSelection(field, 'retired-cosmetic', []);
+        const options = availableSettingOptions(field, []);
+        expect(options.map((option) => option.value)).toContain(selected);
+      }
+    });
+
+    it('normalizes retired appearance ids to defaults', () => {
+      const normalized = normalizeSettings({
+        cardBack: 'equipped',
+        feltStyle: 'equipped',
+        chipStyle: 'equipped',
+      } as never);
+      expect(normalized.cardBack).toBe(DEFAULT_GAME_SETTINGS.cardBack);
+      expect(normalized.feltStyle).toBe(DEFAULT_GAME_SETTINGS.feltStyle);
+      expect(normalized.chipStyle).toBe(DEFAULT_GAME_SETTINGS.chipStyle);
+    });
   });
 });
 

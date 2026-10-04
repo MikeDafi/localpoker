@@ -3,6 +3,7 @@ import {
   TURBO_STRUCTURE,
   blindsDue,
   levelAt,
+  levelAtHand,
   type BlindLevel,
   type LevelState,
   type TournamentStructure,
@@ -44,9 +45,23 @@ export function tournamentLevelForMode(input: {
   mode: GameMode;
   startedAt: number | null | undefined;
   now: number;
+  /** The hand about to be dealt, one based. Only read when counting hands. */
+  handNumber?: number;
+  /**
+   * Hands per level. Above zero this replaces the clock entirely.
+   *
+   * Two ways up the same ladder: the clock is what a real tournament uses,
+   * and hands are what a game played in snatched minutes needs, because a
+   * level that advances while the phone is in a pocket raises the blinds past
+   * the stacks with no poker played in between.
+   */
+  levelLengthHands?: number;
 }): LevelState | null {
   const structure = tournamentStructureForMode(input.mode);
-  if (!structure || typeof input.startedAt !== 'number') return null;
+  if (!structure) return null;
+  const byHand = typeof input.levelLengthHands === 'number' && input.levelLengthHands > 0;
+  if (byHand) return levelAtHand(structure, input.handNumber ?? 1, input.levelLengthHands!);
+  if (typeof input.startedAt !== 'number') return null;
   return levelAt(structure, input.now - input.startedAt);
 }
 
