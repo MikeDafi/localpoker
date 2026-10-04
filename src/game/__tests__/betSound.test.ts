@@ -2,53 +2,51 @@ import { describe, it, expect } from 'vitest';
 import { chipSoundsFor, chipsCommitted, MAX_CHIP_SOUNDS } from '../betSound';
 
 describe('chipSoundsFor', () => {
-  const BB = 20;
+  const POT = 100;
 
   it('makes no sound when no chips move', () => {
-    expect(chipSoundsFor(0, BB)).toBe(0);
-    expect(chipSoundsFor(-5, BB)).toBe(0);
+    expect(chipSoundsFor(0, POT)).toBe(0);
+    expect(chipSoundsFor(-5, POT)).toBe(0);
   });
 
-  it('drops one chip for a bet the size of the big blind', () => {
-    expect(chipSoundsFor(BB, BB)).toBe(1);
+  it('counts out the pot-relative scale a player already thinks in', () => {
+    expect(chipSoundsFor(POT / 4, POT)).toBe(1);   // quarter pot
+    expect(chipSoundsFor(POT / 2, POT)).toBe(2);   // half pot
+    expect(chipSoundsFor(POT, POT)).toBe(3);       // pot
+    expect(chipSoundsFor(POT * 2, POT)).toBe(4);   // overbet
+    expect(chipSoundsFor(POT * 4, POT)).toBe(5);   // shove
   });
 
-  it('still drops one for anything smaller, down to the small blind', () => {
-    expect(chipSoundsFor(BB / 2, BB)).toBe(1);
-    expect(chipSoundsFor(1, BB)).toBe(1);
-  });
-
-  it('adds a chip every time the bet doubles', () => {
-    expect(chipSoundsFor(BB * 2, BB)).toBe(2);
-    expect(chipSoundsFor(BB * 4, BB)).toBe(3);
-    expect(chipSoundsFor(BB * 8, BB)).toBe(4);
-    expect(chipSoundsFor(BB * 16, BB)).toBe(5);
+  it('still drops one coin for the smallest nibble', () => {
+    expect(chipSoundsFor(POT / 32, POT)).toBe(1);
+    expect(chipSoundsFor(1, POT)).toBe(1);
   });
 
   /*
-   * The whole point of measuring against the blinds: the same number of chips
-   * is a shove at one table and a min raise at another.
+   * The whole point of measuring against the pot rather than the blinds: by
+   * the river the blinds say nothing about whether a bet is big. The same 200
+   * is a shove into 100 and a nuisance into 4,000.
    */
-  it('judges size by the blinds rather than by the number', () => {
-    expect(chipSoundsFor(200, 5)).toBe(MAX_CHIP_SOUNDS);
-    expect(chipSoundsFor(200, 200)).toBe(1);
+  it('judges size by the pot rather than by the number', () => {
+    expect(chipSoundsFor(200, 100)).toBe(4);
+    expect(chipSoundsFor(200, 4000)).toBe(1);
   });
 
   it('never gets louder than the cap, however big the shove', () => {
-    expect(chipSoundsFor(BB * 1000, BB)).toBe(MAX_CHIP_SOUNDS);
-    expect(chipSoundsFor(Number.MAX_SAFE_INTEGER, BB)).toBe(MAX_CHIP_SOUNDS);
+    expect(chipSoundsFor(POT * 1000, POT)).toBe(MAX_CHIP_SOUNDS);
+    expect(chipSoundsFor(Number.MAX_SAFE_INTEGER, POT)).toBe(MAX_CHIP_SOUNDS);
   });
 
   it('never goes backwards as the bet grows', () => {
     let last = 0;
-    for (let amount = 1; amount <= BB * 40; amount += 3) {
-      const n = chipSoundsFor(amount, BB);
+    for (let amount = 1; amount <= POT * 40; amount += 3) {
+      const n = chipSoundsFor(amount, POT);
       expect(n).toBeGreaterThanOrEqual(last);
       last = n;
     }
   });
 
-  it('survives a table configured with no blinds', () => {
+  it('survives a pot of nothing rather than dividing by zero', () => {
     expect(chipSoundsFor(100, 0)).toBe(1);
     expect(chipSoundsFor(100, Number.NaN)).toBe(1);
   });

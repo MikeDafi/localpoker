@@ -33,7 +33,28 @@ function writeWav(name, samples) {
   console.log('wrote', name, (data.length / 1024).toFixed(1) + 'KB');
 }
 
+/*
+ * Noise has to be reproducible, or this script is not a build step.
+ *
+ * It used to call Math.random, so every run rewrote every sound containing
+ * noise. Regenerating one cue produced a diff touching half the assets and a
+ * commit that could not say which sound had actually been changed. Seeded, the
+ * output is a function of the source alone: change nothing, get the same bytes.
+ */
+function mulberry32(seed) {
+  return function random() {
+    seed |= 0;
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function tone(freq, dur, { type = 'sine', vol = 0.5, decay = 1, sweep = 0 } = {}) {
+  // Seeded per tone from its own parameters, so each one keeps its own grain
+  // and reordering the file cannot change a sound that was left alone.
+  const rand = mulberry32(Math.round(freq * 7919 + dur * 104729 + vol * 1299721) >>> 0);
   const n = Math.floor(SR * dur);
   const out = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -43,7 +64,7 @@ function tone(freq, dur, { type = 'sine', vol = 0.5, decay = 1, sweep = 0 } = {}
     let v;
     if (type === 'square') v = Math.sign(Math.sin(ph));
     else if (type === 'tri') v = (2 / Math.PI) * Math.asin(Math.sin(ph));
-    else if (type === 'noise') v = Math.random() * 2 - 1;
+    else if (type === 'noise') v = rand() * 2 - 1;
     else v = Math.sin(ph);
     const e = Math.pow(1 - t / dur, decay);
     out[i] = v * vol * e;
@@ -84,12 +105,32 @@ function knock(body, vol) {
  * is over inside 60ms so a handful of them can be played in a row without
  * turning into a drone.
  */
-function chipHit(pitch, vol) {
+
+/*
+ * One coin, played once per unit of bet.
+ *
+ * Clay chips were the wrong instrument. A chip is a dull click that dies in
+ * about forty milliseconds, so a big bet came out as a rattle of taps rather
+ * than as money, and the whole point of playing several is that a shove
+ * should sound expensive.
+ *
+ * What makes metal sound like metal is that its partials are *not* a harmonic
+ * series: a struck bar rings at roughly 1, 2.76 and 5.40 times its
+ * fundamental, which is why a coin shimmers where a drum thuds. The ring also
+ * has to outlast the gap between coins so a handful overlaps into a cascade
+ * instead of a stutter.
+ */
+function coinDrop(pitch, vol) {
+  const f = 2300 * pitch;
   return mix(
-    tone(3400 * pitch, 0.016, { type: 'noise', vol: vol * 0.5, decay: 1.8 }),
-    tone(1250 * pitch, 0.045, { type: 'tri', vol: vol * 0.4, decay: 2.8 }),
-    tone(2550 * pitch, 0.03, { type: 'sine', vol: vol * 0.26, decay: 3 }),
-    tone(520 * pitch, 0.04, { type: 'sine', vol: vol * 0.2, decay: 2.6 }),
+    // The strike. Very short, just the edge hitting the felt.
+    tone(5200 * pitch, 0.012, { type: 'noise', vol: vol * 0.36, decay: 2.2 }),
+    // The ring. Long and slow-decaying, so coins pile up on each other.
+    tone(f, 0.26, { type: 'sine', vol: vol * 0.5, decay: 1.6 }),
+    tone(f * 2.76, 0.2, { type: 'sine', vol: vol * 0.26, decay: 1.9 }),
+    tone(f * 5.4, 0.13, { type: 'sine', vol: vol * 0.12, decay: 2.4 }),
+    // A little body underneath, or it reads as a wind chime rather than coin.
+    tone(760 * pitch, 0.05, { type: 'tri', vol: vol * 0.18, decay: 2.8 }),
   );
 }
 
@@ -111,13 +152,11 @@ writeWav('tap.wav', tone(660, 0.08, { type: 'tri', vol: 0.4, decay: 2 }));
 writeWav('select.wav', seq(tone(520, 0.05, { type: 'tri', vol: 0.35, decay: 2 }), tone(720, 0.06, { type: 'tri', vol: 0.35, decay: 2 })));
 writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }), tone(300, 0.05, { type: 'tri', vol: 0.2, decay: 3 })));
 /*
- * One chip, played once per unit of bet.
- *
  * The screen decides how many to play from the size of the bet relative to
- * the big blind (see `chipSoundsFor`), so this has to be a single clean hit
- * that stacks well rather than a finished phrase.
+ * the pot (see `chipSoundsFor`), so this has to be a single clean hit that
+ * stacks well rather than a finished phrase.
  */
-writeWav('chip.wav', chipHit(1, 0.34));
+writeWav('chip.wav', coinDrop(1, 0.34));
 
 /*
  * Checking is knocking on the table, so it sounds like knocking on a table.

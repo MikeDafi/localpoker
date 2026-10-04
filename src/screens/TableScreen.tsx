@@ -654,9 +654,9 @@ export function TableScreen({ navigation, route }: Props) {
    *
    * Folding and checking have their own cue, and checking is a knock on the
    * table, which is what checking is. Everything else moves money, so it
-   * sounds like money: one chip per doubling of the bet measured against the
-   * big blind, so a call of the blind is a single click and a shove is a
-   * fistful, and the difference is the same at 2/5 as at 100/200.
+   * sounds like money: coins, and more of them the bigger the bet is next to
+   * the pot it is going into. A quarter-pot nudge is one coin and a shove is
+   * a handful, which is the same comparison a player is already making.
    */
   const actionSound = (action: PlayerAction, amount?: number, actorId?: string) => {
     if (action === 'fold') { sound.play('fold'); return; }
@@ -669,7 +669,12 @@ export function TableScreen({ navigation, route }: Props) {
       playerChips: actor?.chips ?? 0,
       tableBet: state.currentBet,
     });
-    sound.playChips(chipSoundsFor(chips, settings.bigBlind));
+    /*
+     * The pot as it stands before this bet joins it, taken from `state` rather
+     * than the rendered `felt` so the ratio cannot be measured against a pot
+     * the animation has not caught up to yet.
+     */
+    sound.playChips(chipSoundsFor(chips, totalCommittedChips(state)));
   };
 
   /**
@@ -1431,18 +1436,32 @@ export function TableScreen({ navigation, route }: Props) {
   const openPlayerSafety = (player: GameState['players'][number]) => {
     const human_ = player.id === human.id;
     if (human_ || player.isBot) {
+      /*
+       * Stats are the only thing behind tapping yourself or a bot, so with the
+       * overlay switched off there is nothing to open. It used to ignore the
+       * setting entirely: the stats button in the corner disappeared, but
+       * tapping a seat still brought the same panel up.
+       */
+      if (!settings.showLiveStats) return;
       setStatsFocus(player.id);
       setStatsOpen(true);
       return;
     }
     showAlert(isBlocked(player.id) ? 'Blocked player' : player.name, undefined, [
-      {
-        text: 'View stats',
-        onPress: () => { setStatsFocus(player.id); setStatsOpen(true); },
-      },
+      /*
+       * Reporting and blocking are not stats and must stay reachable whatever
+       * the overlay is set to; turning stats off is a preference, not a reason
+       * to lose the way to deal with someone.
+       */
+      ...(settings.showLiveStats
+        ? [{
+            text: 'View stats',
+            onPress: () => { setStatsFocus(player.id); setStatsOpen(true); },
+          }]
+        : []),
       { text: 'Report offensive content', onPress: () => reportTablePlayer(player) },
-      { text: 'Block and leave table', style: 'destructive', onPress: () => confirmBlockTablePlayer(player) },
-      { text: 'Cancel', style: 'cancel' },
+      { text: 'Block and leave table', style: 'destructive' as const, onPress: () => confirmBlockTablePlayer(player) },
+      { text: 'Cancel', style: 'cancel' as const },
     ]);
   };
 
@@ -2142,23 +2161,37 @@ export function TableScreen({ navigation, route }: Props) {
                 disabled={!!roomCode && !isOnlineHost}
                 onPress={nextHand}
               />
-              <Pressable
-                onPress={() => {
-                  sound.play('tap');
-                  const next = humanCardsShown ? 'muck' : 'show';
-                  setReveal(next);
-                  // Showing is only meaningful if the others see it. Voided:
-                  // a failed publish must not block the local reveal.
-                  if (next === 'show' && roomCode && firebaseOnline) void revealOwnHand(roomCode);
-                }}
-                style={[styles.muckBtn, humanCardsShown && styles.muckBtnActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: humanCardsShown }}
-                accessibilityLabel={humanCardsShown ? 'Showing your cards, tap to muck' : 'Cards mucked, tap to show'}
-                accessibilityHint="Turns your hole cards face up for the rest of the table"
-              >
-                <CardFlipIcon size={26} color={humanCardsShown ? colors.blueLight : colors.onDarkMuted} />
-              </Pressable>
+              {/*
+                * Only while the hand is still yours to hide.
+                *
+                * Two ways it stops being a choice. All in, and the cards were
+                * turned up for the run-out before this panel ever appeared.
+                * Or the showdown already tabled them, by winning with
+                * auto-muck off or by tapping show. Either way the table has
+                * seen them and the toggle was offering to put them back,
+                * which is not a thing poker lets you do: it did nothing, or
+                * worse, it hid locally what everyone else had already read.
+                *
+                * A pot won on a fold is deliberately not covered. Nobody saw
+                * that hand, so showing a bluff is still a real choice.
+                */}
+              {!handsTabled && !(isShowdown && humanCardsShown) && (
+                <Pressable
+                  onPress={() => {
+                    sound.play('tap');
+                    setReveal('show');
+                    // Showing is only meaningful if the others see it. Voided:
+                    // a failed publish must not block the local reveal.
+                    if (roomCode && firebaseOnline) void revealOwnHand(roomCode);
+                  }}
+                  style={styles.muckBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show your cards to the table"
+                  accessibilityHint="Turns your hole cards face up for the rest of the table"
+                >
+                  <CardFlipIcon size={26} color={colors.onDarkMuted} />
+                </Pressable>
+              )}
             </View>
           </Animated.View>
         ) : legal && isHumanTurn ? (
@@ -2285,6 +2318,5 @@ const styles = StyleSheet.create({
   // 44pt because that is the smallest target iOS considers reachable, and the
   // button is now a circle with no words to widen it.
   muckBtn: { width: 62, height: 62, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
-  muckBtnActive: { borderColor: colors.blue, backgroundColor: 'rgba(47,159,212,0.16)' },
   adWrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.xs },
 });
