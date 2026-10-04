@@ -4,6 +4,7 @@ import {
   DEVICE_ONLY_SETTINGS,
   SETTINGS_SCHEMA,
   availableSettingOptions,
+  normalizeSettings,
 } from '../settings';
 
 /**
@@ -104,6 +105,11 @@ describe('every setting is real', () => {
     // If one of these gains a control, it is no longer internal.
     const contradictory = [...INTERNAL_ONLY].filter((key) => schemaKeys.has(key));
     expect(contradictory).toEqual([]);
+  });
+
+  it('drops the retired show names setting from saved data', () => {
+    const normalized = normalizeSettings({ showAvatarNames: false } as never);
+    expect('showAvatarNames' in normalized).toBe(false);
   });
 });
 

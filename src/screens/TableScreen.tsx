@@ -2393,7 +2393,6 @@ export function TableScreen({ navigation, route }: Props) {
                 shownCards={shownCards}
                 displayCards={displayHoleCards(p.holeCards, exposedCardsForPlayer(p.id))}
                 back={cardBack}
-                showName={settings.showAvatarNames}
                 handOff={showdownHands.some((h) => h.playerId === p.id)}
                 avatarSize={avatarSize}
                 won={isShowdown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
@@ -2422,7 +2421,6 @@ export function TableScreen({ navigation, route }: Props) {
               isDealer={dealerId === human.id}
               showBet={!isShowdown}
               back={cardBack}
-              showName={settings.showAvatarNames}
               won={humanWon}
               lost={seatLost(human)}
               reaction={reactionFor(human.id)}

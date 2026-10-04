@@ -61,11 +61,6 @@ export interface SeatProps {
   handOff?: boolean;
   /** Which card back design to print, from Settings. */
   back?: CardBackVariant;
-  /**
-   * Whether to print the player's name. Off leaves the avatar and stack, which
-   * is the point: you still know whose seat it is and what they have.
-   */
-  showName?: boolean;
 }
 
 /** A player pod around the felt: animated Pal, name, stack, status, and cards. */
@@ -85,7 +80,7 @@ const BET_SLOT_H = 28;
 /** How big an opponent's hole card is while it is still face down. */
 const SEAT_CARD = 26;
 
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -190,7 +185,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
           {isDealer && <View style={styles.cDealer}><Text style={styles.dealerText}>D</Text></View>}
         </View>
         <View style={[styles.cTag, won && styles.cTagWon, lost && styles.cTagLost, { opacity: dimmed ? 0.45 : 1 }]}>
-          {showName && <Text style={styles.cName} numberOfLines={1}>{player.name}</Text>}
+          <Text style={styles.cName} numberOfLines={1}>{player.name}</Text>
           <Text style={styles.cChips}>{player.chips.toLocaleString()}</Text>
         </View>
         {player.allIn && <View style={styles.allIn}><Text style={styles.allInText}>ALL IN</Text></View>}
@@ -257,7 +252,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
           </View>
           <View style={styles.info}>
             <View style={styles.nameRow}>
-              {showName && <Text style={styles.name} numberOfLines={1}>{player.name}</Text>}
+              <Text style={styles.name} numberOfLines={1}>{player.name}</Text>
               {isDealer && (
                 <View style={styles.dealer}><Text style={styles.dealerText}>D</Text></View>
               )}
