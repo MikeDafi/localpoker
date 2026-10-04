@@ -234,7 +234,21 @@ export function runoutFelt(state: GameState, revealed: number, runIndex = 0): Ga
       return payout > 0 ? { ...player, chips: player.chips - payout } : player;
     }),
     board: board.slice(0, Math.max(0, revealed)),
-    street: runoutStreet(revealed),
+    /*
+     * A finished board is a showdown, even mid sequence.
+     *
+     * This used to report 'river' once five cards were down, because that is
+     * what the street is called. But the table decides whether to lay the
+     * hands out under the board by asking whether it is a showdown, so on a
+     * run it never did: the boards came and went and nothing said who had won
+     * each one. Settling three at once at the end is unreadable, which is the
+     * whole reason for running them one at a time.
+     *
+     * Tied to the same condition as the winners below deliberately. The
+     * street and the result have to appear together or the layout asks for
+     * winners that are not there yet.
+     */
+    street: revealed >= board.length ? 'showdown' : runoutStreet(revealed),
     currentPlayerIndex: -1,
     winners: revealed >= board.length ? run?.winners ?? [] : [],
   };

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Svg, { Ellipse, Path, Rect } from 'react-native-svg';
 import { colors, fonts } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { resolveChips, type ChipPalette } from '../game/cosmetics';
@@ -38,16 +39,71 @@ function breakdown(amount: number, palette: ChipPalette): { color: string; edge:
   return out.length ? out : [{ color, edge, count: 1 }];
 }
 
+/**
+ * A poker chip seen from slightly above, which is how one actually looks.
+ *
+ * It used to be a flat pill: a rounded rectangle with a line across it. That
+ * reads as a counter rather than a chip, because the two things the eye uses
+ * to recognise one were missing. A chip has a round face you are looking down
+ * on, so it is an ellipse rather than a bar, and it has thickness, so there is
+ * a wall under that face with the light catching it.
+ *
+ * Drawn from geometry rather than from an image, for the same reason the card
+ * backs are: no licence, and it stays sharp at any size.
+ */
+/**
+ * How much of each chip the one above it covers.
+ *
+ * A chip is now 0.77 of its width tall, face plus wall, so hiding 0.60 of it
+ * leaves exactly the wall showing. That is what a stack looks like: one face
+ * on top and a row of edges under it, rather than a pile of whole chips.
+ */
+const CHIP_OVERLAP = 0.6;
+
 function Chip({ color, edge, size = 22 }: { color: string; edge: string; size?: number }) {
+  const rx = size / 2;
+  const ry = size * 0.3;
+  const wall = Math.max(2, size * 0.17);
+  const h = ry * 2 + wall;
+  // Where the wall begins at a given x: the underside of the face.
+  const wallTop = (x: number) => ry + ry * Math.sqrt(Math.max(0, 1 - ((x - rx) / rx) ** 2));
+  // The pale blocks around a chip's edge. Four read as a chip; more at this
+  // size just turns the wall into a dotted line.
+  const spots = [0.18, 0.4, 0.62, 0.84].map((t) => t * size);
+  const spotW = Math.max(1.5, size * 0.11);
+
   return (
-    <View
-      style={[
-        styles.chip,
-        { width: size, height: size * 0.34, borderRadius: size, backgroundColor: color, borderColor: edge },
-      ]}
-    >
-      <View style={styles.chipDash} />
-    </View>
+    <Svg width={size} height={h}>
+      {/* The wall, traced under the face and down to the base. */}
+      <Path
+        d={`M0,${ry} A${rx},${ry} 0 0 0 ${size},${ry} L${size},${ry + wall} A${rx},${ry} 0 0 1 0,${ry + wall} Z`}
+        fill={edge}
+      />
+      {spots.map((x, i) => (
+        <Rect
+          key={i}
+          x={Math.max(0, x - spotW / 2)}
+          y={wallTop(x) - 0.5}
+          width={spotW}
+          height={wall}
+          fill="rgba(255,255,255,0.72)"
+          rx={spotW * 0.25}
+        />
+      ))}
+      {/* The face, and the dashed ring every chip has printed round it. */}
+      <Ellipse cx={rx} cy={ry} rx={rx} ry={ry} fill={color} stroke={edge} strokeWidth={Math.max(0.6, size * 0.035)} />
+      <Ellipse
+        cx={rx}
+        cy={ry}
+        rx={rx * 0.78}
+        ry={ry * 0.72}
+        fill="none"
+        stroke="rgba(255,255,255,0.6)"
+        strokeWidth={Math.max(0.8, size * 0.055)}
+        strokeDasharray={`${Math.max(1.4, size * 0.1)},${Math.max(1.4, size * 0.1)}`}
+      />
+      <Ellipse cx={rx} cy={ry} rx={rx * 0.52} ry={ry * 0.46} fill="rgba(255,255,255,0.1)" />
+    </Svg>
   );
 }
 
@@ -79,7 +135,7 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact }: Chip
         stacks.map((s, i) => (
           <View key={i} style={styles.stack}>
             {Array.from({ length: s.count }).map((_, j) => (
-              <View key={j} style={{ marginTop: j === 0 ? 0 : -size * 0.24 }}>
+              <View key={j} style={{ marginTop: j === 0 ? 0 : -CHIP_OVERLAP * size }}>
                 <Chip color={s.color} edge={s.edge} size={size} />
               </View>
             ))}
@@ -97,7 +153,7 @@ export function ChipStack({ amount, size = 26, showLabel = true, compact }: Chip
          */
         <View style={styles.stack}>
           {Array.from({ length: compactChipCount(amount) }).map((_, j) => (
-            <View key={j} style={{ marginTop: j === 0 ? 0 : -size * 0.24 }}>
+            <View key={j} style={{ marginTop: j === 0 ? 0 : -CHIP_OVERLAP * size }}>
               <Chip color={stacks[0].color} edge={stacks[0].edge} size={size} />
             </View>
           ))}

@@ -185,7 +185,13 @@ describe('the felt during a run-out', () => {
     const settled = shovedPreflop();
     const felt = runoutFelt(settled, 5);
     expect(felt.board).toEqual(settled.board);
-    expect(felt.street).toBe('river');
+    /*
+     * A finished board reads as a showdown, not as the river. The table asks
+     * whether it is a showdown before laying the hands out under the board,
+     * so reporting 'river' here meant a run finished with nothing on screen
+     * saying who had won it.
+     */
+    expect(felt.street).toBe('showdown');
     // The last step of the sequence is switching back to the settled state, so
     // what matters here is that nothing is left to reveal.
     expect(isRunningOut(settled, 5)).toBe(false);

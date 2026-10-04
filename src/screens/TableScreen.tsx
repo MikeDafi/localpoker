@@ -2455,12 +2455,16 @@ export function TableScreen({ navigation, route }: Props) {
         ]}
       >
         {handHint && !human.folded ? (
-          <View style={styles.handChip}>
-            <Text style={styles.handChipText}>{handHint}</Text>
+          <View style={styles.handChipSlot} pointerEvents="none">
+            <View style={styles.handChip}>
+              <Text style={styles.handChipText}>{handHint}</Text>
+            </View>
           </View>
         ) : isShowdown && human.folded && !humanCardsShown ? (
-          <View style={styles.muckedChip}>
-            <Text style={styles.muckedChipText}>Mucked</Text>
+          <View style={styles.handChipSlot} pointerEvents="none">
+            <View style={styles.muckedChip}>
+              <Text style={styles.muckedChipText}>Mucked</Text>
+            </View>
           </View>
         ) : null}
         <View style={styles.humanCards}>
@@ -2491,6 +2495,10 @@ export function TableScreen({ navigation, route }: Props) {
                 // anything to reveal them.
                 showToTable={isShowdown && reveal === 'show'}
                 forceOpen={reveal !== 'show' ? forceOpen : false}
+                // Only a card turned over by hand mid hand gets enlarged. At a
+                // showdown every card is open and scaling them all would say
+                // nothing about who chose to show what.
+                emphasize={openAlways ? undefined : humanCardExposure}
                 // thrown down from the middle of the felt, which sits above this row
                 fromY={-(tableH * 0.5 + 40)}
                 back={cardBack}
@@ -2795,9 +2803,19 @@ const styles = StyleSheet.create({
    * knowing about it. Pinned top to bottom so it stays vertically centred
    * without needing to know how tall a card is.
    */
-  handChip: { position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center', zIndex: 2, backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  handChip: { alignSelf: 'flex-start', backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  /*
+   * The slot stretches, the label does not.
+   *
+   * Making the pill itself absolute and full height took it out of the flow,
+   * which was the point, but stretched its background into a tall blob down
+   * the side of the cards. Only this wrapper is full height, and it has no
+   * background of its own, so the label sits vertically centred at its own
+   * size and still costs the cards no width.
+   */
+  handChipSlot: { position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center', zIndex: 2 },
   handChipText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark },
-  muckedChip: { position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center', zIndex: 2, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6 },
+  muckedChip: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6 },
   muckedChipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkSoft },
   friendsBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.md, paddingVertical: 6, paddingHorizontal: spacing.md },
   friendsBannerText: { fontFamily: fonts.medium, fontSize: 11, color: colors.onDarkSoft, textAlign: 'center' },

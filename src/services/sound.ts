@@ -41,7 +41,22 @@ async function init() {
   if (initialized) return;
   initialized = true;
   try {
-    await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: false });
+    /*
+     * Mix, do not take the audio session over.
+     *
+     * Without an interruption mode the app asks iOS for the session
+     * exclusively, and iOS refuses when something else already holds it. That
+     * threw "Session activation failed" in production, from players doing the
+     * obvious thing: sitting on a FaceTime call with their friends while they
+     * play. Mixing means the table's sounds sit on top of the call instead of
+     * fighting it for the device, which is both what they want and the thing
+     * that stops the failure.
+     */
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      interruptionMode: 'mixWithOthers',
+    });
   } catch (error) {
     reportSoundError('set-audio-mode', error);
   }

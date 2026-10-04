@@ -72,11 +72,15 @@ export interface SeatProps {
 /**
  * How tall the bet row is, with or without a pill in it.
  *
+ * Big enough for the whole pill: the text, its padding, its border and the
+ * margin above it. Set too small, the slot clipped the amount somebody had
+ * bet, which is the one number on a pod that must never be half readable.
+ *
  * A constant rather than a measurement, because the entire point is that it
  * never changes: the pod's height is what the lane and the board are measured
  * from, so anything that can resize it moves the whole table.
  */
-const BET_SLOT_H = 22;
+const BET_SLOT_H = 28;
 
 export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;

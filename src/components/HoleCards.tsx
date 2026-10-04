@@ -41,6 +41,14 @@ export interface HoleCardsProps {
   delayFor?: (index: number) => number;
   fromY?: number;
   forceOpen?: boolean | readonly boolean[];
+  /**
+   * Cards deliberately turned over to the table mid hand, which get lifted
+   * and enlarged so the gesture reads as the act it is.
+   *
+   * Separate from `forceOpen`, which is also true for every card at a
+   * showdown. Scaling there would enlarge a whole hand nobody chose to show.
+   */
+  emphasize?: readonly boolean[];
   showToTable?: boolean | readonly boolean[];
   /** Fired once per peel, when the cards have been lifted far enough to read. */
   onPeek?: () => void;
@@ -96,6 +104,9 @@ function reachFor(size: number, h: number, anchor: { x: number; y: number }, dx:
  * the bottom-left corner lifts the bottom-left corner of both, and the pair
  * moves as one piece.
  */
+/** How much bigger a card gets when it is turned over to the table. */
+const EXPOSED_SCALE = 1.16;
+
 export function HoleCards({
   cards,
   size,
@@ -104,6 +115,7 @@ export function HoleCards({
   delayFor,
   fromY = -200,
   forceOpen = false,
+  emphasize,
   showToTable = false,
   onPeek,
   back,
@@ -287,7 +299,21 @@ export function HoleCards({
     <GestureDetector gesture={gesture}>
       <View style={styles.row}>
         {cards.map((c, i) => (
-          <View key={`${i}-${c.rank}${c.suit}`} style={{ marginLeft: i ? gap : 0 }}>
+          <View
+            key={`${i}-${c.rank}${c.suit}`}
+            style={{
+              marginLeft: i ? gap : 0,
+              /*
+               * Showing a card is a move, so it should look like one. Scaled
+               * rather than sized, because the peel gesture measures its fold
+               * against the card's real dimensions and changing those would
+               * move the crease. Lifted above its neighbour so the enlarged
+               * card is not clipped by it.
+               */
+              transform: [{ scale: flagAt(emphasize ?? false, i) ? EXPOSED_SCALE : 1 }],
+              zIndex: flagAt(emphasize ?? false, i) ? 2 : 1,
+            }}
+          >
             <PeekCard
               rank={c.rank}
               suit={c.suit}
