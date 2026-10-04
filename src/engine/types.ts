@@ -42,6 +42,11 @@ export interface Winner {
   hand?: HandEvaluation;
 }
 
+export interface BoardRunResult {
+  board: Card[];
+  winners: Winner[];
+}
+
 export interface GameState {
   config: GameConfig;
   players: Player[];
@@ -56,6 +61,8 @@ export interface GameState {
   lastAggressorIndex: number | null;
   handNumber: number;
   winners: Winner[];
+  runCount?: number;
+  runResults?: BoardRunResult[];
   log: string[];
   seed: Seed;
   contributions: Record<string, number>;

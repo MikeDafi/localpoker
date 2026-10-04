@@ -9,8 +9,10 @@ import type {
   PlayerAction,
   PlayerInput,
   Pot,
+  BoardRunResult,
   Winner,
 } from './types';
+import { MAX_RUNS, splitPotAcrossRuns } from '../game/runItTwice';
 
 function clonePlayer(player: Player): Player {
   return {
@@ -27,6 +29,13 @@ function cloneState(state: GameState): GameState {
     deck: state.deck.map((card) => ({ ...card })),
     pots: state.pots.map((pot) => ({ amount: pot.amount, eligiblePlayerIds: [...pot.eligiblePlayerIds] })),
     winners: state.winners.map((winner) => ({ ...winner, hand: winner.hand ? { ...winner.hand, cards: [...winner.hand.cards], ranks: [...winner.hand.ranks] } : undefined })),
+    runResults: state.runResults?.map((run) => ({
+      board: run.board.map((card) => ({ ...card })),
+      winners: run.winners.map((winner) => ({
+        ...winner,
+        hand: winner.hand ? { ...winner.hand, cards: [...winner.hand.cards], ranks: [...winner.hand.ranks] } : undefined,
+      })),
+    })),
     log: [...state.log],
     contributions: { ...state.contributions },
   };
@@ -264,10 +273,62 @@ function addWinnerAmount(winners: Map<string, Winner>, playerId: string, amount:
 }
 
 export function showdown(state: GameState): GameState {
-  const next = cloneState(state);
-  while (next.board.length < 5 && next.deck.length > 0) {
-    next.board.push(...drawFromDeck(next, 1));
+  return showdownRuns(state, 1);
+}
+
+function clampRunCount(runs: number): number {
+  if (!Number.isFinite(runs)) return 1;
+  return Math.max(1, Math.min(MAX_RUNS, Math.floor(runs)));
+}
+
+function awardShowdownBoard(input: {
+  players: Player[];
+  pots: Pot[];
+  board: Card[];
+  oddOrder: string[];
+  sharesByPot: number[];
+}): Winner[] {
+  const evaluations = new Map<string, ReturnType<typeof evaluateHand>>();
+  const remaining = input.players
+    .map((player, index) => ({ player, index }))
+    .filter(({ player }) => isRemaining(player))
+    .map(({ index }) => index);
+
+  for (const index of remaining) {
+    const player = input.players[index];
+    evaluations.set(player.id, evaluateHand([...player.holeCards, ...input.board]));
   }
+
+  const winners = new Map<string, Winner>();
+
+  for (const [potIndex, pot] of input.pots.entries()) {
+    const amount = input.sharesByPot[potIndex] ?? pot.amount;
+    const eligible = pot.eligiblePlayerIds.filter((playerId) => evaluations.has(playerId));
+    if (eligible.length === 0 || amount === 0) continue;
+
+    let bestIds: string[] = [eligible[0]];
+    for (const playerId of eligible.slice(1)) {
+      const comparison = compareHands(evaluations.get(playerId)!, evaluations.get(bestIds[0])!);
+      if (comparison > 0) bestIds = [playerId];
+      else if (comparison === 0) bestIds.push(playerId);
+    }
+
+    const share = Math.floor(amount / bestIds.length);
+    let remainder = amount % bestIds.length;
+    const orderedBestIds = [...bestIds].sort((a, b) => input.oddOrder.indexOf(a) - input.oddOrder.indexOf(b));
+
+    for (const playerId of orderedBestIds) {
+      const extra = remainder > 0 ? 1 : 0;
+      remainder -= extra;
+      addWinnerAmount(winners, playerId, share + extra, evaluations.get(playerId));
+    }
+  }
+
+  return Array.from(winners.values()).filter((winner) => winner.amount > 0);
+}
+
+export function showdownRuns(state: GameState, runs: number): GameState {
+  const next = cloneState(state);
 
   refreshPots(next);
   const remaining = remainingIndexes(next);
@@ -279,45 +340,61 @@ export function showdown(state: GameState): GameState {
   }
   if (remaining.length === 1) return awardWhenEveryoneFolded(next);
 
-  const evaluations = new Map<string, ReturnType<typeof evaluateHand>>();
-  for (const index of remaining) {
-    const player = next.players[index];
-    evaluations.set(player.id, evaluateHand([...player.holeCards, ...next.board]));
-  }
-
+  const runCount = clampRunCount(runs);
   const winners = new Map<string, Winner>();
   const oddOrder = oddChipOrder(next);
+  const baseBoard = next.board.map((card) => ({ ...card }));
+  const perPotShares = next.pots.map((pot) => splitPotAcrossRuns(pot.amount, runCount));
+  const runResults: BoardRunResult[] = [];
 
-  for (const pot of next.pots) {
-    const eligible = pot.eligiblePlayerIds.filter((playerId) => evaluations.has(playerId));
-    if (eligible.length === 0 || pot.amount === 0) continue;
-
-    let bestIds: string[] = [eligible[0]];
-    for (const playerId of eligible.slice(1)) {
-      const comparison = compareHands(evaluations.get(playerId)!, evaluations.get(bestIds[0])!);
-      if (comparison > 0) bestIds = [playerId];
-      else if (comparison === 0) bestIds.push(playerId);
+  for (let run = 0; run < runCount; run += 1) {
+    const board = baseBoard.map((card) => ({ ...card }));
+    while (board.length < 5 && next.deck.length > 0) {
+      board.push(...drawFromDeck(next, 1));
     }
 
-    const share = Math.floor(pot.amount / bestIds.length);
-    let remainder = pot.amount % bestIds.length;
-    const orderedBestIds = [...bestIds].sort((a, b) => oddOrder.indexOf(a) - oddOrder.indexOf(b));
+    const runWinners = awardShowdownBoard({
+      players: next.players,
+      pots: next.pots,
+      board,
+      oddOrder,
+      sharesByPot: next.pots.map((_pot, potIndex) => perPotShares[potIndex]?.[run] ?? 0),
+    });
 
-    for (const playerId of orderedBestIds) {
-      const extra = remainder > 0 ? 1 : 0;
-      remainder -= extra;
-      const amount = share + extra;
-      const player = next.players.find((candidate) => candidate.id === playerId);
-      if (player) player.chips += amount;
-      addWinnerAmount(winners, playerId, amount, evaluations.get(playerId));
+    for (const winner of runWinners) {
+      const player = next.players.find((candidate) => candidate.id === winner.playerId);
+      if (player) player.chips += winner.amount;
+      addWinnerAmount(winners, winner.playerId, winner.amount, winner.hand);
     }
+    runResults.push({ board, winners: runWinners });
   }
 
   next.street = 'showdown';
   next.currentPlayerIndex = -1;
   next.winners = Array.from(winners.values()).filter((winner) => winner.amount > 0);
+  next.board = runResults[0]?.board ?? baseBoard;
+  next.runCount = runCount;
+  next.runResults = runCount > 1 ? runResults : undefined;
   next.log.push(`Showdown: ${next.winners.map((winner) => `${winner.playerId} wins ${winner.amount}`).join(', ')}`);
   return next;
+}
+
+export function rerunShowdownFromSettled(state: GameState, runs: number, boardLengthBeforeRun: number): GameState {
+  if (state.street !== 'showdown') return showdownRuns(state, runs);
+  const next = cloneState(state);
+  const before = Math.max(0, Math.min(5, Math.floor(boardLengthBeforeRun)));
+  const dealtForFirstRun = next.board.slice(before);
+  next.board = next.board.slice(0, before);
+  next.deck = [...dealtForFirstRun, ...next.deck.map((card) => ({ ...card }))];
+  next.runCount = undefined;
+  next.runResults = undefined;
+
+  for (const winner of next.winners) {
+    const player = next.players.find((candidate) => candidate.id === winner.playerId);
+    if (player) player.chips -= winner.amount;
+  }
+  next.winners = [];
+  return showdownRuns(next, runs);
 }
 
 function countPlayersWhoCanAct(state: GameState): number {
@@ -399,6 +476,8 @@ export function createGame(config: GameConfig, players: readonly PlayerInput[], 
     lastAggressorIndex: null,
     handNumber: 0,
     winners: [],
+    runCount: undefined,
+    runResults: undefined,
     log: [],
     seed,
     contributions: {},
@@ -432,6 +511,8 @@ export function startHand(state: GameState): GameState {
   next.minRaise = next.config.bigBlind;
   next.lastAggressorIndex = null;
   next.winners = [];
+  next.runCount = undefined;
+  next.runResults = undefined;
   next.contributions = {};
   next.log = [...next.log, `Starting hand #${next.handNumber}`].slice(-200);
 

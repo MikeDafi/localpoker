@@ -49,6 +49,7 @@ export {
   publishHostGameState,
   pushAction,
   requestRebuy,
+  voteRunItTwice,
   setPlayerConnected,
   subscribeActions,
   subscribeRebuyRequests,

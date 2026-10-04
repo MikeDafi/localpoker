@@ -107,6 +107,10 @@ export function runoutLabel(revealed: number, target: number): string {
   return 'All in · counting the pot';
 }
 
+export function runoutRunLabel(runIndex: number, runCount: number): string | null {
+  return runCount > 1 ? `Run ${runIndex + 1} of ${runCount}` : null;
+}
+
 export function runoutStepDelay(stop: number): number {
   return stop <= 3 ? RUNOUT_LEAD_MS : RUNOUT_BEAT_MS;
 }
@@ -219,17 +223,19 @@ export function runoutAction(input: RunoutInput): RunoutAction {
  * reconstructs that moment exactly, and the pot, the contributions and the
  * all-in flags are all still intact on the settled state.
  */
-export function runoutFelt(state: GameState, revealed: number): GameState {
+export function runoutFelt(state: GameState, revealed: number, runIndex = 0): GameState {
   const owed = new Map(state.winners.map((winner) => [winner.playerId, winner.amount]));
+  const run = state.runResults?.[runIndex];
+  const board = run?.board ?? state.board;
   return {
     ...state,
     players: state.players.map((player) => {
       const payout = owed.get(player.id) ?? 0;
       return payout > 0 ? { ...player, chips: player.chips - payout } : player;
     }),
-    board: state.board.slice(0, Math.max(0, revealed)),
+    board: board.slice(0, Math.max(0, revealed)),
     street: runoutStreet(revealed),
     currentPlayerIndex: -1,
-    winners: [],
+    winners: revealed >= board.length ? run?.winners ?? [] : [],
   };
 }

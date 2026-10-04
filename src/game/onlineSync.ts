@@ -9,6 +9,7 @@ import {
   type Player,
   type PlayerAction,
   type Pot,
+  type BoardRunResult,
   type Street,
   type Winner,
 } from '../engine';
@@ -62,6 +63,8 @@ export type PublicGameState = {
   handNumber: number;
   street: Street;
   winners: Winner[];
+  runCount?: number;
+  runResults?: BoardRunResult[];
   contributions: Record<string, number>;
   legal: Record<string, LegalActions>;
   updatedAt?: number;
@@ -114,6 +117,14 @@ const cloneGameState = (state: GameState): GameState => ({
     playerId: winner.playerId,
     amount: winner.amount,
     ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards), ranks: [...winner.hand.ranks] } } : {}),
+  })),
+  runResults: state.runResults?.map((run) => ({
+    board: cloneCards(run.board),
+    winners: run.winners.map((winner) => ({
+      playerId: winner.playerId,
+      amount: winner.amount,
+      ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards), ranks: [...winner.hand.ranks] } } : {}),
+    })),
   })),
   log: [...state.log],
   contributions: { ...state.contributions },
@@ -252,6 +263,17 @@ export function redactGameState(
         amount: winner.amount,
         ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
       })),
+      ...(typeof state.runCount === 'number' ? { runCount: state.runCount } : {}),
+      ...(state.runResults ? {
+        runResults: state.runResults.map((run) => ({
+          board: cloneCards(run.board),
+          winners: run.winners.map((winner) => ({
+            playerId: winner.playerId,
+            amount: winner.amount,
+            ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
+          })),
+        })),
+      } : {}),
       contributions: { ...state.contributions },
       legal,
       ...(typeof options.updatedAt === 'number' ? { updatedAt: options.updatedAt } : {}),
@@ -304,6 +326,15 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
       playerId: winner.playerId,
       amount: winner.amount,
       ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
+    })),
+    runCount: publicState.runCount,
+    runResults: publicState.runResults?.map((run) => ({
+      board: cloneCards(run.board),
+      winners: run.winners.map((winner) => ({
+        playerId: winner.playerId,
+        amount: winner.amount,
+        ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
+      })),
     })),
     log: [],
     seed: 'online-redacted',

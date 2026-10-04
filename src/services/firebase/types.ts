@@ -3,6 +3,11 @@ import type { PrivatePlayerView, PublicGameState } from '../../game/onlineSync';
 
 export type RoomHoleCardExposure = Partial<Record<'0' | '1', true>>;
 
+export type RoomRunVote = {
+  choice: 1 | 2 | 3;
+  ts: number;
+};
+
 export type RoomPlayer = {
   id: string;
   name: string;
@@ -61,6 +66,7 @@ export type RoomState = {
   publicState?: PublicGameState;
   shown?: Record<string, true>;
   exposed?: Record<string, RoomHoleCardExposure>;
+  runVotes?: Record<string, RoomRunVote>;
   endedReason?: string;
   endedAt?: number;
 };

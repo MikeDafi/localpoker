@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, createGame, startHand } from '../../engine/holdem';
+import type { Card } from '../../engine/cards';
 import type { GameState } from '../../engine/types';
 import {
   isRunningOut,
@@ -9,6 +10,7 @@ import {
   runoutFelt,
   runoutLabel,
   runoutPlan,
+  runoutRunLabel,
   runoutStreet,
   RUNOUT_BEAT_MS,
   RUNOUT_LEAD_MS,
@@ -187,6 +189,36 @@ describe('the felt during a run-out', () => {
     // The last step of the sequence is switching back to the settled state, so
     // what matters here is that nothing is left to reveal.
     expect(isRunningOut(settled, 5)).toBe(false);
+  });
+
+  it('can show a later run while keeping that run result hidden until its river', () => {
+    const settled = shovedPreflop();
+    const secondBoard = [
+      settled.board[0]!,
+      settled.board[1]!,
+      settled.board[2]!,
+      { rank: 12, suit: 'h' },
+      { rank: 13, suit: 'h' },
+    ] as Card[];
+    const multi: GameState = {
+      ...settled,
+      runCount: 2,
+      runResults: [
+        { board: settled.board, winners: settled.winners },
+        { board: secondBoard, winners: [{ playerId: 'b', amount: 100 }] },
+      ],
+    };
+
+    expect(runoutFelt(multi, 4, 1).board).toEqual(secondBoard.slice(0, 4));
+    expect(runoutFelt(multi, 4, 1).winners).toEqual([]);
+    expect(runoutFelt(multi, 5, 1).winners).toEqual([{ playerId: 'b', amount: 100 }]);
+  });
+});
+
+describe('multiple run labels', () => {
+  it('names run counts only when there is more than one board', () => {
+    expect(runoutRunLabel(0, 1)).toBeNull();
+    expect(runoutRunLabel(1, 3)).toBe('Run 2 of 3');
   });
 });
 

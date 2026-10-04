@@ -613,6 +613,31 @@ function logOk(message) {
     }));
     logOk('a rebuy request cannot carry a client chosen amount');
 
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
+      choice: 3, ts: 69,
+    }));
+    logOk('a seated player can vote for a run count');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/host'), {
+      choice: 2, ts: 70,
+    }));
+    logOk('but cannot vote for somebody else');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/runVotes/stranger'), {
+      choice: 2, ts: 71,
+    }));
+    logOk('and someone not at the table cannot vote on run count');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
+      choice: 4, ts: 72,
+    }));
+    logOk('run-count votes are capped at three');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
+      choice: 2, ts: 73, playerId: 'host',
+    }));
+    logOk('a run-count vote cannot carry an extra target player');
+
     await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/players/player/chips'), 5000));
     logOk('a player cannot hand themselves chips through their room entry');
 

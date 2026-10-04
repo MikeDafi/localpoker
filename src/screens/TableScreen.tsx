@@ -51,7 +51,7 @@ import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
 import { BOARD_THROW_MS, boardDealDelay } from '../game/boardDeal';
-import { isRunningOut, runoutAction, runoutFelt, runoutLabel, SHOWDOWN_STEP_MS, SHOW_CHOICE_MS } from '../game/runout';
+import { isRunningOut, runoutAction, runoutFelt, runoutLabel, runoutRunLabel, SHOWDOWN_STEP_MS, SHOW_CHOICE_MS } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
 import {
   actionReadDelayMs,
@@ -69,9 +69,17 @@ import {
 import { applyHostIntent, hydrateGameState } from '../game/onlineSync';
 import type { Difficulty } from '../engine/bot';
 import {
-  createGame, startHand, canStartHand, applyAction, legalActions, decideAction, handName, evaluateHand, compareHands, randomFloat,
+  createGame, startHand, canStartHand, applyAction, legalActions, decideAction, handName, evaluateHand, compareHands, randomFloat, rerunShowdownFromSettled,
   type GameState, type PlayerAction, type PlayerInput,
 } from '../engine';
+import {
+  agreedRuns,
+  canRunItTwice,
+  MAX_RUNS,
+  votingComplete,
+  type RunCount,
+  type RunVote,
+} from '../game/runItTwice';
 import {
   endRoom,
   clearRebuyRequest,
@@ -83,6 +91,7 @@ import {
   publishHostGameState,
   pushAction,
   requestRebuy,
+  voteRunItTwice,
   subscribeActions,
   subscribeRebuyRequests,
   sendEmoteToRoom,
@@ -116,6 +125,7 @@ const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 const BOT_FOLD_EMOTES: Emote[] = [{ type: 'emoji', value: '😤' }, { type: 'text', value: 'Fold.' }, { type: 'emoji', value: '🙄' }];
 const BOT_AGGRO_EMOTES: Emote[] = [{ type: 'emoji', value: '😎' }, { type: 'text', value: 'All in!' }, { type: 'emoji', value: '🔥' }];
 const BOT_NEUTRAL_EMOTES: Emote[] = [{ type: 'emoji', value: '🤔' }, { type: 'emoji', value: '👍' }, { type: 'text', value: 'Hmm…' }];
+const RUN_VOTE_MS = 8000;
 
 interface RenderedChipFlight {
   id: number;
@@ -393,6 +403,9 @@ export function TableScreen({ navigation, route }: Props) {
    * is played out street by street.
    */
   const [revealedBoard, setRevealedBoard] = useState(state.board.length);
+  const [runoutRunIndex, setRunoutRunIndex] = useState(0);
+  const [runVotes, setRunVotes] = useState<Record<string, RunCount>>({});
+  const [runVoteClosed, setRunVoteClosed] = useState(false);
   /**
    * Whether this hand's betting closed before the board was complete, so the
    * hands were turned face up and the rest of the board run out underneath them.
@@ -525,7 +538,28 @@ export function TableScreen({ navigation, route }: Props) {
    * keeps checking that rather than the presentational `isShowdown` below.
    */
   const handOver = state.street === 'showdown';
-  const runningOut = isRunningOut(state, revealedBoard);
+  const runResults = state.runResults?.length ? state.runResults : null;
+  const runCount = runResults?.length ?? 1;
+  const activeRunIndex = Math.min(runoutRunIndex, runCount - 1);
+  const activeRunBoard = runResults?.[activeRunIndex]?.board ?? state.board;
+  const activeRunBoardLength = activeRunBoard.length;
+  const runResetBoardLength = useMemo(() => {
+    if (!runResults || runResults.length < 2) return 0;
+    let prefix = 0;
+    while (prefix < 5) {
+      const firstCard: GameState['board'][number] | undefined = runResults[0]?.board[prefix];
+      if (!firstCard) break;
+      const allMatch = runResults.every((run) => {
+        const card = run.board[prefix];
+        return !!card && card.rank === firstCard.rank && card.suit === firstCard.suit;
+      });
+      if (!allMatch) break;
+      prefix += 1;
+    }
+    return prefix;
+  }, [runResults]);
+  const runningOut = isRunningOut({ street: state.street, board: activeRunBoard }, revealedBoard);
+  const showingRunout = handOver && !resultsOpen && (tabledHand || runningOut || runCount > 1);
 
   /**
    * The hand the felt draws.
@@ -537,8 +571,8 @@ export function TableScreen({ navigation, route }: Props) {
    * the whole felt consistent with itself.
    */
   const felt = useMemo(
-    () => (runningOut ? runoutFelt(state, revealedBoard) : state),
-    [state, runningOut, revealedBoard],
+    () => (showingRunout ? runoutFelt(state, revealedBoard, activeRunIndex) : state),
+    [state, showingRunout, revealedBoard, activeRunIndex],
   );
 
   /*
@@ -600,6 +634,29 @@ export function TableScreen({ navigation, route }: Props) {
    * result says so.
    */
   const handsTabled = tabledHand && remainingAtEnd > 1;
+  const contestingPlayers = useMemo(
+    () => state.players.filter((p) => p.holeCards.length > 0 && !p.folded && !p.sittingOut),
+    [state.players],
+  );
+  const runVotePossible =
+    handOver &&
+    !state.runResults &&
+    !runVoteClosed &&
+    state.board.length > revealedBoard &&
+    canRunItTwice({ contesting: contestingPlayers, boardLength: revealedBoard });
+  const runVoteChoices = room?.runVotes;
+  const runVotesForDecision = useMemo<RunVote[]>(
+    () => contestingPlayers.map((p) => ({
+      playerId: p.id,
+      isBot: p.isBot,
+      choice: runVotes[p.id] ?? runVoteChoices?.[p.id]?.choice ?? null,
+    })),
+    [contestingPlayers, runVotes, runVoteChoices],
+  );
+  const runVoteHasHuman = runVotesForDecision.some((vote) => !vote.isBot);
+  const runVotingActive = runVotePossible && runVoteHasHuman;
+  const humanRunVote = runVotesForDecision.find((vote) => vote.playerId === human.id && !vote.isBot);
+  const runVoteCanAnswer = runVotingActive && !!humanRunVote && humanRunVote.choice === null;
   /*
    * A hand only has losers if somebody stayed to be beaten. When everyone
    * folds the pot is simply uncontested, and painting the folders red would
@@ -614,8 +671,12 @@ export function TableScreen({ navigation, route }: Props) {
    * running one. Covers the beat after the river too, which is still part of the
    * wait even though there are no cards left to deal.
    */
+  const baseRunoutStatus = runoutLabel(revealedBoard, activeRunBoardLength);
+  const activeRunLabel = runoutRunLabel(activeRunIndex, runCount);
   const runoutStatus = runningOut || (handOver && tabledHand)
-    ? runoutLabel(revealedBoard, state.board.length)
+    ? activeRunLabel
+      ? `${activeRunLabel} · ${baseRunoutStatus.replace(/^All in · /, '')}`
+      : baseRunoutStatus
     : null;
 
   // Reads the felt's board, so during a run-out it climbs with each street the
@@ -724,6 +785,9 @@ export function TableScreen({ navigation, route }: Props) {
   useEffect(() => {
     setRevealProgress(startReveal());
     setLocalCardExposure([false, false]);
+    setRunoutRunIndex(0);
+    setRunVotes({});
+    setRunVoteClosed(false);
   }, [felt.handNumber]);
 
   /** Whether a hand is still unbeaten by anything already face up. */
@@ -776,6 +840,59 @@ export function TableScreen({ navigation, route }: Props) {
       ]);
     });
   }, [roomCode, firebaseOnline]);
+
+  const applyRunDecision = useCallback((runs: RunCount) => {
+    if (roomCode && firebaseOnline && !isOnlineHost && runs > 1) return;
+    setRunVoteClosed(true);
+    if (runs === 1) return;
+
+    const source = stateRef.current ?? state;
+    const next = rerunShowdownFromSettled(source, runs, revealedBoard);
+    stateRef.current = next;
+    setRunoutRunIndex(0);
+    setState(next);
+    if (roomCode && firebaseOnline && isOnlineHost) {
+      publishHostGameState(roomCode, next)
+        .then((r) => noteSync(r.ok))
+        .catch((error) => {
+          noteSync(false);
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-run-count' } });
+        });
+    }
+  }, [firebaseOnline, isOnlineHost, revealedBoard, roomCode, state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const finishRunVote = useCallback((defaultMissing: boolean) => {
+    if (!runVotingActive) return;
+    const votes = runVotesForDecision.map((vote) => ({
+      ...vote,
+      choice: vote.choice ?? (defaultMissing ? 1 : null),
+    }));
+    if (!votingComplete(votes)) return;
+    applyRunDecision(agreedRuns(votes));
+  }, [applyRunDecision, runVotesForDecision, runVotingActive]);
+
+  const chooseRunCount = useCallback((choice: RunCount) => {
+    sound.play('tap');
+    setRunVotes((prev) => ({ ...prev, [human.id]: choice }));
+    if (!roomCode || !firebaseOnline) return;
+    voteRunItTwice(roomCode, choice)
+      .then((result) => {
+        if (result.ok) return;
+        showAlert('Vote not sent', result.reason ?? 'Your run count vote could not be sent. Check your connection and try again.', [
+          { text: 'OK', style: 'cancel' },
+        ]);
+      })
+      .catch((error) => {
+        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'vote-run-it-twice' } });
+        showAlert('Vote not sent', 'Your run count vote could not be sent. Check your connection and try again.');
+      });
+  }, [firebaseOnline, human.id, roomCode]);
+
+  useEffect(() => {
+    if (runVotingActive && votingComplete(runVotesForDecision)) {
+      finishRunVote(false);
+    }
+  }, [finishRunVote, runVotesForDecision, runVotingActive]);
 
   /*
    * Step through the order, pausing on anyone who has an actual decision.
@@ -1136,11 +1253,12 @@ export function TableScreen({ navigation, route }: Props) {
    * what every normally dealt street and every new hand goes through.
    */
   useEffect(() => {
+    if (runVotingActive) return undefined;
     const action = runoutAction({
       handOver,
       animationsOff: animsOff,
       revealed: revealedBoard,
-      boardLength: state.board.length,
+      boardLength: activeRunBoardLength,
       resultsOpen,
       tabled: tabledHand,
     });
@@ -1163,13 +1281,31 @@ export function TableScreen({ navigation, route }: Props) {
         return () => clearTimeout(timer);
       }
       case 'result': {
-        const timer = setTimeout(() => setResultsOpen(true), action.delayMs);
+        const timer = setTimeout(() => {
+          if (activeRunIndex < runCount - 1) {
+            setRunoutRunIndex((currentRun) => currentRun + 1);
+            setRevealedBoard(runResetBoardLength);
+            return;
+          }
+          setResultsOpen(true);
+        }, action.delayMs);
         return () => clearTimeout(timer);
       }
       default:
         return undefined;
     }
-  }, [handOver, animsOff, revealedBoard, state.board.length, resultsOpen, tabledHand]);
+  }, [
+    activeRunBoardLength,
+    activeRunIndex,
+    animsOff,
+    handOver,
+    revealedBoard,
+    resultsOpen,
+    runCount,
+    runResetBoardLength,
+    runVotingActive,
+    tabledHand,
+  ]);
 
   // Follows the felt rather than the engine, so during a run-out each street is
   // dealt with a sound as it lands instead of all five at once.
@@ -2396,6 +2532,41 @@ export function TableScreen({ navigation, route }: Props) {
             <Text style={styles.waitingText}>Syncing live table…</Text>
             <Text style={styles.foldedNote}>No local bot actions are being played while the room connects.</Text>
           </View>
+        ) : runVotingActive ? (
+          <Animated.View
+            entering={FadeInUp.duration(motion.base).easing(Easing.bezier(...easings.out))}
+            style={styles.resultCard}
+          >
+            <Text style={styles.resultTitle}>Run it how many times?</Text>
+            <Text style={styles.resultLine}>
+              Highest vote wins. No answer means 1.
+            </Text>
+            <View style={styles.runVoteRow}>
+              {Array.from({ length: MAX_RUNS }, (_, i) => (i + 1) as RunCount).map((choice) => (
+                <WiiButton
+                  key={choice}
+                  label={`${choice}`}
+                  variant={humanRunVote?.choice === choice ? 'gold' : 'blue'}
+                  size="md"
+                  style={styles.runVoteBtn}
+                  disabled={!runVoteCanAnswer}
+                  onPress={() => chooseRunCount(choice)}
+                />
+              ))}
+            </View>
+            {!runVoteCanAnswer && (
+              <Text style={styles.foldedNote}>Waiting for the other all-in players…</Text>
+            )}
+            <View style={{ marginTop: spacing.xs }}>
+              <TurnTimer
+                seconds={RUN_VOTE_MS / 1000}
+                active
+                resetKey={`run-vote-${state.handNumber}`}
+                onExpire={() => finishRunVote(true)}
+                label="Defaulting to 1 in"
+              />
+            </View>
+          </Animated.View>
         ) : isShowdown ? (
           <Animated.View
             entering={FadeInUp.duration(motion.base).easing(Easing.bezier(...easings.out))}
@@ -2673,6 +2844,8 @@ const styles = StyleSheet.create({
   // button is now a circle with no words to widen it.
   showChoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   showChoiceLabel: { fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkSoft },
+  runVoteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  runVoteBtn: { flex: 1 },
   notSeated: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   notSeatedTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, textAlign: 'center' },
   notSeatedBody: { fontFamily: fonts.regular, fontSize: 14, color: colors.onDarkSoft, textAlign: 'center', marginBottom: spacing.md },

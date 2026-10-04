@@ -13,7 +13,7 @@ import {
 import { getDb, isFirebaseConfigured } from './config';
 import { ensureSignedIn } from './auth';
 import { sendPush } from './push';
-import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomState, RoomSummary, RoomVisibility } from './types';
+import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRunVote, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
 import {
@@ -35,6 +35,7 @@ type Result = { ok: boolean; reason?: string };
 type StartRoomGameResult = Result & { state?: GameState; publicState?: PublicGameState };
 type PushActionResult = Result & { action?: RoomAction };
 type RebuyRequestResult = Result & { request?: RoomRebuyRequest };
+type RunVoteResult = Result & { vote?: RoomRunVote };
 
 const NOT_CONFIGURED_REASON =
   'Firebase is not configured. Set EXPO_PUBLIC_FIREBASE_* variables to enable online play.';
@@ -65,6 +66,7 @@ const actionsPath = (code: string): string => `${roomPath(code)}/actions`;
 const actionSeqPath = (code: string): string => `${roomPath(code)}/actionSeq`;
 const rebuysPath = (code: string): string => `${roomPath(code)}/rebuys`;
 const rebuyPath = (code: string, playerId: string): string => `${rebuysPath(code)}/${playerId}`;
+const runVotePath = (code: string, playerId: string): string => `${roomPath(code)}/runVotes/${playerId}`;
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
 const emotePath = (code: string, playerId: string): string => `${roomPath(code)}/emotes/${playerId}`;
 const shownPath = (code: string, playerId: string): string => `${roomPath(code)}/shown/${playerId}`;
@@ -120,6 +122,11 @@ const toDbAction = (action: RoomAction, seq: number): RoomAction => ({
 
 const toDbRebuyRequest = (playerId: string): RoomRebuyRequest => ({
   playerId,
+  ts: Date.now(),
+});
+
+const toDbRunVote = (choice: 1 | 2 | 3): RoomRunVote => ({
+  choice,
   ts: Date.now(),
 });
 
@@ -546,6 +553,7 @@ export const createRoom = async (
           updates[`${roomPath(roomCode)}/publicState`] = null;
           updates[`${roomPath(roomCode)}/shown`] = null;
           updates[`${roomPath(roomCode)}/exposed`] = null;
+          updates[`${roomPath(roomCode)}/runVotes`] = null;
         }
         await update(ref(db), updates);
         for (const uid of staleInviteUids) {
@@ -832,6 +840,7 @@ export const removePlayerFromRoom = async (code: string, playerId: string): Prom
       [userRoomPath(target, roomCode)]: null,
       [`${roomPath(roomCode)}/shown/${target}`]: null,
       [`${roomPath(roomCode)}/exposed/${target}`]: null,
+      [`${roomPath(roomCode)}/runVotes/${target}`]: null,
     });
   } catch (error) {
     reportFirebaseError('remove-player', error);
@@ -860,6 +869,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
         [`${roomPath(roomCode)}/publicState`]: null,
         [`${roomPath(roomCode)}/shown`]: null,
         [`${roomPath(roomCode)}/exposed`]: null,
+        [`${roomPath(roomCode)}/runVotes`]: null,
         /*
          * Withdraw the adverts, not just the room.
          *
@@ -887,6 +897,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
       [viewPath(roomCode, cleanPlayerId)]: null,
       [userRoomPath(cleanPlayerId, roomCode)]: null,
       [`${roomPath(roomCode)}/exposed/${cleanPlayerId}`]: null,
+      [`${roomPath(roomCode)}/runVotes/${cleanPlayerId}`]: null,
     });
   } catch (error) {
     reportFirebaseError('leave-room', error);
@@ -1061,6 +1072,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
     if (state.street !== 'showdown') table[`${roomPath(roomCode)}/shown`] = null;
     if (isNewPublishedHand) {
       table[`${roomPath(roomCode)}/exposed`] = null;
+      table[`${roomPath(roomCode)}/runVotes`] = null;
     }
     await update(ref(db), table);
     setCachedHostGame(roomCode, state);
@@ -1469,6 +1481,25 @@ export const subscribeExposedCards = (
   } catch (error) {
     reportFirebaseError('subscribe-exposed-cards', error);
     return noop;
+  }
+};
+
+/** Vote for how many boards to run after everyone is all in. */
+export const voteRunItTwice = async (code: string, choice: 1 | 2 | 3): Promise<RunVoteResult> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return unavailableResult();
+
+  const playerId = await authedPlayerId();
+  if (!playerId) return notSignedInResult();
+
+  const vote = toDbRunVote(choice);
+  try {
+    await set(ref(db, runVotePath(roomCode, playerId)), vote);
+    return { ok: true, vote };
+  } catch (error) {
+    reportFirebaseError('vote-run-it-twice', error);
+    return { ok: false, reason: getErrorMessage(error) };
   }
 };
 

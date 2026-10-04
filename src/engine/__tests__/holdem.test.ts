@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { type Card, type Rank, type Suit } from '../cards';
-import { applyAction, advanceStreet, canStartHand, createGame, legalActions, startHand } from '../holdem';
+import {
+  applyAction,
+  advanceStreet,
+  canStartHand,
+  createGame,
+  legalActions,
+  rerunShowdownFromSettled,
+  showdownRuns,
+  startHand,
+} from '../holdem';
 import type { ActionResult, GameConfig, GameState, PlayerInput } from '../types';
 
 const config: GameConfig = {
@@ -159,6 +168,62 @@ describe('holdem engine', () => {
     expect(winnerAmount(result, 'a')).toBe(2);
     expect(winnerAmount(result, 'b')).toBe(3);
     expect(winnerAmount(result, 'c')).toBe(0);
+  });
+
+  it('runs an all-in board twice from the remaining deck and splits the pot by run', () => {
+    const base = createGame(config, players(['a', 'b']), 'run-twice');
+    const state: GameState = {
+      ...base,
+      street: 'flop',
+      dealerIndex: 0,
+      currentPlayerIndex: -1,
+      board: [card('2c'), card('7d'), card('9h')],
+      deck: [card('Ad'), card('3c'), card('Th'), card('Jh')],
+      players: base.players.map((player) => {
+        if (player.id === 'a') return { ...player, chips: 0, holeCards: [card('As'), card('Ac')], allIn: true };
+        return { ...player, chips: 0, holeCards: [card('Kh'), card('Qh')], allIn: true };
+      }),
+      contributions: { a: 50, b: 50 },
+      pots: [],
+    };
+
+    const result = showdownRuns(state, 2);
+
+    expect(result.runResults?.map((run) => run.board.map((c) => `${c.rank}${c.suit}`))).toEqual([
+      ['2c', '7d', '9h', '14d', '3c'],
+      ['2c', '7d', '9h', '10h', '11h'],
+    ]);
+    expect(result.runResults?.[0]?.winners).toMatchObject([{ playerId: 'a', amount: 50 }]);
+    expect(result.runResults?.[1]?.winners).toMatchObject([{ playerId: 'b', amount: 50 }]);
+    expect(winnerAmount(result, 'a')).toBe(50);
+    expect(winnerAmount(result, 'b')).toBe(50);
+    expect(result.players.find((player) => player.id === 'a')?.chips).toBe(50);
+    expect(result.players.find((player) => player.id === 'b')?.chips).toBe(50);
+  });
+
+  it('can replace a one-run settled showdown before the hidden run-out is shown', () => {
+    const base = createGame(config, players(['a', 'b']), 'rerun-settled');
+    const pending: GameState = {
+      ...base,
+      street: 'flop',
+      dealerIndex: 0,
+      currentPlayerIndex: -1,
+      board: [card('2c'), card('7d'), card('9h')],
+      deck: [card('Ad'), card('3c'), card('Th'), card('Jh')],
+      players: base.players.map((player) => {
+        if (player.id === 'a') return { ...player, chips: 0, holeCards: [card('As'), card('Ac')], allIn: true };
+        return { ...player, chips: 0, holeCards: [card('Kh'), card('Qh')], allIn: true };
+      }),
+      contributions: { a: 50, b: 50 },
+      pots: [],
+    };
+    const settledOnce = showdownRuns(pending, 1);
+
+    const result = rerunShowdownFromSettled(settledOnce, 2, 3);
+
+    expect(winnerAmount(result, 'a')).toBe(50);
+    expect(winnerAmount(result, 'b')).toBe(50);
+    expect(result.runResults).toHaveLength(2);
   });
 
   it('reports legal action ranges for the UI', () => {
