@@ -657,13 +657,37 @@ export function pickStyle(
 }
 
 /** What the Store has recorded: what is owned, and what is worn per category. */
+/**
+ * One line of the purchase ledger.
+ *
+ * Price is recorded at the moment of sale rather than read back from the
+ * catalog later, because a catalog price can change and a receipt that
+ * rewrites itself is not a receipt.
+ */
+export interface CosmeticPurchase {
+  id: string;
+  price: number;
+  /** Epoch milliseconds. Absent for anything bought before the ledger existed. */
+  at?: number;
+}
+
 export interface CosmeticsState {
   ownedCosmeticIds: string[];
   equippedByCategory: Record<string, string>;
   appliedMigrations?: string[];
+  /**
+   * What was bought, when, and for how much.
+   *
+   * Deliberately separate from `ownedCosmeticIds` rather than replacing it.
+   * Ownership is the thing the game asks about on every render, and anything
+   * granted rather than bought, the starter items and the legacy emoji grant,
+   * is owned without ever having been a purchase. So the ledger is a record
+   * of sales, not the source of truth for what you have.
+   */
+  purchases?: CosmeticPurchase[];
 }
 
-export const emptyCosmetics: CosmeticsState = { ownedCosmeticIds: [], equippedByCategory: {}, appliedMigrations: [] };
+export const emptyCosmetics: CosmeticsState = { ownedCosmeticIds: [], equippedByCategory: {}, appliedMigrations: [], purchases: [] };
 
 /**
  * Read the stored cosmetics without trusting them.
@@ -687,7 +711,19 @@ export function readCosmetics(raw: string | null | undefined): CosmeticsState {
     const appliedMigrations = Array.isArray(parsed.appliedMigrations)
       ? parsed.appliedMigrations.filter((id): id is string => typeof id === 'string')
       : [];
-    return { ownedCosmeticIds: owned, equippedByCategory: equipped, appliedMigrations };
+    const purchases = Array.isArray(parsed.purchases)
+      ? parsed.purchases
+        .filter((entry): entry is CosmeticPurchase =>
+          !!entry && typeof entry === 'object'
+          && typeof (entry as CosmeticPurchase).id === 'string'
+          && Number.isFinite((entry as CosmeticPurchase).price))
+        .map((entry) => ({
+          id: entry.id,
+          price: Math.max(0, Math.floor(entry.price)),
+          ...(Number.isFinite(entry.at) ? { at: entry.at } : {}),
+        }))
+      : [];
+    return { ownedCosmeticIds: owned, equippedByCategory: equipped, appliedMigrations, purchases };
   } catch {
     return emptyCosmetics;
   }

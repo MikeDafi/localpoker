@@ -28,6 +28,7 @@ import { sound } from '../services/sound';
 import { gifThumbUrl } from '../services/gifs';
 import { EMOJI_EMOTES, GIF_EMOTES } from '../game/cosmetics';
 import { StorePreview } from '../components/storePreview';
+import { purchaseHistory, totalCoinsSpent, type PurchaseRecord } from '../game/purchaseHistory';
 import {
   COSMETIC_CATEGORIES,
   type CosmeticCategory,
@@ -61,6 +62,9 @@ export function StoreScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
   const [activeCategory, setActiveCategory] = useState<CosmeticCategoryId>(COSMETIC_CATEGORIES[0].id);
   const [previewing, setPreviewing] = useState<CosmeticItem | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const history = useMemo(() => purchaseHistory(cosmetics), [cosmetics]);
+  const spent = useMemo(() => totalCoinsSpent(cosmetics), [cosmetics]);
 
   const isWide = width >= 680;
   const cardWidth: CardWidth = isWide ? '48%' : '100%';
@@ -102,12 +106,15 @@ export function StoreScreen({ navigation }: Props) {
         equippedByCategory: isUnlockOnly(item)
           ? current.equippedByCategory
           : { ...current.equippedByCategory, [item.category]: item.id },
+        // The price as it was at the moment of sale, not as the catalog may
+        // later read it.
+        purchases: [...(current.purchases ?? []), { id: item.id, price: item.price, at: Date.now() }],
       }));
       addCoins(-item.price);
       sound.play('coins');
       showAlert(
-        'Cosmetic unlocked',
-        isUnlockOnly(item) ? item.name + ' is now in your emote tray.' : item.name + ' is now owned and equipped.',
+        'Unlocked',
+        isUnlockOnly(item) ? `${item.name} is in your emote tray.` : `${item.name} is equipped.`,
       );
     },
     [addCoins, equipCosmetic, ownedCosmetics, profile.coins, setCosmetics],
@@ -123,7 +130,7 @@ export function StoreScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(360)}>
-          <BalanceBanner coins={profile.coins} hydrated={ready} />
+          <BalanceBanner coins={profile.coins} hydrated={ready} onHistory={() => setHistoryOpen(true)} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(150).duration(380)}>
@@ -170,6 +177,13 @@ export function StoreScreen({ navigation }: Props) {
         <AdBanner />
       </ScrollView>
 
+      <PurchaseHistorySheet
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        records={history}
+        spent={spent}
+      />
+
       <PreviewSheet
         item={previewing}
         owned={previewing ? ownedCosmetics.has(previewing.id) : false}
@@ -184,7 +198,7 @@ export function StoreScreen({ navigation }: Props) {
   );
 }
 
-function BalanceBanner({ coins, hydrated }: { coins: number; hydrated: boolean }) {
+function BalanceBanner({ coins, hydrated, onHistory }: { coins: number; hydrated: boolean; onHistory: () => void }) {
   return (
     <WiiPanel padding={0} gloss={false}>
       <LinearGradient
@@ -205,8 +219,63 @@ function BalanceBanner({ coins, hydrated }: { coins: number; hydrated: boolean }
             <Text style={styles.balanceHint}>Earned by playing hands.</Text>
           </View>
         </View>
+        <WiiButton label="History" size="sm" variant="white" onPress={onHistory} />
       </LinearGradient>
     </WiiPanel>
+  );
+}
+
+/** What you have bought, when, and for how much. */
+function PurchaseHistorySheet({
+  visible,
+  onClose,
+  records,
+  spent,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  records: PurchaseRecord[];
+  spent: number;
+}) {
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Close history">
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <Text style={styles.sheetTitle}>Purchase history</Text>
+          <Text style={styles.sheetDescription}>
+            {records.length === 0
+              ? 'Nothing bought yet.'
+              : `${records.length} item${records.length === 1 ? '' : 's'} \u00b7 ${formatCoins(spent)} coins spent`}
+          </Text>
+          <ScrollView style={styles.historyList} contentContainerStyle={styles.historyContent}>
+            {records.map((record) => (
+              <View key={`${record.id}-${record.at ?? 'na'}`} style={styles.historyRow}>
+                <View style={styles.historyCopy}>
+                  <Text style={styles.historyName} numberOfLines={1}>{record.name}</Text>
+                  <Text style={styles.historyMeta}>
+                    {/* Said plainly rather than guessed at. These were bought
+                        before purchases were recorded, or granted, and
+                        inventing a date would make the receipt a fiction. */}
+                    {record.unrecorded
+                      ? 'Owned, before receipts were kept'
+                      : record.at
+                        ? new Date(record.at).toLocaleDateString()
+                        : 'Date not recorded'}
+                  </Text>
+                </View>
+                {record.price === undefined
+                  ? <Text style={styles.historyMeta}>{'\u2014'}</Text>
+                  : <CoinAmount amount={record.price} iconSize={15} />}
+              </View>
+            ))}
+          </ScrollView>
+          <View style={styles.sheetActions}>
+            <WiiButton label="Close" size="md" variant="white" onPress={onClose} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -722,6 +791,20 @@ const styles = StyleSheet.create({
   sheetTitle: { fontFamily: fonts.bold, fontSize: 21, color: colors.ink },
   sheetDescription: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
   sheetStage: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm },
+  historyList: { maxHeight: 320 },
+  historyContent: { gap: spacing.xs },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(16,24,40,0.1)',
+  },
+  historyCopy: { flex: 1, minWidth: 0 },
+  historyName: { fontFamily: fonts.bold, fontSize: 15, color: colors.ink },
+  historyMeta: { fontFamily: fonts.medium, fontSize: 12, color: colors.inkMuted, marginTop: 1 },
   sheetActions: {
     flexDirection: 'row',
     alignItems: 'center',
