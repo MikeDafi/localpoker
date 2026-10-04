@@ -194,9 +194,23 @@ function resetStreetBets(state: GameState): void {
   }
 }
 
+/**
+ * Record a bet or raise, and set what the next raise has to beat.
+ *
+ * This table plays the home game rule: a raise must be to **double** the
+ * current bet. Standard no limit asks only for the size of the last raise, so
+ * a raise to 200 over a 100 blind could be re-raised to 300; here it has to
+ * be 400. Expressed by making the minimum increment the whole current bet
+ * rather than the increment that produced it, because `minRaiseTo` is read
+ * everywhere as `currentBet + minRaise` and this keeps that one definition
+ * true.
+ *
+ * `raiseSize` is still taken, and still ignored for this purpose, because the
+ * all-in path uses it to decide whether a short shove reopened the betting.
+ */
 function markAggression(state: GameState, aggressorIndex: number, raiseSize: number): void {
   state.currentBet = state.players[aggressorIndex].currentBet;
-  state.minRaise = Math.max(raiseSize, state.config.bigBlind);
+  state.minRaise = Math.max(state.currentBet, raiseSize, state.config.bigBlind);
   state.lastAggressorIndex = aggressorIndex;
   for (const [index, player] of state.players.entries()) {
     if (canAct(player)) player.hasActed = index === aggressorIndex;

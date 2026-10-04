@@ -106,8 +106,34 @@ describe('holdem engine', () => {
 
     const legalRaise = must(applyAction(state, 'a', 'raise', 20));
     expect(legalRaise.currentBet).toBe(20);
-    expect(legalRaise.minRaise).toBe(10);
+    /*
+     * This table plays the home game rule: a raise must be to double the
+     * current bet. Standard no limit would leave the minimum increment at the
+     * size of the last raise, which is the big blind here, so 30 would be a
+     * legal re-raise. Doubling makes the next one 40.
+     */
+    expect(legalRaise.minRaise).toBe(20);
+    expect(legalActions(legalRaise, 'b').minRaiseTo).toBe(40);
     expect(legalRaise.players[0].currentBet).toBe(20);
+  });
+
+  it('makes every raise double the bet in front of it', () => {
+    let state = startHand(createGame(config, players(), 'double-rule'));
+    // Blind is 10, so the first raise is to 20 and each one doubles from there.
+    for (const [to, nextMin] of [[20, 40], [40, 80], [80, 160]] as const) {
+      const actor = state.players[state.currentPlayerIndex].id;
+      state = must(applyAction(state, actor, 'raise', to));
+      const next = state.players[state.currentPlayerIndex].id;
+      expect(legalActions(state, next).minRaiseTo, `after a raise to ${to}`).toBe(nextMin);
+    }
+  });
+
+  it('still refuses a raise that does not reach double', () => {
+    const state = startHand(createGame(config, players(), 'short-raise'));
+    const raised = must(applyAction(state, 'a', 'raise', 20));
+    const short = applyAction(raised, 'b', 'raise', 30);
+    expect(short.ok).toBe(false);
+    if (!short.ok) expect(short.error).toMatch(/Minimum raise is to 40/);
   });
 
   it('awards the pot immediately when everyone folds to one player', () => {

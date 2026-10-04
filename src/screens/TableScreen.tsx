@@ -2784,9 +2784,20 @@ const styles = StyleSheet.create({
   // always present and merely changes colour.
   boardCardWrap: { marginHorizontal: 0, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
   winCard: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.16)' },
-  handChip: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  /*
+   * Out of the flow, so the cards stay on the table's centre line.
+   *
+   * These sat in the row as a sibling of the hole cards, so the moment a hand
+   * name appeared it took width and shoved the cards to the right of centre.
+   * It is the same fault as the bet pill resizing the pod and the pod sliding
+   * the board: anything conditional that occupies layout space moves whatever
+   * is next to it. Absolute means the label can come and go without the cards
+   * knowing about it. Pinned top to bottom so it stays vertically centred
+   * without needing to know how tall a card is.
+   */
+  handChip: { position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center', zIndex: 2, backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
   handChipText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark },
-  muckedChip: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6 },
+  muckedChip: { position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center', zIndex: 2, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6 },
   muckedChipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkSoft },
   friendsBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.md, paddingVertical: 6, paddingHorizontal: spacing.md },
   friendsBannerText: { fontFamily: fonts.medium, fontSize: 11, color: colors.onDarkSoft, textAlign: 'center' },
