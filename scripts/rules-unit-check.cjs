@@ -563,6 +563,36 @@ function logOk(message) {
     await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown'), null));
     logOk('a player cannot clear the table\'s shown hands wholesale');
 
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player/0'), true));
+    logOk('a seated player can expose their own left card');
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player/1'), true));
+    logOk('and can expose their own right card separately');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/host/0'), true));
+    logOk('but cannot expose another player card');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/exposed/stranger/0'), true));
+    logOk('and someone not at the table cannot expose a card');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player/2'), true));
+    logOk('only the two hole-card slots can be exposed');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player/0'), false));
+    logOk('an exposed card cannot be hidden again by writing false');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player/1'), null));
+    logOk('a player cannot take back an exposed card');
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PLAY1/state': { version: 1, handNumber: 10, street: 'preflop' },
+      'localpoker/rooms/PLAY1/exposed': null,
+    }));
+    logOk('the host clears every exposed card as part of publishing the next one');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed'), null));
+    logOk('a player cannot clear exposed cards wholesale');
+
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/rebuys/player'), {
       playerId: 'player', ts: 65,
     }));
@@ -725,6 +755,30 @@ function logOk(message) {
 
     await assertSucceeds(set(ref(hostDb, `${roomPath}/publicState`), validPublicState));
     logOk('host can write the same valid publicState');
+
+    await assertSucceeds(set(ref(hostDb, `${roomPath}/publicState`), {
+      ...validPublicState,
+      players: {
+        ...validPublicState.players,
+        player: {
+          ...validPublicState.players.player,
+          exposedHoleCards: { 1: { rank: 9, suit: 'h' } },
+        },
+      },
+    }));
+    logOk('host can publish exactly one exposed hole card');
+
+    await assertFails(set(ref(hostDb, `${roomPath}/publicState`), {
+      ...validPublicState,
+      players: {
+        ...validPublicState.players,
+        player: {
+          ...validPublicState.players.player,
+          exposedHoleCards: { 2: { rank: 9, suit: 'h' } },
+        },
+      },
+    }));
+    logOk('host cannot publish an exposed card outside the two hole-card slots');
 
     await assertFails(get(ref(playerDb, 'localpoker/views/ROOM12/host')));
     logOk('player cannot read another player private view');

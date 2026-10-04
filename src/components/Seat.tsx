@@ -10,6 +10,7 @@ import type { PalExpression } from './PalAvatar';
 import type { Emote } from './EmoteBar';
 import type { Player } from '../engine';
 import type { CardBackVariant } from './CardBack';
+import type { MaybeHoleCard } from '../game/holeCardExposure';
 
 export interface SeatProps {
   player: Player;
@@ -18,6 +19,8 @@ export interface SeatProps {
   isDealer: boolean;
   isHuman: boolean;
   showCards?: boolean;
+  shownCards?: readonly boolean[];
+  displayCards?: readonly MaybeHoleCard[];
   won?: boolean;
   /**
    * Beaten at a showdown.
@@ -75,7 +78,7 @@ export interface SeatProps {
  */
 const BET_SLOT_H = 22;
 
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, showName = true, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -99,14 +102,18 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
   // scaled *down* while hidden, scaling a 18pt card up would just look soft.
   const HOLE_SIZE = 24;
   const HOLE_MIN = 18 / HOLE_SIZE;
-  const shown = useSharedValue(showCards ? 1 : HOLE_MIN);
+  const anyCardShown = !!showCards || shownCards?.some(Boolean) === true;
+  const shown = useSharedValue(anyCardShown ? 1 : HOLE_MIN);
   useEffect(() => {
-    shown.value = withTiming(showCards ? 1 : HOLE_MIN, {
+    shown.value = withTiming(anyCardShown ? 1 : HOLE_MIN, {
       duration: motion.base,
       easing: Easing.bezier(...easings.out),
     });
-  }, [showCards, shown, HOLE_MIN]);
+  }, [anyCardShown, shown, HOLE_MIN]);
   const holeStyle = useAnimatedStyle(() => ({ transform: [{ scale: shown.value }] }));
+  const cardsToDisplay = displayCards ?? player.holeCards;
+  const hasHoleCardsToDisplay = cardsToDisplay.some(Boolean);
+  const cardFaceUp = (index: number): boolean => !!showCards || shownCards?.[index] === true;
 
   // The ring is the avatar plus a fixed border allowance.
   const ringSize = avatarSize + 10;
@@ -118,20 +125,20 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
       <View style={styles.cWrap}>
         {emote && <EmoteBubble emote={emote} />}
         <View style={styles.cAvatarWrap}>
-        {player.holeCards.length > 0 && !dimmed && !handOff && (
+        {hasHoleCardsToDisplay && !dimmed && !handOff && (
           <Animated.View
             key={dealKey}
-            style={[styles.cCards, showCards && styles.cCardsShown, holeStyle]}
+            style={[styles.cCards, anyCardShown && styles.cCardsShown, holeStyle]}
             pointerEvents="none"
           >
             <View style={{ transform: [{ rotate: '-6deg' }] }}>
               <DealtCard
-                rank={player.holeCards[0]?.rank}
-                suit={player.holeCards[0]?.suit as any}
+                rank={cardsToDisplay[0]?.rank}
+                suit={cardsToDisplay[0]?.suit as any}
                 size={HOLE_SIZE}
                 dimmed={dimmed}
                 back={back}
-                faceUp={!!showCards}
+                faceUp={cardFaceUp(0)}
                 animate={dealAnimate}
                 delay={dealDelay}
                 fromX={dealFrom?.x ?? 0}
@@ -140,12 +147,12 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
             </View>
             <View style={{ marginLeft: -HOLE_SIZE * 0.6, transform: [{ rotate: '10deg' }] }}>
               <DealtCard
-                rank={player.holeCards[1]?.rank}
-                suit={player.holeCards[1]?.suit as any}
+                rank={cardsToDisplay[1]?.rank}
+                suit={cardsToDisplay[1]?.suit as any}
                 size={HOLE_SIZE}
                 dimmed={dimmed}
                 back={back}
-                faceUp={!!showCards}
+                faceUp={cardFaceUp(1)}
                 animate={dealAnimate}
                 delay={dealDelay + dealStep}
                 fromX={dealFrom?.x ?? 0}
@@ -199,10 +206,10 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, won
   return (
     <View style={styles.wrap}>
       {emote && <EmoteBubble emote={emote} />}
-      {!isHuman && player.holeCards.length > 0 && (
+      {!isHuman && hasHoleCardsToDisplay && (
         <View style={styles.cards}>
-          <PlayingCard faceDown={!showCards} rank={player.holeCards[0]?.rank} suit={player.holeCards[0]?.suit as any} size={26} dimmed={dimmed} back={back} />
-          <PlayingCard faceDown={!showCards} rank={player.holeCards[1]?.rank} suit={player.holeCards[1]?.suit as any} size={26} dimmed={dimmed} back={back} style={{ marginLeft: -10 }} />
+          <PlayingCard faceDown={!cardFaceUp(0)} rank={cardsToDisplay[0]?.rank} suit={cardsToDisplay[0]?.suit as any} size={26} dimmed={dimmed} back={back} />
+          <PlayingCard faceDown={!cardFaceUp(1)} rank={cardsToDisplay[1]?.rank} suit={cardsToDisplay[1]?.suit as any} size={26} dimmed={dimmed} back={back} style={{ marginLeft: -10 }} />
         </View>
       )}
 

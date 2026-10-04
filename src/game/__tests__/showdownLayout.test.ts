@@ -90,6 +90,30 @@ describe('selectShowdownHands', () => {
     expect(hands.map((h) => h.playerId)).toEqual(['alice']);
   });
 
+  it('shows only the exposed card from a local hand that still mucks at showdown', () => {
+    const hands = selectShowdownHands([winner('alice', 'Flush')], [alice, bob], {
+      localPlayerId: 'bob',
+      localCardsShown: false,
+      label: (w) => w.label,
+      contested: true,
+      cardExposure: (playerId) => (playerId === 'bob' ? [true, false] : undefined),
+    });
+    const bobHand = hands.find((h) => h.playerId === 'bob');
+    expect(bobHand?.hole).toEqual([bob.holeCards[0], null]);
+  });
+
+  it('does not treat one exposed card as a full tabled hand', () => {
+    const hands = selectShowdownHands([winner('alice', 'Flush')], [alice, bob], {
+      localPlayerId: 'bob',
+      localCardsShown: false,
+      label: (w) => w.label,
+      contested: true,
+      cardExposure: (playerId) => (playerId === 'bob' ? [false, true] : undefined),
+    });
+    const bobHand = hands.find((h) => h.playerId === 'bob');
+    expect(bobHand?.hole).toEqual([null, bob.holeCards[1]]);
+  });
+
   it('lays out both hands of a split pot, which used to drop one', () => {
     const hands = pick([winner('alice', 'Straight'), winner('bob', 'Straight')], [alice, bob]);
     expect(hands.map((h) => h.playerId)).toEqual(['alice', 'bob']);

@@ -16,10 +16,16 @@ import { sendPush } from './push';
 import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomState, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
+import {
+  hasExposedHoleCard,
+  normalizeHoleCardExposure,
+  type HoleCardIndex,
+} from '../../game/holeCardExposure';
 import { isEndedRoomReclaimable, planHostedRoomOpen } from '../../game/lobbyRoom';
 import {
   applyConnectionStatusToGameState,
   redactGameState,
+  type ExposedHoleCardsByPlayer,
   type PublicGameState,
 } from '../../game/onlineSync';
 import { maskedPublicName } from '../../moderation/contentFilter';
@@ -62,6 +68,8 @@ const rebuyPath = (code: string, playerId: string): string => `${rebuysPath(code
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
 const emotePath = (code: string, playerId: string): string => `${roomPath(code)}/emotes/${playerId}`;
 const shownPath = (code: string, playerId: string): string => `${roomPath(code)}/shown/${playerId}`;
+const exposedPath = (code: string, playerId: string, index: HoleCardIndex): string =>
+  `${roomPath(code)}/exposed/${playerId}/${index}`;
 const userRoomPath = (playerId: string, code: string): string => `localpoker/userRooms/${playerId}/${code}`;
 /**
  * Where a room advertises itself.
@@ -114,6 +122,17 @@ const toDbRebuyRequest = (playerId: string): RoomRebuyRequest => ({
   playerId,
   ts: Date.now(),
 });
+
+const exposedFromRoom = (room: Pick<RoomState, 'exposed'>): ExposedHoleCardsByPlayer => {
+  const exposed: ExposedHoleCardsByPlayer = {};
+  for (const [playerId, value] of Object.entries(room.exposed ?? {})) {
+    const exposure = normalizeHoleCardExposure(value);
+    if (hasExposedHoleCard(exposure)) {
+      exposed[playerId] = exposure;
+    }
+  }
+  return exposed;
+};
 
 const nextActionSeq = (roomSeq: unknown): Result & { seq?: number } => {
   const current = roomSeq === null || typeof roomSeq === 'undefined' ? 0 : roomSeq;
@@ -526,6 +545,7 @@ export const createRoom = async (
           updates[`${roomPath(roomCode)}/actions`] = null;
           updates[`${roomPath(roomCode)}/publicState`] = null;
           updates[`${roomPath(roomCode)}/shown`] = null;
+          updates[`${roomPath(roomCode)}/exposed`] = null;
         }
         await update(ref(db), updates);
         for (const uid of staleInviteUids) {
@@ -811,6 +831,7 @@ export const removePlayerFromRoom = async (code: string, playerId: string): Prom
       [viewPath(roomCode, target)]: null,
       [userRoomPath(target, roomCode)]: null,
       [`${roomPath(roomCode)}/shown/${target}`]: null,
+      [`${roomPath(roomCode)}/exposed/${target}`]: null,
     });
   } catch (error) {
     reportFirebaseError('remove-player', error);
@@ -838,6 +859,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
         [`${roomPath(roomCode)}/actions`]: null,
         [`${roomPath(roomCode)}/publicState`]: null,
         [`${roomPath(roomCode)}/shown`]: null,
+        [`${roomPath(roomCode)}/exposed`]: null,
         /*
          * Withdraw the adverts, not just the room.
          *
@@ -864,6 +886,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
       [playerPath(roomCode, cleanPlayerId)]: null,
       [viewPath(roomCode, cleanPlayerId)]: null,
       [userRoomPath(cleanPlayerId, roomCode)]: null,
+      [`${roomPath(roomCode)}/exposed/${cleanPlayerId}`]: null,
     });
   } catch (error) {
     reportFirebaseError('leave-room', error);
@@ -1007,6 +1030,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       return { ok: false, reason: 'Room has ended.' };
     }
 
+    const isNewPublishedHand = room.publicState?.handNumber !== state.handNumber;
     const { publicState, privateViews } = redactGameState(state, {
       code: roomCode,
       playerMeta: playerMetaFromRoom(room),
@@ -1016,6 +1040,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       revealed: Object.entries((room as { shown?: Record<string, unknown> }).shown ?? {})
         .filter(([, v]) => v === true)
         .map(([id]) => id),
+      exposed: isNewPublishedHand ? {} : exposedFromRoom(room),
     });
     /*
      * The table first, the hole cards second, as two writes.
@@ -1034,6 +1059,9 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
     // A new hand forgets what was tabled in the last one, or cards stay face
     // up across hands.
     if (state.street !== 'showdown') table[`${roomPath(roomCode)}/shown`] = null;
+    if (isNewPublishedHand) {
+      table[`${roomPath(roomCode)}/exposed`] = null;
+    }
     await update(ref(db), table);
     setCachedHostGame(roomCode, state);
 
@@ -1385,6 +1413,28 @@ export const revealOwnHand = async (code: string): Promise<boolean> => {
   }
 };
 
+/**
+ * Expose one hole card during a live hand.
+ *
+ * This is deliberately separate from `shown`: showing one card is not a
+ * showdown decision, and the host publishes only the chosen slot rather than
+ * treating the whole hand as tabled.
+ */
+export const exposeOwnCard = async (code: string, index: HoleCardIndex): Promise<boolean> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return false;
+  try {
+    const playerId = await authedPlayerId();
+    if (!playerId) return false;
+    await set(ref(db, exposedPath(roomCode, playerId, index)), true);
+    return true;
+  } catch (error) {
+    reportFirebaseError('expose-own-card', error);
+    return false;
+  }
+};
+
 /** Who has tabled their hand this hand. */
 export const subscribeShownHands = (
   code: string,
@@ -1400,6 +1450,24 @@ export const subscribeShownHands = (
     });
   } catch (error) {
     reportFirebaseError('subscribe-shown-hands', error);
+    return noop;
+  }
+};
+
+/** Who has exposed at least one card during this hand. */
+export const subscribeExposedCards = (
+  code: string,
+  cb: () => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return noop;
+  try {
+    return onValue(ref(db, `${roomPath(roomCode)}/exposed`), (snapshot) => {
+      if (snapshot.exists()) cb();
+    });
+  } catch (error) {
+    reportFirebaseError('subscribe-exposed-cards', error);
     return noop;
   }
 };

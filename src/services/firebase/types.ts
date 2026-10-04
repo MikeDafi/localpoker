@@ -1,6 +1,8 @@
 import type { PlayerAction } from '../../engine';
 import type { PrivatePlayerView, PublicGameState } from '../../game/onlineSync';
 
+export type RoomHoleCardExposure = Partial<Record<'0' | '1', true>>;
+
 export type RoomPlayer = {
   id: string;
   name: string;
@@ -57,6 +59,8 @@ export type RoomState = {
   players: Record<string, RoomPlayer>;
   actionSeq: number;
   publicState?: PublicGameState;
+  shown?: Record<string, true>;
+  exposed?: Record<string, RoomHoleCardExposure>;
   endedReason?: string;
   endedAt?: number;
 };

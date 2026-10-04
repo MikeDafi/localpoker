@@ -255,6 +255,27 @@ describe('online sync end to end', () => {
     );
   });
 
+  it('publishes a during-hand exposure without leaking the other hole card', () => {
+    const seed = 'single-card-exposure';
+    const hostState = startHand(createGame(config, players(), seed));
+    const exposedPlayer = hostState.players.find((player) => player.id === 'client-a');
+    expect(exposedPlayer).toBeDefined();
+
+    const { publicState, privateViews } = redactGameState(hostState, {
+      code: 'ROOM12',
+      exposed: { 'client-a': [false, true] },
+    });
+    const payload = JSON.stringify({ publicState, privateView: privateViews.host });
+
+    expect(publicState.players['client-a'].holeCards).toBeUndefined();
+    expect(publicState.players['client-a'].exposedHoleCards).toEqual({ 1: exposedPlayer?.holeCards[1] });
+    expect(payload).toContain(cardNeedle(exposedPlayer!.holeCards[1]));
+    expect(payload).not.toContain(cardNeedle(exposedPlayer!.holeCards[0]));
+
+    const clientState = hydrateGameState(publicState, privateViews.host);
+    expect(clientState.players.find((player) => player.id === 'client-a')?.holeCards).toEqual([]);
+  });
+
   it('folds disconnected non-hosts in the host state so the table can continue', () => {
     let state = startHand(createGame(config, players(), 'disconnect-fold'));
     state = must(applyHostIntent(state, 'host', { type: 'call' }));

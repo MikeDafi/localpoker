@@ -54,6 +54,8 @@ export {
   subscribeRebuyRequests,
   sendEmoteToRoom,
   subscribeEmotes,
+  exposeOwnCard,
+  subscribeExposedCards,
   revealOwnHand,
   subscribeShownHands,
   getRoomListingInfo,

@@ -1,4 +1,10 @@
 import type { Card } from '../engine/cards';
+import {
+  EMPTY_HOLE_CARD_EXPOSURE,
+  hasExposedHoleCard,
+  normalizeHoleCardExposure,
+  type HoleCardExposure,
+} from './holeCardExposure';
 
 /**
  * Where the winning hands sit once a showdown is over.
@@ -64,7 +70,7 @@ export function handGapFor(hands: number): number {
 export interface ShowdownWinnerHand {
   playerId: string;
   name: string;
-  hole: Card[];
+  hole: (Card | null)[];
   label: string;
   /** Gold or red: did this hand take a share of the pot? */
   outcome: 'won' | 'lost';
@@ -105,6 +111,14 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
      * its owner just paid to keep.
      */
     shownIds?: readonly string[];
+    /**
+     * Card exposure is separate from showdown tabling.
+     *
+     * A mucked loser may still have one card that everybody already saw during
+     * the hand, and the layout should keep showing that one without turning the
+     * other card over.
+     */
+    cardExposure?: (playerId: string) => HoleCardExposure | undefined;
   },
 ): ShowdownWinnerHand[] {
   const rows: ShowdownWinnerHand[] = [];
@@ -115,13 +129,22 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
     p.holeCards.length >= 2 &&
     (shown === null || shown.has(p.id)) &&
     (p.id !== options.localPlayerId || options.localCardsShown);
+  const exposureFor = (playerId: string): HoleCardExposure =>
+    normalizeHoleCardExposure(options.cardExposure?.(playerId) ?? EMPTY_HOLE_CARD_EXPOSURE);
+  const visibleHole = (p: { id: string; holeCards: Card[] }, fullyTabled: boolean): (Card | null)[] => {
+    if (fullyTabled) return p.holeCards.slice(0, 2);
+    const exposure = exposureFor(p.id);
+    return [exposure[0] ? p.holeCards[0] ?? null : null, exposure[1] ? p.holeCards[1] ?? null : null];
+  };
 
   for (const w of winners) {
     if (!w.hand?.cards?.length) continue;
     const p = players.find((pp) => pp.id === w.playerId);
-    if (!p || !tabled(p) || taken.has(p.id)) continue;
+    if (!p || taken.has(p.id)) continue;
+    const fullyTabled = tabled(p);
+    if (!fullyTabled && !hasExposedHoleCard(exposureFor(p.id))) continue;
     taken.add(p.id);
-    rows.push({ playerId: p.id, name: p.name, hole: p.holeCards.slice(0, 2), label: options.label(w), outcome: 'won' });
+    rows.push({ playerId: p.id, name: p.name, hole: visibleHole(p, fullyTabled), label: options.label(w), outcome: 'won' });
     if (rows.length >= MAX_REVEAL_HANDS) return rows;
   }
 
@@ -131,9 +154,11 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
   if (options.contested === false || rows.length === 0) return rows;
 
   for (const p of players) {
-    if (taken.has(p.id) || p.folded || p.sittingOut || !tabled(p)) continue;
+    if (taken.has(p.id) || p.folded || p.sittingOut) continue;
+    const fullyTabled = tabled(p);
+    if (!fullyTabled && !hasExposedHoleCard(exposureFor(p.id))) continue;
     taken.add(p.id);
-    rows.push({ playerId: p.id, name: p.name, hole: p.holeCards.slice(0, 2), label: '', outcome: 'lost' });
+    rows.push({ playerId: p.id, name: p.name, hole: visibleHole(p, fullyTabled), label: '', outcome: 'lost' });
     if (rows.length >= MAX_REVEAL_HANDS) break;
   }
   return rows;

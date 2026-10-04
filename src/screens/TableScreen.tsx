@@ -27,6 +27,14 @@ import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings 
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import { chipSoundsFor, chipsCommitted } from '../game/betSound';
+import {
+  displayHoleCards,
+  exposeHoleCard,
+  exposureFromPublicCards,
+  mergeHoleCardExposure,
+  type HoleCardIndex,
+  type HoleCardExposure,
+} from '../game/holeCardExposure';
 import { playerTapActions } from '../game/playerActions';
 import { botShowsHand, canMuck, showdownOrder } from '../game/showdownOrder';
 import {
@@ -79,6 +87,8 @@ import {
   subscribeRebuyRequests,
   sendEmoteToRoom,
   subscribeEmotes,
+  exposeOwnCard,
+  subscribeExposedCards,
   revealOwnHand,
   subscribeShownHands,
   subscribePrivateView,
@@ -436,6 +446,7 @@ export function TableScreen({ navigation, route }: Props) {
     setObserved((t) => observeTransition(t, prev, state));
   }, [state]);
   const [reveal, setReveal] = useState<'auto' | 'show' | 'muck'>('auto');
+  const [localCardExposure, setLocalCardExposure] = useState<HoleCardExposure>([false, false]);
   const [area, setArea] = useState({ w: width, h: 0 });
   // Pod heights are measured, but kept as *high-water marks*: a pod grows and
   // shrinks as bet chips and "Folded" tags come and go, and the community lane
@@ -671,6 +682,18 @@ export function TableScreen({ navigation, route }: Props) {
       : isShowdown
         ? reveal === 'show' || (reveal === 'auto' && !settings.autoMuck && humanWon)
         : true;
+  const exposedCardsForPlayer = useCallback(
+    (playerId: string) => room?.publicState?.players?.[playerId]?.exposedHoleCards,
+    [room?.publicState],
+  );
+  const cardExposureForPlayer = useCallback(
+    (playerId: string): HoleCardExposure => {
+      const published = exposureFromPublicCards(exposedCardsForPlayer(playerId));
+      return playerId === human.id ? mergeHoleCardExposure(published, localCardExposure) : published;
+    },
+    [exposedCardsForPlayer, human.id, localCardExposure],
+  );
+  const humanCardExposure = cardExposureForPlayer(human.id);
 
   /**
    * The hand that gets laid out in the middle at showdown: the winner's two hole
@@ -688,8 +711,9 @@ export function TableScreen({ navigation, route }: Props) {
       label: (w) => handName(w.hand!.category),
       contested: contestedShowdown,
       shownIds: revealShown,
+      cardExposure: cardExposureForPlayer,
     });
-  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown]);
+  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -699,6 +723,7 @@ export function TableScreen({ navigation, route }: Props) {
    */
   useEffect(() => {
     setRevealProgress(startReveal());
+    setLocalCardExposure([false, false]);
   }, [felt.handNumber]);
 
   /** Whether a hand is still unbeaten by anything already face up. */
@@ -739,6 +764,18 @@ export function TableScreen({ navigation, route }: Props) {
     setRevealProgress((prev) => advanceReveal(revealOrder, prev, show));
     if (show && roomCode && firebaseOnline) void revealOwnHand(roomCode);
   };
+
+  const exposeCardToTable = useCallback((index: HoleCardIndex) => {
+    sound.play('tap');
+    setLocalCardExposure((prev) => exposeHoleCard(prev, index));
+    if (!roomCode || !firebaseOnline) return;
+    exposeOwnCard(roomCode, index).then((ok) => {
+      if (ok) return;
+      showAlert('Card not shown', 'The table could not publish that card. Check your connection and try again.', [
+        { text: 'OK', style: 'cancel' },
+      ]);
+    });
+  }, [roomCode, firebaseOnline]);
 
   /*
    * Step through the order, pausing on anyone who has an actual decision.
@@ -978,6 +1015,26 @@ export function TableScreen({ navigation, route }: Props) {
         .catch((error) => {
           noteSync(false);
           captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-reveal' } });
+        });
+    });
+  }, [roomCode, firebaseOnline, isOnlineHost, noteSync]);
+
+  /*
+   * Republish when somebody exposes one card during the hand.
+   *
+   * The room node carries only the chosen slot. The host still owns the actual
+   * cards and is the only device allowed to place that card into public state.
+   */
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !isOnlineHost) return undefined;
+    return subscribeExposedCards(roomCode, () => {
+      const current = getCachedHostGame(roomCode) ?? stateRef.current;
+      if (!current) return;
+      publishHostGameState(roomCode, current)
+        .then((r) => noteSync(r.ok))
+        .catch((error) => {
+          noteSync(false);
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-card-exposure' } });
         });
     });
   }, [roomCode, firebaseOnline, isOnlineHost, noteSync]);
@@ -1914,8 +1971,8 @@ export function TableScreen({ navigation, route }: Props) {
       playerIds: showdownHands.map((h) => h.playerId),
     })
     : [];
-  const highlightFor = (hand: { hole: { rank: number; suit: string }[] }) =>
-    hand.hole.map((c) => winningCardKeys.has(`${c.rank}${c.suit}`));
+  const highlightFor = (hand: { hole: ({ rank: number; suit: string } | null)[] }) =>
+    hand.hole.map((c) => !!c && winningCardKeys.has(`${c.rank}${c.suit}`));
 
   /**
    * Community cards are pitched in from the dealer's spot like the hole cards,
@@ -2024,6 +2081,8 @@ export function TableScreen({ navigation, route }: Props) {
       </ScreenBackground>
     );
   }
+
+  const canExposeHoleCards = !handOver && !human.folded && human.holeCards.length >= 2;
 
   return (
     <ScreenBackground variant="felt" edges={['top', 'bottom']}>
@@ -2175,6 +2234,8 @@ export function TableScreen({ navigation, route }: Props) {
         {opponents.map((p, idx) => {
           const pos = seatPos(idx, opponents.length);
           const visible = visiblePlayer(p);
+          const showAllCards = (isShowdown || handsTabled) && !p.folded && remainingAtEnd > 1;
+          const shownCards = showAllCards ? [true, true] : cardExposureForPlayer(p.id);
           return (
             <Pressable
               key={p.id}
@@ -2192,7 +2253,9 @@ export function TableScreen({ navigation, route }: Props) {
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
                 showBet={!isShowdown}
-                showCards={(isShowdown || handsTabled) && !p.folded && remainingAtEnd > 1}
+                showCards={showAllCards}
+                shownCards={shownCards}
+                displayCards={displayHoleCards(p.holeCards, exposedCardsForPlayer(p.id))}
                 back={cardBack}
                 showName={settings.showAvatarNames}
                 handOff={showdownHands.some((h) => h.playerId === p.id)}
@@ -2277,6 +2340,7 @@ export function TableScreen({ navigation, route }: Props) {
             // card is simply open - there is nothing left to protect. A hand
             // turned up for a run-out is open for the same reason, early.
             const openAlways = (isShowdown || handsTabled) && humanCardsShown;
+            const forceOpen = openAlways ? true : humanCardExposure;
             return (
               <HoleCards
                 key={`h${state.handNumber}`}
@@ -2290,7 +2354,7 @@ export function TableScreen({ navigation, route }: Props) {
                 // off, and you won) just lie face up, because nobody did
                 // anything to reveal them.
                 showToTable={isShowdown && reveal === 'show'}
-                forceOpen={openAlways && reveal !== 'show'}
+                forceOpen={reveal !== 'show' ? forceOpen : false}
                 // thrown down from the middle of the felt, which sits above this row
                 fromY={-(tableH * 0.5 + 40)}
                 back={cardBack}
@@ -2298,6 +2362,28 @@ export function TableScreen({ navigation, route }: Props) {
               />
             );
           })()}
+          {canExposeHoleCards && (
+            <View style={styles.exposeOverlay} pointerEvents="box-none">
+              {([0, 1] as const).map((index) => {
+                const exposed = humanCardExposure[index];
+                return (
+                  <Pressable
+                    key={index}
+                    onPress={() => exposeCardToTable(index)}
+                    disabled={exposed}
+                    style={[styles.exposeBtn, exposed && styles.exposeBtnDone]}
+                    accessibilityRole="button"
+                    accessibilityLabel={index === 0 ? 'Show left hole card' : 'Show right hole card'}
+                    accessibilityHint="Shows only this one card to the table"
+                  >
+                    <Text style={[styles.exposeBtnText, exposed && styles.exposeBtnTextDone]}>
+                      {exposed ? 'Shown' : index === 0 ? 'Show L' : 'Show R'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </View>
         <View style={styles.emoteAnchor}>
           <EmoteBar onEmote={sendEmote} />
@@ -2557,7 +2643,12 @@ const styles = StyleSheet.create({
   // A peeled card swings well outside its own bounds, so this row has to sit
   // above the controls or the action bar paints over the lifted corner.
   humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.sm, minHeight: 142, zIndex: 41 },
-  humanCards: { flexDirection: 'row' },
+  humanCards: { flexDirection: 'row', position: 'relative' },
+  exposeOverlay: { position: 'absolute', left: 0, right: 0, bottom: -30, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2 },
+  exposeBtn: { minWidth: 70, height: 26, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.goldDeep, backgroundColor: 'rgba(214,180,92,0.18)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  exposeBtnDone: { borderColor: colors.surfaceBorder, backgroundColor: colors.surface },
+  exposeBtnText: { fontFamily: fonts.bold, fontSize: 11, color: colors.gold },
+  exposeBtnTextDone: { color: colors.onDarkMuted },
   emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 6 },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },

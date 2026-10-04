@@ -12,6 +12,12 @@ import {
   type Street,
   type Winner,
 } from '../engine';
+import {
+  exposedCardsForPublicState,
+  normalizeHoleCardExposure,
+  type HoleCardExposure,
+  type PublicExposedHoleCards,
+} from './holeCardExposure';
 
 export type OnlineIntent = {
   type: PlayerAction;
@@ -37,6 +43,7 @@ export type PublicPlayerState = Pick<
   palSeed?: string;
   holeCardCount: number;
   holeCards?: Card[];
+  exposedHoleCards?: PublicExposedHoleCards;
 };
 
 export type PublicGameState = {
@@ -74,6 +81,8 @@ export type PlayerPublishMeta = {
   isHost?: boolean;
   palSeed?: string;
 };
+
+export type ExposedHoleCardsByPlayer = Record<string, HoleCardExposure | undefined>;
 
 export type RedactedGameState = {
   publicState: PublicGameState;
@@ -147,6 +156,8 @@ export function redactGameState(
     updatedAt?: number;
     /** Players who chose to table their hand, so it publishes to everyone. */
     revealed?: readonly string[];
+    /** Per-card exposure chosen during the hand, separate from showdown reveal. */
+    exposed?: ExposedHoleCardsByPlayer;
   } = {},
 ): RedactedGameState {
   const revealed = new Set(options.revealed ?? []);
@@ -174,6 +185,14 @@ export function redactGameState(
 
     if (shouldPublishHoleCards(state, player, revealed)) {
       publicPlayer.holeCards = cloneCards(player.holeCards);
+    }
+
+    const exposedHoleCards = exposedCardsForPublicState(
+      player.holeCards,
+      normalizeHoleCardExposure(options.exposed?.[player.id]),
+    );
+    if (exposedHoleCards) {
+      publicPlayer.exposedHoleCards = exposedHoleCards;
     }
 
     players[player.id] = publicPlayer;

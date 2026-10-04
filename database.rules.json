@@ -197,6 +197,17 @@
                       ".validate": "newData.isString() && (newData.val() === 'c' || newData.val() === 'd' || newData.val() === 'h' || newData.val() === 's')"
                     }
                   }
+                },
+                "exposedHoleCards": {
+                  "$i": {
+                    ".validate": "$i.matches(/^[01]$/) && newData.hasChildren(['rank','suit'])",
+                    "rank": {
+                      ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 14"
+                    },
+                    "suit": {
+                      ".validate": "newData.isString() && (newData.val() === 'c' || newData.val() === 'd' || newData.val() === 'h' || newData.val() === 's')"
+                    }
+                  }
                 }
               }
             }
@@ -227,6 +238,29 @@
             "$playerId": {
               ".write": "auth != null && ((auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
               ".validate": "!newData.exists() || newData.isBoolean()"
+            }
+          },
+          /*
+           * Players who exposed one card before the showdown.
+           *
+           * This is not the same as tabling a hand. The owner can only add a
+           * true flag for their own left or right card, never remove it and
+           * never choose for another seat. The host clears the set when the
+           * next hand is published.
+           */
+          "exposed": {
+            "$playerId": {
+              ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()",
+              ".validate": "!newData.exists() || newData.hasChildren(['0']) || newData.hasChildren(['1'])",
+              "0": {
+                ".write": "auth != null && auth.uid === $playerId && newData.exists() && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
+                ".validate": "newData.isBoolean() && newData.val() === true"
+              },
+              "1": {
+                ".write": "auth != null && auth.uid === $playerId && newData.exists() && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
+                ".validate": "newData.isBoolean() && newData.val() === true"
+              },
+              "$other": { ".validate": false }
             }
           },
           /*

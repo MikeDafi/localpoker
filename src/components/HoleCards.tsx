@@ -40,8 +40,8 @@ export interface HoleCardsProps {
   /** Per-card deal stagger. */
   delayFor?: (index: number) => number;
   fromY?: number;
-  forceOpen?: boolean;
-  showToTable?: boolean;
+  forceOpen?: boolean | readonly boolean[];
+  showToTable?: boolean | readonly boolean[];
   /** Fired once per peel, when the cards have been lifted far enough to read. */
   onPeek?: () => void;
   /** Which card back design to print, from Settings. */
@@ -136,7 +136,10 @@ export function HoleCards({
   // how far it has been dragged; the crease itself starts from `foldOrigin`.
   const grabX = useSharedValue(0);
   const grabY = useSharedValue(0);
-  const locked = forceOpen || showToTable;
+  const flagAt = (value: boolean | readonly boolean[] | undefined, index: number): boolean =>
+    Array.isArray(value) ? value[index] === true : value === true;
+  const showToTableAll = typeof showToTable === 'boolean' ? showToTable : cards.every((_, i) => flagAt(showToTable, i));
+  const locked = cards.every((_, i) => flagAt(forceOpen, i) || (showToTableAll && flagAt(showToTable, i)));
 
   const tick = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -160,7 +163,7 @@ export function HoleCards({
     peel.anchorY.value = origin.y;
     peel.limit.value = reachFor(size, h, origin, Math.SQRT1_2, -Math.SQRT1_2);
 
-    if (showToTable) {
+    if (showToTableAll) {
       // Shown to the table the way a player does it: lift to break the cards
       // off the felt, hold them open long enough for the value to actually be
       // read, drop them flat, then turn them over. Cutting straight to the
@@ -176,7 +179,7 @@ export function HoleCards({
     }
     // Anything else means nobody is looking, so the hand is not on show.
     peel.fold.value = withTiming(0, { duration: motion.fast });
-  }, [showToTable, forceOpen, size, h, peel]);
+  }, [showToTableAll, forceOpen, size, h, peel]);
 
   const gesture = useMemo(
     () =>
@@ -292,8 +295,8 @@ export function HoleCards({
               peel={peel}
               animate={animate}
               delay={delayFor ? delayFor(i) : 0}
-              forceOpen={forceOpen}
-              showToTable={showToTable}
+              forceOpen={flagAt(forceOpen, i) || (!showToTableAll && flagAt(showToTable, i))}
+              showToTable={showToTableAll && flagAt(showToTable, i)}
               fromX={(i === 0 ? 1 : -1) * (step / 2)}
               fromY={fromY}
               variant={back}

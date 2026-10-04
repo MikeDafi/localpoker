@@ -10,8 +10,8 @@ export interface RevealCard {
 }
 
 export interface ShowdownRevealProps {
-  /** The winner's two hole cards, in the order they should land. */
-  cards: RevealCard[];
+  /** The two hole-card slots, in the order they should land. Null stays face down. */
+  cards: (RevealCard | null)[];
   /** Winner's seat centre, in table-area coordinates. */
   from: { x: number; y: number };
   /** Resting centre of each card's slot in the community row, same coordinates. */
@@ -66,7 +66,7 @@ export function ShowdownReveal({
     <View style={styles.layer} pointerEvents="none">
       {cards.map((card, i) => (
         <RevealedCard
-          key={`${revealKey}-${i}-${card.rank}${card.suit}`}
+          key={`${revealKey}-${i}-${card ? `${card.rank}${card.suit}` : 'hidden'}`}
           card={card}
           from={from}
           to={to[i] ?? { x: from.x, y: from.y }}
@@ -93,7 +93,7 @@ function RevealedCard({
   animate,
   index,
 }: {
-  card: RevealCard;
+  card: RevealCard | null;
   from: { x: number; y: number };
   to: { x: number; y: number };
   smallSize: number;
@@ -196,7 +196,7 @@ function RevealedCard({
           <PlayingCard size={bigSize} faceDown />
         </Animated.View>
         <Animated.View style={[styles.stack, faceStyle, dimStyle]}>
-          <PlayingCard size={bigSize} rank={card.rank} suit={card.suit as Suit} />
+          <PlayingCard size={bigSize} rank={card?.rank} suit={card?.suit as Suit | undefined} faceDown={!card} />
         </Animated.View>
       </Animated.View>
     </Animated.View>
