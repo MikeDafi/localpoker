@@ -124,6 +124,25 @@ A cloud build is the easy path but spends EAS Build minutes. `--local` runs the
 same build on your own machine and spends none. Credentials still come from EAS,
 so the binary is signed with exactly what CI would have used.
 
+**The free plan runs out, and it fails at the very end.** On 4 October the
+`ios-release` job uploaded the whole 364MB archive, computed the fingerprint,
+and only then printed `This account has used its iOS builds from the Free plan
+this month, which will reset in 27 days` before exiting 1. Nothing earlier in
+the job hints at it, so a red CI run late in the month is this before it is
+anything else. Check the tail of the `Build iOS (production profile)` step
+first, then build here instead; there is no quota on `--local`.
+
+**A failed cloud build still spends the build number.** `appVersionSource` is
+`remote`, so EAS increments its counter when it accepts the job, not when the
+job succeeds. The quota failure consumed 36, and the local build that replaced
+it came out as 37. Expect gaps, and read the number out of the IPA rather than
+assuming it is one more than the last one that shipped:
+
+```bash
+unzip -oq build/localpoker.ipa 'Payload/*.app/Info.plist' -d build/ipa-check
+plutil -extract CFBundleVersion raw build/ipa-check/Payload/*.app/Info.plist
+```
+
 ```bash
 export EXPO_ASC_API_KEY_PATH="$HOME/Downloads/AuthKey_YMUGSZ476Q.p8"
 export EXPO_ASC_KEY_ID=YMUGSZ476Q
