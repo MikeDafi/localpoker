@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInUp, Easing } from 'react-native-reanimated';
@@ -10,6 +10,8 @@ import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
+import { pickMidGameSafe } from '../game/hostControls';
+import { SETTINGS_SCHEMA, availableSettingOptions, type GameSettings } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
@@ -22,7 +24,7 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Seat } from '../components/Seat';
 import { ActionBar } from '../components/ActionBar';
 import { WiiButton } from '../components/WiiButton';
-import { CardFlipIcon, ChevronLeft, StatsIcon } from '../components/Icons';
+import { CardFlipIcon, ChevronLeft, SettingsIcon, StatsIcon } from '../components/Icons';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { TurnTimer } from '../components/TurnTimer';
 import { LiveStatsPanel } from '../components/LiveStatsPanel';
@@ -143,7 +145,7 @@ interface RenderedChipFlight {
 
 export function TableScreen({ navigation, route }: Props) {
   const app = useApp();
-  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked, opponentHistory, absorbObservedTable, cosmetics } = app;
+  const { profile, recordHand, savedGame, saveGame, clearSavedGame, reportUser, blockUser, isBlocked, opponentHistory, absorbObservedTable, cosmetics, updateSettings } = app;
   const { width, height: winH } = useWindowDimensions();
 
   /**
@@ -445,6 +447,8 @@ export function TableScreen({ navigation, route }: Props) {
   const [earned, setEarned] = useState(0);
   const [sessionHands, setSessionHands] = useState(0);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [codeShown, setCodeShown] = useState(false);
   /** Which player the stats panel opens on, set by tapping their seat. */
   const [statsFocus, setStatsFocus] = useState<string | null>(null);
   // The result panel is bottom-anchored and its height depends on how many
@@ -1669,7 +1673,16 @@ export function TableScreen({ navigation, route }: Props) {
                 .catch((error) => {
                   captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-online-table' } });
                 })
-                .finally(() => navigation.replace('Home'));
+                .finally(() => {
+                  /*
+                   * The room is gone, so the saved game pointing at it is a
+                   * shortcut on the home screen to a table that no longer
+                   * exists. Offline games are deliberately kept, because
+                   * resuming one is the whole point of saving it.
+                   */
+                  clearSavedGame();
+                  navigation.replace('Home');
+                });
             },
           },
         ],
@@ -2330,13 +2343,10 @@ export function TableScreen({ navigation, route }: Props) {
         >
           <ChevronLeft color={colors.onDark} />
         </Pressable>
-        {/* Only friends games have anything to say up here; a solo hand's
-            number was just noise taking a row off the felt. */}
-        {roomCode ? (
-          <View style={styles.roomPill}>
-            <Text style={styles.roomText}>{`#${roomCode}`}</Text>
-          </View>
-        ) : null}
+        {/* The room code moved into the table menu behind the gear. It sat
+            here on every hand of every friends game, holding the crown of the
+            seat arc down to clear it, to show four characters that matter
+            once: when you are inviting someone. */}
         {tournamentStatusText ? (
           <View style={[styles.roomPill, styles.tournamentPill]}>
             <Text style={styles.roomText} numberOfLines={1}>{tournamentStatusText}</Text>
@@ -2615,16 +2625,18 @@ export function TableScreen({ navigation, route }: Props) {
         </View>
         <View style={styles.emoteAnchor}>
           {/*
-            * One button, above the chat bubble, and it asks which card.
-            *
-            * Two buttons sat under the hole cards, where on a smaller phone
-            * they overlapped the bet sizing row, so reaching for half pot
-            * could expose a card instead. Showing a card cannot be undone, so
-            * it is the one control on this screen that must not be possible
-            * to hit by accident. Out of the betting controls entirely, and a
-            * second tap to choose, which also removes the need to work out
-            * which of your cards is the left one.
+            * The gear sits above Show, which sits above chat: the three
+            * things you reach for that are not a betting action, stacked out
+            * of the way of the ones that are.
             */}
+          <Pressable
+            onPress={() => { sound.play('tap'); setMenuOpen(true); }}
+            style={styles.gearFab}
+            accessibilityRole="button"
+            accessibilityLabel="Table menu"
+          >
+            <SettingsIcon size={20} color={colors.onDark} />
+          </Pressable>
           {canExposeHoleCards && (
             <Pressable
               onPress={promptExposeCard}
@@ -2633,6 +2645,15 @@ export function TableScreen({ navigation, route }: Props) {
               accessibilityLabel="Show one of your cards to the table"
               accessibilityHint="Asks which card, then turns only that one face up"
             >
+              {/*
+                * One button, and it asks which card.
+                *
+                * Two buttons sat under the hole cards, where on a smaller
+                * phone they overlapped the bet sizing row, so reaching for
+                * half pot could expose a card instead. Showing a card cannot
+                * be undone, so it is the one control on this screen that must
+                * not be possible to hit by accident.
+                */}
               <Text style={styles.exposeFabText}>Show</Text>
             </Pressable>
           )}
@@ -2920,8 +2941,163 @@ export function TableScreen({ navigation, route }: Props) {
         observed={observed}
         history={opponentHistory}
       />
+
+      <TableMenu
+        visible={menuOpen}
+        onClose={() => { setMenuOpen(false); setCodeShown(false); }}
+        roomCode={roomCode}
+        codeShown={codeShown}
+        onRevealCode={() => setCodeShown(true)}
+        isHost={!roomCode || isOnlineHost}
+        settings={settings}
+        ownedCosmeticIds={cosmetics.ownedCosmeticIds}
+        onChange={(patch) => updateSettings(pickMidGameSafe(patch))}
+        onLeave={() => { setMenuOpen(false); leave(); }}
+      />
     </ScreenBackground>
   );
+}
+
+/**
+ * The table menu, behind the gear.
+ *
+ * Two jobs. It holds the room code, which used to sit in the header on every
+ * hand of every friends game to show four characters that matter once, when
+ * you are inviting somebody. And it lets the host change the few things that
+ * are safe to change while a game is running.
+ *
+ * "Safe" is not a judgement made here: `pickMidGameSafe` decides, and the
+ * test beside it asserts that every term players agreed to by sitting down,
+ * the blinds, the stack, the clock, is refused. See `src/game/hostControls.ts`.
+ */
+function TableMenu({
+  visible,
+  onClose,
+  roomCode,
+  codeShown,
+  onRevealCode,
+  isHost,
+  settings,
+  ownedCosmeticIds,
+  onChange,
+  onLeave,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  roomCode?: string;
+  codeShown: boolean;
+  onRevealCode: () => void;
+  isHost: boolean;
+  settings: GameSettings;
+  ownedCosmeticIds: readonly string[];
+  onChange: (patch: Partial<GameSettings>) => void;
+  onLeave: () => void;
+}) {
+  if (!visible) return null;
+
+  const cycle = (key: 'feltStyle' | 'chipStyle' | 'cardBack') => {
+    const field = findSettingField(key);
+    if (!field) return;
+    const options = availableSettingOptions(field, ownedCosmeticIds);
+    if (options.length < 2) return;
+    const at = options.findIndex((option) => option.value === settings[key]);
+    const next = options[(at + 1) % options.length];
+    onChange({ [key]: next.value } as Partial<GameSettings>);
+  };
+
+  const labelFor = (key: 'feltStyle' | 'chipStyle' | 'cardBack') => {
+    const field = findSettingField(key);
+    const match = field?.options?.find((option) => option.value === settings[key]);
+    return match?.label ?? String(settings[key]);
+  };
+
+  const isPublic = settings.roomVisibility === 'public';
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.menuBackdrop} onPress={onClose} accessibilityLabel="Close menu">
+        {/* Swallows taps on the sheet so only the backdrop closes it. */}
+        <Pressable style={styles.menuSheet} onPress={() => {}}>
+          <Text style={styles.menuTitle}>Table</Text>
+
+          {roomCode ? (
+            <Pressable
+              style={styles.menuRow}
+              onPress={onRevealCode}
+              accessibilityRole="button"
+              accessibilityLabel={codeShown ? `Room code ${roomCode}` : 'Show game code'}
+            >
+              <Text style={styles.menuRowLabel}>Game code</Text>
+              {/* Hidden until asked for: the reason it left the header is
+                  that it was on screen for people sitting next to you during
+                  every hand, and a room code is what lets someone in. */}
+              <Text style={styles.menuRowValue}>{codeShown ? `#${roomCode}` : 'Show'}</Text>
+            </Pressable>
+          ) : null}
+
+          {isHost ? (
+            <>
+              {roomCode ? (
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => onChange({ roomVisibility: isPublic ? 'private' : 'public' })}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: isPublic }}
+                  accessibilityLabel="Table visibility"
+                >
+                  <Text style={styles.menuRowLabel}>Visible to everyone</Text>
+                  <Text style={[styles.menuRowValue, isPublic && styles.menuRowValueOn]}>
+                    {isPublic ? 'Public' : 'Private'}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {(['feltStyle', 'cardBack', 'chipStyle'] as const).map((key) => (
+                <Pressable
+                  key={key}
+                  style={styles.menuRow}
+                  onPress={() => cycle(key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${MENU_COSMETIC_LABELS[key]}, currently ${labelFor(key)}`}
+                  accessibilityHint="Changes to the next one you own"
+                >
+                  <Text style={styles.menuRowLabel}>{MENU_COSMETIC_LABELS[key]}</Text>
+                  <Text style={styles.menuRowValue}>{labelFor(key)}</Text>
+                </Pressable>
+              ))}
+
+              {/* Said plainly, because the absence of the blinds and the
+                  stack from this list is a deliberate promise to everyone
+                  else at the table, not an oversight. */}
+              <Text style={styles.menuNote}>
+                Stakes, stacks and the clock were agreed when everyone sat down, so they stay put.
+              </Text>
+            </>
+          ) : null}
+
+          <View style={styles.menuActions}>
+            <WiiButton label="Close" size="sm" variant="white" onPress={onClose} />
+            <WiiButton label="Leave game" size="sm" variant="red" onPress={onLeave} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const MENU_COSMETIC_LABELS = {
+  feltStyle: 'Felt',
+  cardBack: 'Card back',
+  chipStyle: 'Chips',
+} as const;
+
+/** The schema is grouped, so a key has to be hunted for. */
+function findSettingField(key: keyof GameSettings) {
+  for (const group of SETTINGS_SCHEMA) {
+    const found = group.fields.find((field) => field.key === key);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 const styles = StyleSheet.create({
@@ -2997,6 +3173,16 @@ const styles = StyleSheet.create({
   // above the controls or the action bar paints over the lifted corner.
   humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.sm, minHeight: 142, zIndex: 41 },
   humanCards: { flexDirection: 'row', position: 'relative' },
+  gearFab: { marginBottom: spacing.sm, alignSelf: 'flex-end', width: 36, height: 36, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
+  menuBackdrop: { flex: 1, backgroundColor: 'rgba(8,10,18,0.74)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  menuSheet: { width: '100%', maxWidth: 420, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorderStrong, padding: spacing.lg, gap: spacing.xs },
+  menuTitle: { fontFamily: fonts.bold, fontSize: 19, color: colors.onDark, marginBottom: spacing.xs },
+  menuRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 44, paddingVertical: 4 },
+  menuRowLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.onDarkSoft, flexShrink: 1 },
+  menuRowValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark },
+  menuRowValueOn: { color: colors.green },
+  menuNote: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.onDarkMuted, marginTop: spacing.xs },
+  menuActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.md },
   exposeFab: { marginBottom: spacing.sm, alignSelf: 'flex-end', paddingHorizontal: spacing.md, height: 30, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.goldDeep, backgroundColor: 'rgba(214,180,92,0.22)', alignItems: 'center', justifyContent: 'center' },
   exposeFabText: { fontFamily: fonts.bold, fontSize: 12, color: colors.gold },
   exposeBtn: { minWidth: 70, height: 26, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.goldDeep, backgroundColor: 'rgba(214,180,92,0.18)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
