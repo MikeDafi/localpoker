@@ -77,14 +77,15 @@ measure and render; it should not decide.
 ## Store state
 
 1.0.0 was **rejected** under guideline 2.3.6 and has not shipped. TestFlight is
-unaffected: build 37 is live for internal testers and behind a public link.
-`docs/store/SUBMISSION-CHECKLIST.md` has the open items.
+unaffected: build 38 is live for internal testers and behind a public link,
+with beta review approved. `docs/store/SUBMISSION-CHECKLIST.md` has the open
+items.
 
 The EAS free plan's iOS build allowance is **spent for October**, and it fails
 at the end of the job rather than the start, so a red `ios-release` run is that
 before it is anything else. `scripts/build-ios-local.sh` has no quota and is
-what produced 37. A failed cloud build still takes its build number, which is
-why 36 does not exist.
+what produced 37 and 38. A failed cloud build still takes its build number,
+which is why 36 does not exist.
 
 ## Cosmetics
 
