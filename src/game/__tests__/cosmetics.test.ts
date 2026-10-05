@@ -407,7 +407,24 @@ describe('emoji emotes', () => {
 });
 
 describe('reaction emote ownership', () => {
-  it('keeps about one fifth of the whole emote catalogue free', () => {
+  /*
+   * Every written line is free now. They are the words a player reaches for
+   * to say something at the table, and charging for "All in!" or "Bluffing?"
+   * made the table quieter rather than making anybody buy one. The pictures
+   * are still the thing the store sells.
+   */
+  it('never locks a written line', () => {
+    expect(Object.keys(PURCHASABLE_TEXT_EMOTES)).toHaveLength(0);
+    for (const entry of Object.values(TEXT_EMOTES)) {
+      expect(entry.price, `${entry.id} must be free`).toBe(0);
+      expect(FREE_TEXT_COSMETIC_IDS).toContain(entry.id);
+    }
+    for (const entry of Object.values(TEXT_EMOTES)) {
+      expect(canSendEmotePayload({ type: 'text', value: entry.text }, [])).toBe(true);
+    }
+  });
+
+  it('keeps about a quarter of the whole emote catalogue free', () => {
     const total =
       Object.keys(GIF_EMOTES).length
       + Object.keys(EMOJI_EMOTES).length
@@ -417,9 +434,9 @@ describe('reaction emote ownership', () => {
     const free = FREE_REACTION_COSMETIC_IDS.length;
 
     expect(total).toBe(121);
-    expect(free).toBe(24);
-    expect(free / total).toBeGreaterThan(0.19);
-    expect(free / total).toBeLessThan(0.21);
+    expect(free).toBe(30);
+    expect(free / total).toBeGreaterThan(0.23);
+    expect(free / total).toBeLessThan(0.26);
     expect(FREE_EMOTE_COSMETIC_IDS).toEqual([
       ...FREE_EMOJI_COSMETIC_IDS,
       ...FREE_STICKER_COSMETIC_IDS,
@@ -434,15 +451,8 @@ describe('reaction emote ownership', () => {
       + Object.keys(TEXT_EMOTES).length,
     );
     expect(Object.keys(PURCHASABLE_STICKER_EMOTES)).toHaveLength(6);
-    expect(Object.keys(PURCHASABLE_TEXT_EMOTES)).toHaveLength(6);
-    expect(Object.values(PURCHASABLE_TEXT_EMOTES).map((entry) => entry.text)).toEqual([
-      'All in!',
-      'Bluffing?',
-      "Let's go!",
-      'Fold!',
-      'Wow!',
-      'Unlucky',
-    ]);
+    // The store sells pictures, not words. See the test above.
+    expect(Object.keys(PURCHASABLE_TEXT_EMOTES)).toHaveLength(0);
   });
 
   it('marks locked and owned options without hiding store inventory', () => {
@@ -480,7 +490,6 @@ describe('reaction emote ownership', () => {
     const locked = [
       { type: 'emoji', value: '🔥' },
       { type: 'sticker', value: '🚀', anim: 'bounce' },
-      { type: 'text', value: 'All in!' },
       { type: 'gif', value: gifUrl(paidGif.gifId) },
       { type: 'palMotion', value: 'cry' },
     ] as const;
@@ -491,7 +500,6 @@ describe('reaction emote ownership', () => {
 
     expect(canSendEmotePayload({ type: 'emoji', value: '🔥' }, ['emoji-fire'])).toBe(true);
     expect(canSendEmotePayload({ type: 'sticker', value: '🚀', anim: 'bounce' }, ['sticker-rocket'])).toBe(true);
-    expect(canSendEmotePayload({ type: 'text', value: 'All in!' }, ['text-all-in'])).toBe(true);
     expect(canSendEmotePayload({ type: 'gif', value: gifUrl(paidGif.gifId) }, [paidGif.id])).toBe(true);
     expect(canSendEmotePayload({ type: 'palMotion', value: 'cry' }, ['pal-motion-cry'])).toBe(true);
   });

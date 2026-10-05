@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   EDGE_INSET,
   SEAT_GAP,
+  seatArcCounts,
   seatRingBottom,
-  seatRingLane,
-  seatRingShape,
   seatRingSlot,
   seatsPerRow,
   slotsOverlap,
@@ -19,6 +18,7 @@ const SCREENS = [
   { name: 'iPhone SE', width: 320, height: 210 },
   { name: 'iPhone 13 mini', width: 375, height: 300 },
   { name: 'iPhone 15', width: 393, height: 380 },
+  { name: 'iPhone 17 Pro', width: 402, height: 390 },
   { name: 'iPhone 15 Pro Max', width: 430, height: 470 },
 ];
 
@@ -27,7 +27,7 @@ const SEAT_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 /** What `TableScreen` computes for these, kept in step with it. */
 const avatarSize = (count: number) => Math.round(Math.max(40, Math.min(66, 74 - count * 5)));
-const podWidth = (count: number) => Math.max(66, avatarSize(count) + 26);
+const podWidth = (count: number) => Math.max(62, avatarSize(count) + 20);
 const POD_H = 78;
 
 const slotsFor = (count: number, width: number, height: number) =>
@@ -69,99 +69,132 @@ describe('seatRingSlot', () => {
   });
 
   /*
-   * The complaint that produced this module's third design: eight opponents
-   * drawn as two flat lines with a pod stranded in the middle of the cloth.
-   * Nothing may sit adrift in the felt, which here means the only pods below
-   * the top arc are the ones pinned to a rail.
+   * The complaint that produced this design. Seats used to go down the left
+   * and right rails, which cost the five community cards nearly half the
+   * felt: "the middle cards are too small, have all the players above".
+   * Nothing may sit beside the board, so the lowest pod has to clear the top
+   * of the lane and the board keeps the full width.
    */
-  it('puts every seat on the arc or against a rail, never adrift in the felt', () => {
+  it('keeps every seat above the board', () => {
     for (const screen of SCREENS) {
       for (const count of SEAT_COUNTS) {
+        const bottom = seatRingBottom({
+          count,
+          width: screen.width,
+          height: screen.height,
+          podWidth: podWidth(count),
+          podHeight: POD_H,
+        });
         for (const slot of slotsFor(count, screen.width, screen.height)) {
-          if (slot.side === 'top') continue;
-          const rail = slot.side === 'left'
-            ? EDGE_INSET
-            : screen.width - podWidth(count) - EDGE_INSET;
-          expect(
-            slot.left,
-            `${screen.name}, ${count} seats: a ${slot.side} seat sits at ${slot.left}, off its rail`,
-          ).toBeCloseTo(Math.max(EDGE_INSET, rail), 5);
-        }
-      }
-    }
-  });
-
-  it('fills the top arc before it reaches for a rail', () => {
-    for (const screen of SCREENS) {
-      for (const count of SEAT_COUNTS) {
-        const capacity = seatsPerRow(screen.width, podWidth(count));
-        const shape = seatRingShape(count, screen.width, podWidth(count));
-        expect(shape.top + shape.left + shape.right).toBe(count);
-        if (count <= capacity) {
-          expect(shape.left + shape.right).toBe(0);
-          expect(shape.top).toBe(count);
+          expect(slot.top + POD_H).toBeLessThanOrEqual(bottom + 0.001);
         }
       }
     }
   });
 
   /*
-   * A single pod hanging off one rail with nothing opposite it reads as a
-   * mistake rather than as a ring, so the columns are kept the same depth
-   * even when that costs a seat off the arc.
+   * The point of the whole rework: the usual table is one arc, so the board
+   * gets the full felt at full height. Five opponents is the default in
+   * settings, and six handed is the common game.
    */
-  it('keeps the two rails balanced whenever both exist', () => {
+  it('seats up to five opponents in a single arc on a real phone', () => {
     for (const screen of SCREENS) {
-      for (const count of SEAT_COUNTS) {
-        const shape = seatRingShape(count, screen.width, podWidth(count));
-        if (seatsPerRow(screen.width, podWidth(count)) < 2) continue;
-        if (shape.left + shape.right === 0) continue;
-        expect(shape.left, `${screen.name}, ${count} seats`).toBe(shape.right);
-        expect(shape.top).toBeGreaterThanOrEqual(1);
+      if (screen.width < 375) continue;
+      for (const count of [1, 2, 3, 4, 5]) {
+        expect(
+          seatArcCounts(count, screen.width, podWidth(count)),
+          `${screen.name}, ${count} seats`,
+        ).toEqual([count]);
       }
     }
   });
 
-  it('spreads the top arc across the whole stage', () => {
-    const slots = slotsFor(4, 393, 380).filter((s) => s.side === 'top');
+  it('fills the outer arc before it reaches for a second', () => {
+    for (const screen of SCREENS) {
+      for (const count of SEAT_COUNTS) {
+        const capacity = seatsPerRow(screen.width, podWidth(count));
+        const counts = seatArcCounts(count, screen.width, podWidth(count));
+        expect(counts.reduce((n, c) => n + c, 0)).toBe(count);
+        for (const c of counts) expect(c).toBeLessThanOrEqual(capacity);
+        if (count <= capacity) expect(counts).toEqual([count]);
+      }
+    }
+  });
+
+  /*
+   * Six and one reads as a row with a straggler under it. Splitting evenly is
+   * what makes two arcs read as the near and far halves of one ring.
+   */
+  it('splits two arcs evenly rather than leaving a straggler', () => {
+    for (const screen of SCREENS) {
+      for (const count of SEAT_COUNTS) {
+        const counts = seatArcCounts(count, screen.width, podWidth(count));
+        if (counts.length < 2) continue;
+        const most = Math.max(...counts);
+        const fewest = Math.min(...counts);
+        expect(most - fewest, `${screen.name}, ${count} seats: ${counts}`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('nests an inner arc inside the one above it', () => {
+    for (const screen of SCREENS) {
+      for (const count of SEAT_COUNTS) {
+        const slots = slotsFor(count, screen.width, screen.height);
+        const outer = slots.filter((s) => s.row === 0);
+        const inner = slots.filter((s) => s.row === 1);
+        if (inner.length === 0 || outer.length < 2 || inner.length < 2) continue;
+        const outerLeft = Math.min(...outer.map((s) => s.left));
+        const outerRight = Math.max(...outer.map((s) => s.left));
+        const innerLeft = Math.min(...inner.map((s) => s.left));
+        const innerRight = Math.max(...inner.map((s) => s.left));
+        expect(innerLeft, `${screen.name}, ${count} seats`).toBeGreaterThanOrEqual(outerLeft - 0.001);
+        expect(innerRight).toBeLessThanOrEqual(outerRight + 0.001);
+      }
+    }
+  });
+
+  it('spreads the outer arc across the whole stage', () => {
+    const count = 4;
+    const slots = slotsFor(count, 393, 380).filter((s) => s.row === 0);
     expect(slots.length).toBeGreaterThan(1);
     expect(slots[0].left).toBeCloseTo(EDGE_INSET, 5);
-    expect(slots[slots.length - 1].left + podWidth(4)).toBeCloseTo(393 - EDGE_INSET, 5);
+    expect(slots[slots.length - 1].left + podWidth(count)).toBeCloseTo(393 - EDGE_INSET, 5);
   });
 
   it('centres a lone opponent', () => {
     const [slot] = slotsFor(1, 393, 380);
     expect(slot.left + podWidth(1) / 2).toBeCloseTo(393 / 2, 5);
-    expect(slot.side).toBe('top');
+    expect(slot.row).toBe(0);
   });
 
-  it('keeps neighbours on the arc at least a pod and a gap apart', () => {
+  it('keeps neighbours on one arc at least a pod and a gap apart', () => {
     for (const screen of SCREENS) {
       for (const count of SEAT_COUNTS) {
-        const slots = slotsFor(count, screen.width, screen.height).filter((s) => s.side === 'top');
-        for (let i = 1; i < slots.length; i += 1) {
-          expect(
-            slots[i].left - slots[i - 1].left,
-            `${screen.name}, ${count} seats`,
-          ).toBeGreaterThanOrEqual(podWidth(count) + SEAT_GAP - 0.001);
+        const slots = slotsFor(count, screen.width, screen.height);
+        for (const row of [0, 1, 2]) {
+          const arc = slots.filter((s) => s.row === row).sort((a, b) => a.left - b.left);
+          for (let i = 1; i < arc.length; i += 1) {
+            expect(
+              arc[i].left - arc[i - 1].left,
+              `${screen.name}, ${count} seats, arc ${row}`,
+            ).toBeGreaterThanOrEqual(podWidth(count) + SEAT_GAP - 0.001);
+          }
         }
       }
     }
   });
 
-  it('keeps seats down one rail at least a pod apart', () => {
+  it('keeps neighbouring arcs at least a pod height apart, however the curve runs', () => {
     for (const screen of SCREENS) {
       for (const count of SEAT_COUNTS) {
         const slots = slotsFor(count, screen.width, screen.height);
-        for (const side of ['left', 'right'] as const) {
-          const column = slots
-            .filter((s) => s.side === side)
-            .map((s) => s.top)
-            .sort((a, b) => a - b);
-          for (let i = 1; i < column.length; i += 1) {
+        for (const a of slots) {
+          for (const b of slots) {
+            if (a.row >= b.row) continue;
             expect(
-              column[i] - column[i - 1],
-              `${screen.name}, ${count} seats, ${side} rail`,
+              b.top - a.top,
+              `${screen.name}, ${count} seats: arc ${a.row} at ${a.top} is too close to arc ${b.row} at ${b.top}`,
             ).toBeGreaterThanOrEqual(POD_H - 0.001);
           }
         }
@@ -171,7 +204,7 @@ describe('seatRingSlot', () => {
 
   it('curves like a rail, flat across the crown and falling at the ends', () => {
     const count = 4;
-    const slots = slotsFor(count, 430, 470).filter((s) => s.side === 'top');
+    const slots = slotsFor(count, 430, 470).filter((s) => s.row === 0);
     expect(slots.length).toBe(count);
     const middle = slots[Math.floor(slots.length / 2)];
     expect(middle.top).toBeLessThan(slots[0].top);
@@ -189,24 +222,12 @@ describe('seatRingSlot', () => {
     expect(Math.min(...slots.map((s) => s.top))).toBeLessThan(380 * 0.03);
   });
 
-  it('runs the seat order up the left rail, across the top, then down the right', () => {
+  it('reads left to right along the outer arc before starting the next', () => {
     const slots = slotsFor(8, 393, 380);
-    const sides = slots.map((s) => s.side);
-    expect(sides.indexOf('top')).toBeGreaterThan(-1);
-    /*
-     * Once the order reaches the top it never returns to the left rail, and
-     * once it reaches the right rail it never returns to the top.
-     */
-    expect(sides.lastIndexOf('left')).toBeLessThan(sides.indexOf('top'));
-    const firstRight = sides.indexOf('right');
-    expect(sides.lastIndexOf('top')).toBeLessThan(
-      firstRight === -1 ? Number.MAX_SAFE_INTEGER : firstRight,
-    );
-    // Going up the left rail means seat 0 is the lowest of them.
-    const left = slots.filter((s) => s.side === 'left');
-    for (let i = 1; i < left.length; i += 1) expect(left[i].top).toBeLessThan(left[i - 1].top);
-    const right = slots.filter((s) => s.side === 'right');
-    for (let i = 1; i < right.length; i += 1) expect(right[i].top).toBeGreaterThan(right[i - 1].top);
+    const outer = slots.filter((s) => s.row === 0);
+    for (let i = 1; i < outer.length; i += 1) expect(outer[i].left).toBeGreaterThan(outer[i - 1].left);
+    const rows = slots.map((s) => s.row);
+    for (let i = 1; i < rows.length; i += 1) expect(rows[i]).toBeGreaterThanOrEqual(rows[i - 1]);
   });
 
   it('clamps a nonsense index and count rather than returning NaN', () => {
@@ -230,70 +251,11 @@ describe('seatRingSlot', () => {
       expect(Number.isFinite(slot.left)).toBe(true);
       expect(Number.isFinite(slot.top)).toBe(true);
     }
-    // One column, so the four seats still cannot land on each other.
     for (let a = 0; a < slots.length; a += 1) {
       for (let b = a + 1; b < slots.length; b += 1) {
         expect(slotsOverlap(slots[a], slots[b], 76, POD_H)).toBe(false);
       }
     }
-  });
-});
-
-describe('seatRingLane', () => {
-  const laneFor = (count: number, width: number, height: number) =>
-    seatRingLane({ count, width, height, podWidth: podWidth(count), podHeight: POD_H });
-
-  /*
-   * The point of the lane: seats beside the board cost it width, not height.
-   * Measuring down past a rail seat would push the five cards off the felt to
-   * clear something that was never in their way.
-   */
-  it('clears the top arc without counting the rails', () => {
-    for (const screen of SCREENS) {
-      for (const count of SEAT_COUNTS) {
-        const lane = laneFor(count, screen.width, screen.height);
-        const slots = slotsFor(count, screen.width, screen.height);
-        for (const slot of slots) {
-          if (slot.side !== 'top') continue;
-          expect(slot.top + POD_H).toBeLessThanOrEqual(lane.top + 0.001);
-        }
-        const bottom = seatRingBottom({
-          count,
-          width: screen.width,
-          height: screen.height,
-          podWidth: podWidth(count),
-          podHeight: POD_H,
-        });
-        if (slots.some((s) => s.side !== 'top')) {
-          expect(lane.top, `${screen.name}, ${count} seats`).toBeLessThan(bottom);
-        }
-      }
-    }
-  });
-
-  it('charges width only for the rails that are actually used', () => {
-    const empty = laneFor(2, 430, 470);
-    expect(empty.leftInset).toBe(0);
-    expect(empty.rightInset).toBe(0);
-
-    const full = laneFor(8, 393, 380);
-    expect(full.leftInset).toBeGreaterThan(podWidth(8));
-    expect(full.rightInset).toBe(full.leftInset);
-  });
-
-  it('leaves the board real width to live in at a full ring', () => {
-    for (const screen of SCREENS) {
-      const lane = laneFor(8, screen.width, screen.height);
-      const free = screen.width - lane.leftInset - lane.rightInset;
-      expect(free, `${screen.name}: only ${free}pt left for the board`).toBeGreaterThan(150);
-    }
-  });
-
-  it('is finite with no opponents', () => {
-    const lane = seatRingLane({ count: 0, width: 393, height: 380, podWidth: 76, podHeight: POD_H });
-    expect(lane.top).toBe(0);
-    expect(lane.leftInset).toBe(0);
-    expect(lane.rightInset).toBe(0);
   });
 });
 
@@ -306,8 +268,27 @@ describe('seatRingBottom', () => {
     }
   });
 
-  it('is finite with no opponents', () => {
-    const bottom = seatRingBottom({ count: 0, width: 393, height: 380, podWidth: 76, podHeight: POD_H });
-    expect(Number.isFinite(bottom)).toBe(true);
+  /*
+   * The number that decides how big the community cards are. A single arc has
+   * to leave most of the stage to the board, or the rework that produced it
+   * bought nothing.
+   */
+  it('leaves the board most of the stage at the usual table size', () => {
+    for (const screen of SCREENS) {
+      if (screen.width < 375) continue;
+      const bottom = seatRingBottom({
+        count: 5,
+        width: screen.width,
+        height: screen.height,
+        podWidth: podWidth(5),
+        podHeight: POD_H,
+      });
+      expect(bottom, `${screen.name}: seats reach ${bottom} of ${screen.height}`)
+        .toBeLessThan(POD_H + screen.height * 0.12);
+    }
+  });
+
+  it('is zero with no opponents', () => {
+    expect(seatRingBottom({ count: 0, width: 393, height: 380, podWidth: 76, podHeight: POD_H })).toBe(0);
   });
 });

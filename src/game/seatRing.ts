@@ -1,46 +1,46 @@
 /**
  * Where the opponent pods sit around the felt.
  *
- * Two wrong answers came before this one, and both are worth recording
- * because the third is a response to them.
+ * Three wrong answers came before this one, and the fourth is a response to
+ * all of them, so they are all worth recording.
  *
- * The first was a fixed arc with every seat evenly spaced in *angle*. Even
- * angular spacing is not even horizontal spacing, because x moves as the
- * cosine, so the pods at the two ends of the arc bunched together and
- * overlapped by more than half their width.
+ * 1. A fixed arc with every seat evenly spaced in *angle*. Even angular
+ *    spacing is not even horizontal spacing, because x moves as the cosine,
+ *    so the pods at the ends bunched up and overlapped by half their width.
+ * 2. Packing the pods into flat rows. That cannot overlap, which was the
+ *    point, but it does not look like a table: a player photographed eight
+ *    opponents in two straight lines with one pod stranded in the cloth.
+ * 3. Putting the overflow down the left and right rails, beside the board.
+ *    That is what a real table looks like and it is still the wrong answer
+ *    HERE, because a phone is not a table: two rails cost about 170pt of a
+ *    360pt felt, which is nearly half of it, and the five community cards
+ *    were left so small they could not be read. The owner's words were "the
+ *    middle cards are too small, have all the players above and ringed
+ *    around the 5 potential cards so we can still have big 5 potential
+ *    cards".
  *
- * The second was to abandon the arc and *pack* the pods into rows: fit as
- * many across as the screen allows, then start another row. That cannot
- * overlap, which was the point, but it does not look like a table. A player
- * photographed eight opponents sitting in two flat lines with one pod
- * stranded in the middle of the cloth, and said, correctly, that they should
- * be "around the circle side by side with each other".
+ * So every seat is ABOVE the board, and the board keeps the full width of the
+ * cloth. The ring is made out of nested arcs instead:
  *
- * So: the ring is a ring again, but it is built out of positions that cannot
- * collide rather than out of an angle that might.
+ *   - Seats spread evenly across the top rail and follow the ellipse, so the
+ *     middle sits high and the ends fall away. The drop is the ellipse itself
+ *     rather than a sine, which matters: an ellipse is flat across the crown
+ *     and turns down sharply at the ends, and that is what reads as the far
+ *     rail of a table seen from above.
+ *   - If they will not all fit across one arc, a second arc nests INSIDE the
+ *     first: narrower, lower, and centred, so it reads as the near half of
+ *     the same ring rather than as a second row.
  *
- * A seat is either on the TOP ARC or in a SIDE COLUMN.
- *
- *   - The top arc spreads evenly across the full stage width and follows the
- *     rail, so the middle pods sit high and the end pods sit low. The drop is
- *     the ellipse itself rather than a sine, which matters: an ellipse is
- *     flat across the crown and falls away sharply at the ends, and that is
- *     what reads as the far rail of a table seen from above.
- *   - Anything that will not fit across the top goes *down the sides*, pinned
- *     to the left and right rails, exactly as the ninth and tenth players at
- *     a real table sit beside the board rather than behind it.
+ * Up to five opponents, which is the default table and the common case, this
+ * is a single arc and the board gets the whole felt at full height. Six and
+ * above pay for the second arc in board height, and that is the right place
+ * to pay: a crowded table is the one where a seat has to come from somewhere.
  *
  * Nothing can overlap, by construction rather than by arithmetic that has to
- * be checked. Two pods on the arc are at least a pod and a gap apart in x.
- * Two pods in the same column are at least a pod apart in y. A column pod and
- * an arc pod either share the rail, and are then a column step apart in y, or
- * are a whole slot apart in x. The left and right columns are the width of
- * the stage apart.
- *
- * Seats are numbered the way the eye travels: up the left column, across the
- * top from left to right, then down the right column. The hero sits at the
- * bottom centre, so seat 0 and the last seat are the two players either side
- * of them, which is what a seating order means.
+ * be rechecked. Two pods on the same arc are at least a pod and a gap apart
+ * in x, because an arc never takes more seats than fit across its own span.
+ * Two pods on different arcs are at least a pod apart in y, because the step
+ * between arcs already includes the depth of the curve.
  *
  * Kept here rather than in `TableScreen` because "no two pods overlap" is
  * arithmetic, and arithmetic can be tested. The table has been broken by
@@ -48,7 +48,7 @@
  */
 
 export interface SeatRingInput {
-  /** Seat index, 0 based, running around the ring from the hero's left. */
+  /** Seat index, 0 based, running left to right along the outer arc first. */
   index: number;
   /** How many opponents are seated. The game allows up to 8. */
   count: number;
@@ -58,157 +58,121 @@ export interface SeatRingInput {
   height: number;
   /** Width of one pod in points. The thing that must not overlap. */
   podWidth: number;
-  /** Height of one pod in points. Also the step down a side column. */
+  /** Height of one pod in points. Also the step between arcs. */
   podHeight: number;
-  /**
-   * Points at the bottom of the stage the ring may not use, for the hero's
-   * own pod.
-   *
-   * Without it a side column counts all the way to the bottom of the stage
-   * and the deepest seat lands on top of your own cards, which is the one
-   * collision the overlap test cannot catch because the hero is not on the
-   * ring.
-   */
-  bottomReserve?: number;
 }
-
-/** Which part of the ring a seat sits on. */
-export type SeatSide = 'left' | 'top' | 'right';
 
 export interface SeatRingSlot {
   left: number;
   top: number;
-  /** 0 on the top arc, then 1 for each step down a side column. */
+  /** Which arc this seat is on, 0 being the outer one along the top rail. */
   row: number;
-  side: SeatSide;
 }
 
-/** Clear space to leave between two pods, in points. */
+/** Clear space to leave between two pods on the same arc, in points. */
 export const SEAT_GAP = 6;
 
 /** Points of stage edge a pod may not cross. */
 export const EDGE_INSET = 2;
 
 /**
- * How many pods fit across the top of the stage.
+ * How much narrower an inner arc is than the one outside it.
+ *
+ * This is the whole reason a crowded table still reads as a ring rather than
+ * as two rows. It is a floor, not a fixed width: an inner arc holding enough
+ * seats widens past it rather than letting its own pods touch, because not
+ * overlapping outranks looking nested.
+ */
+const INNER_ARC_SPAN = 0.72;
+
+/**
+ * How many pods fit across one arc of a given span.
  *
  * `n` pods need `n` widths and `n - 1` gaps, which is why the gap is added
- * back before dividing. The older version divided by width plus gap and so
+ * back before dividing. An earlier version divided by width plus gap and so
  * charged for a gap after the last pod, costing a whole seat on a narrow
- * screen and sending it down a side column that did not need to exist.
+ * screen and forcing a second arc that was not needed.
  *
  * At least one, however narrow the screen, because returning zero would
  * divide by zero downstream and a cramped seat beats no seat.
  */
-export function seatsPerRow(width: number, podWidth: number): number {
-  const usable = Math.max(0, width - EDGE_INSET * 2);
-  return Math.max(1, Math.floor((usable + SEAT_GAP) / (podWidth + SEAT_GAP)));
+function fitAcross(span: number, podWidth: number): number {
+  return Math.max(1, Math.floor((Math.max(0, span) + SEAT_GAP) / (podWidth + SEAT_GAP)));
 }
 
-export interface SeatRingShape {
-  /** Seats across the top arc. */
-  top: number;
-  /** Seats down the left rail. */
-  left: number;
-  /** Seats down the right rail. */
-  right: number;
+/** How many pods fit across the full width of the stage. */
+export function seatsPerRow(width: number, podWidth: number): number {
+  return fitAcross(width - EDGE_INSET * 2, podWidth);
 }
 
 /**
- * How the seats divide between the arc and the two columns.
+ * How the seats divide between the arcs, outer arc first.
  *
- * Two rules, in order. Everything that fits across the top goes across the
- * top, because the arc is the part that reads as a table. Then, if anything
- * is left over, the columns are made SYMMETRIC even when that means moving a
- * seat off the arc that would have fitted on it.
- *
- * The symmetry is deliberate and costs a seat's worth of arc at odd counts.
- * One pod hanging off the left rail with nothing opposite it does not read as
- * a ring, it reads as a mistake, which is the whole complaint this module is
- * answering.
+ * Everything that fits across the top goes across the top, because one arc is
+ * both the best looking answer and the one that leaves the board the most
+ * room. Beyond that the seats are split as evenly as the outer arc's capacity
+ * allows, so a seven handed table is four and three rather than six and one,
+ * which would read as a row with a straggler under it.
  */
-export function seatRingShape(count: number, width: number, podWidth: number): SeatRingShape {
+export function seatArcCounts(count: number, width: number, podWidth: number): number[] {
   const n = Math.max(0, Math.floor(count));
-  if (n === 0) return { top: 0, left: 0, right: 0 };
+  if (n === 0) return [];
 
   const capacity = seatsPerRow(width, podWidth);
-  if (n <= capacity) return { top: n, left: 0, right: 0 };
+  if (n <= capacity) return [n];
 
-  /*
-   * A stage too narrow for two pods side by side has no right column to
-   * speak of: both rails are the same strip of screen. Everything overflows
-   * into one column so the depths stay distinct and nothing collides.
-   */
-  if (capacity < 2) return { top: 1, left: n - 1, right: 0 };
-
-  let sides = n - capacity;
-  // Round up to even so the two columns match, but never empty the arc.
-  if (sides % 2 === 1 && n - (sides + 1) >= 1) sides += 1;
-
-  const perSide = Math.ceil(sides / 2);
-  return { top: n - sides, left: perSide, right: sides - perSide };
+  const arcs = Math.max(2, Math.ceil(n / capacity));
+  const counts: number[] = [];
+  let left = n;
+  for (let i = 0; i < arcs; i += 1) {
+    // Share what is left evenly over the arcs still to come, so the outer arc
+    // is never left holding a seat the inner one could have taken.
+    const take = Math.min(capacity, Math.ceil(left / (arcs - i)));
+    counts.push(take);
+    left -= take;
+  }
+  if (left > 0) counts[0] += left;
+  return counts;
 }
 
-/** Which part of the ring a seat index lands on, and how deep. */
-function placeOnRing(
-  index: number,
-  shape: SeatRingShape,
-): { side: SeatSide; depth: number; place: number } {
-  /*
-   * Up the left column first, deepest seat first, so seat 0 is the player
-   * immediately to the hero's left rather than the one furthest from them.
-   */
-  if (index < shape.left) return { side: 'left', depth: shape.left - index, place: 0 };
-  const onTop = index - shape.left;
-  if (onTop < shape.top) return { side: 'top', depth: 0, place: onTop };
-  return { side: 'right', depth: onTop - shape.top + 1, place: 0 };
-}
-
-/** How much the rail falls away from the crown of the arc, in points. */
-function arcDepth(height: number, podHeight: number): number {
-  /*
-   * Capped against the pod as well as the stage. The guarantee this module
-   * provides is that no two pods overlap, and an arc deep enough to swallow
-   * a pod would quietly take that away by dropping an end seat into the
-   * column beneath it.
-   */
-  return Math.min(Math.max(0, height) * 0.1, podHeight * 0.45);
-}
-
-/** The x a pod on the top arc sits at, for `place` of `across` seats. */
-function arcLeft(place: number, across: number, width: number, podWidth: number): number {
-  const span = width - EDGE_INSET * 2 - podWidth;
-  if (across <= 1) return EDGE_INSET + span / 2;
-  return EDGE_INSET + (place * span) / (across - 1);
-}
-
-/** The y of the crown of the arc. */
-function arcTop(height: number): number {
-  return Math.max(0, height) * 0.012;
+/** Which arc a seat index lands on, and its place along that arc. */
+function placeOnArc(index: number, counts: number[]): { row: number; place: number } {
+  let seen = 0;
+  for (let row = 0; row < counts.length; row += 1) {
+    if (index < seen + counts[row]) return { row, place: index - seen };
+    seen += counts[row];
+  }
+  const row = Math.max(0, counts.length - 1);
+  return { row, place: Math.max(0, counts[row] - 1) };
 }
 
 /**
- * How far a side column steps between pods.
+ * How much the rail falls away from the crown of an arc, in points.
  *
- * Never less than a pod, which is what stops two seats in the same column
- * touching. On a stage with no room for the column it spills past the bottom
- * instead of compressing, because a pod drawn half over its neighbour is a
- * worse answer than a pod drawn low.
+ * Capped against the pod as well as the stage, and flattened once there is
+ * more than one arc. Every point of curve has to be paid for again in the
+ * step between arcs, so a deep arc on a busy table would push the board down
+ * the felt to buy a shape nobody asked for.
  */
-function columnStep(input: {
-  height: number;
-  podHeight: number;
-  depth: number;
-  crownBottom: number;
-  bottomReserve: number;
-}): number {
-  const room = Math.max(
-    0,
-    input.height - EDGE_INSET - input.podHeight - input.crownBottom - Math.max(0, input.bottomReserve),
-  );
-  const wanted = input.podHeight + SEAT_GAP;
-  if (input.depth <= 0) return wanted;
-  return Math.max(input.podHeight, Math.min(wanted, room / input.depth));
+function arcDepth(height: number, podHeight: number, arcs: number): number {
+  const h = Math.max(0, height);
+  return arcs > 1
+    ? Math.min(h * 0.05, podHeight * 0.22)
+    : Math.min(h * 0.1, podHeight * 0.45);
+}
+
+/**
+ * The horizontal span an arc spreads its pods across.
+ *
+ * Inner arcs are pulled in so the ring nests, but never so far in that their
+ * own pods would touch. The second term is the width that arc actually needs,
+ * and it wins whenever the two disagree.
+ */
+function arcSpan(row: number, countOnArc: number, width: number, podWidth: number): number {
+  const full = Math.max(0, width - EDGE_INSET * 2 - podWidth);
+  if (row === 0) return full;
+  const needed = Math.max(0, countOnArc - 1) * (podWidth + SEAT_GAP);
+  return Math.min(full, Math.max(full * INNER_ARC_SPAN, needed));
 }
 
 function clampLeft(left: number, width: number, podWidth: number): number {
@@ -229,91 +193,53 @@ export function seatRingSlot(input: SeatRingInput): SeatRingSlot {
   const safeCount = Math.max(1, Math.floor(count));
   const i = Math.max(0, Math.min(safeCount - 1, Math.floor(input.index)));
 
-  const shape = seatRingShape(safeCount, width, podWidth);
-  const { side, depth, place } = placeOnRing(i, shape);
+  const counts = seatArcCounts(safeCount, width, podWidth);
+  const { row, place } = placeOnArc(i, counts);
+  const onArc = counts[row] ?? 1;
 
-  const depthCap = Math.max(shape.left, shape.right, 1);
-  const curve = arcDepth(height, podHeight);
-  const crown = arcTop(height);
-  // The arc's lowest point, which is where a column starts counting from.
-  const crownBottom = crown + curve;
+  const span = arcSpan(row, onArc, width, podWidth);
+  const start = EDGE_INSET + (Math.max(0, width - EDGE_INSET * 2 - podWidth) - span) / 2;
+  const left = onArc > 1 ? start + (place * span) / (onArc - 1) : start + span / 2;
 
-  if (side === 'top') {
-    const left = arcLeft(place, shape.top, width, podWidth);
-    /*
-     * The rail, not a sine wave.
-     *
-     * `t` is how far across the stage the pod's middle is, from -1 at the
-     * left rail to +1 at the right, and the drop is the ellipse through those
-     * points. A sine looks similar at a glance and is wrong in the place it
-     * matters: it falls away from the crown immediately, so three seats read
-     * as a shallow V, where an ellipse holds the middle flat and only turns
-     * down near the ends, which is what the far side of a table does.
-     */
-    const centreX = left + podWidth / 2;
-    const half = width / 2;
-    const t = half > 0 ? Math.max(-1, Math.min(1, (centreX - half) / half)) : 0;
-    const drop = curve * (1 - Math.sqrt(Math.max(0, 1 - t * t)));
-    return {
-      left: clampLeft(left, width, podWidth),
-      top: Math.max(EDGE_INSET, crown + drop),
-      row: 0,
-      side,
-    };
-  }
+  const curve = arcDepth(height, podHeight, counts.length);
+  const crown = Math.max(0, height) * 0.012;
+  /*
+   * Arcs are a pod height apart PLUS the depth of the curve.
+   *
+   * This is the part that is easy to get wrong, and I did once: curving the
+   * arcs without widening the gap between them broke the one guarantee this
+   * module exists to provide. Two pods on neighbouring arcs sit at different
+   * points on their curves, so the lower one can be lifted by up to the full
+   * depth while the upper one is not lifted at all, and the clearance between
+   * them shrinks by exactly that much. Paying for the curve up front means
+   * the worst case is still a clean pod height.
+   */
+  const rowStep = podHeight + curve;
 
-  const step = columnStep({
-    height,
-    podHeight,
-    depth: depthCap,
-    crownBottom,
-    bottomReserve: input.bottomReserve ?? 0,
-  });
-  const left = side === 'left' ? EDGE_INSET : width - podWidth - EDGE_INSET;
+  /*
+   * The rail, not a sine wave.
+   *
+   * `t` is how far across the arc's own span the pod's middle sits, from -1
+   * at one end to +1 at the other, and the drop is the ellipse through those
+   * points. A sine looks similar at a glance and is wrong where it matters:
+   * it falls away from the crown immediately, so three seats read as a
+   * shallow V, where an ellipse holds the middle flat and only turns down
+   * near the ends, which is what the far side of a table does.
+   *
+   * Measured against the arc's own span rather than the stage, so an inner
+   * arc curves over its own width and the two read as nested rather than as
+   * one arc with a flat line under it.
+   */
+  const half = span / 2;
+  const centreX = left + podWidth / 2;
+  const arcMiddle = start + podWidth / 2 + half;
+  const t = half > 0 ? Math.max(-1, Math.min(1, (centreX - arcMiddle) / half)) : 0;
+  const drop = curve * (1 - Math.sqrt(Math.max(0, 1 - t * t)));
+
   return {
     left: clampLeft(left, width, podWidth),
-    top: Math.max(EDGE_INSET, crownBottom + depth * step),
-    row: depth,
-    side,
-  };
-}
-
-export interface SeatRingLane {
-  /** The y the community cards may start at, clear of the top arc. */
-  top: number;
-  /** Width taken out of the left of the felt by a side column, in points. */
-  leftInset: number;
-  /** Width taken out of the right of the felt by a side column. */
-  rightInset: number;
-}
-
-/**
- * The band of felt the board gets, once the seats have taken theirs.
- *
- * The important part is what this does NOT measure. The lane used to start
- * below the lowest pod of all, which was right when every pod was above the
- * board and is wrong now that some sit beside it. Counting the side columns
- * vertically would push the board off the bottom of the felt to clear seats
- * that are not in its way. They cost width instead, which is what they
- * actually cost.
- */
-export function seatRingLane(input: Omit<SeatRingInput, 'index'>): SeatRingLane {
-  const safeCount = Math.max(0, Math.floor(input.count));
-  if (safeCount === 0) return { top: 0, leftInset: 0, rightInset: 0 };
-
-  const shape = seatRingShape(safeCount, input.width, input.podWidth);
-  let top = 0;
-  for (let i = 0; i < safeCount; i += 1) {
-    const slot = seatRingSlot({ ...input, index: i });
-    if (slot.side !== 'top') continue;
-    top = Math.max(top, slot.top + input.podHeight);
-  }
-
-  const column = EDGE_INSET + input.podWidth + SEAT_GAP;
-  return {
-    top,
-    leftInset: shape.left > 0 ? column : 0,
-    rightInset: shape.right > 0 ? column : 0,
+    top: Math.max(EDGE_INSET, crown + row * rowStep + drop),
+    row,
   };
 }
 
@@ -321,9 +247,8 @@ export function seatRingLane(input: Omit<SeatRingInput, 'index'>): SeatRingLane 
  * True when two slots cannot both be drawn without touching.
  *
  * Two pods clear each other if they are apart horizontally **or** vertically,
- * which is the whole point of the ring: a seat down the left rail is allowed
- * to share horizontal space with the arc pod above it precisely because it
- * does not share vertical space.
+ * which is what lets an inner arc sit under an outer one: they are allowed to
+ * share horizontal space precisely because they do not share vertical space.
  */
 export function slotsOverlap(
   a: SeatRingSlot,
@@ -336,10 +261,17 @@ export function slotsOverlap(
   return !apartX && !apartY;
 }
 
-/** The lowest pod bottom anywhere on the ring, side columns included. */
+/**
+ * The y the community cards may start at, clear of every pod.
+ *
+ * Every seat is above the board now, so this really is the lowest pod and
+ * nothing else has to be taken into account. It was briefly more complicated
+ * than that, when some seats sat beside the board instead, and simple is the
+ * correct shape for it.
+ */
 export function seatRingBottom(input: Omit<SeatRingInput, 'index'>): number {
   let lowest = 0;
-  for (let i = 0; i < Math.max(1, input.count); i += 1) {
+  for (let i = 0; i < Math.max(0, Math.floor(input.count)); i += 1) {
     const slot = seatRingSlot({ ...input, index: i });
     lowest = Math.max(lowest, slot.top + input.podHeight);
   }
