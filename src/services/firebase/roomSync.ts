@@ -918,12 +918,31 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
       void forgetInvite(db, roomCode, playerId);
       return { ok: false, reason: 'Room has ended.' };
     }
-    if (room?.status && room.status !== 'lobby') {
+    /*
+     * Somebody who already has a seat is coming back, not joining.
+     *
+     * This used to refuse anyone the moment the first hand was dealt, which
+     * also refused the players who were already at the table. Going to the
+     * home screen keeps your seat, so the table is still holding one for you
+     * and the only way back in was the resume card: typing the code said the
+     * game had already started, about a game you were in.
+     *
+     * The rules have always allowed this. A seated player may rewrite their
+     * own record on a room that has not ended, provided the seat, the stack
+     * and the role do not change, which is why those are carried over from
+     * what the table already holds rather than from this device.
+     */
+    const seated = room?.players?.[playerId];
+    if (room?.status && room.status !== 'lobby' && !seated) {
       void forgetInvite(db, roomCode, playerId);
       return { ok: false, reason: 'That game has already started.' };
     }
 
-    const playerValue = toDbPlayer(player, { id: playerId, connected: true });
+    const playerValue = toDbPlayer(player, {
+      id: playerId,
+      connected: true,
+      ...(seated ? { seatIndex: seated.seatIndex, chips: seated.chips, isHost: seated.isHost } : {}),
+    });
     await update(ref(db), {
       [playerPath(roomCode, playerId)]: playerValue,
       [userRoomPath(playerId, roomCode)]: { code: roomCode, role: 'player', updatedAt: Date.now() },

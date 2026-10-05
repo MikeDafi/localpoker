@@ -223,8 +223,62 @@ describe('room writes are keyed by auth.uid', () => {
     });
   });
 
-  it('writes one in-app invite only when the host invites that friend', async () => {
+  /*
+   * Going to the home screen keeps your seat, so the table is still holding
+   * one for you. Refusing every join once the first hand is dealt also refused
+   * the players already at the table: typing the code said the game had
+   * already started, about a game you were in.
+   */
+  it('lets a player who stepped away back into a game already in progress', async () => {
     readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: 'somebodyelse',
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 7,
+      players: {
+        somebodyelse: { id: 'somebodyelse', name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true },
+        [AUTH_UID]: { id: AUTH_UID, name: 'Old Name', isHost: false, seatIndex: 3, chips: 2750, connected: false },
+      },
+    });
+    const { joinRoom } = await import('../roomSync');
+
+    const result = await joinRoom('ROOM12', { ...player, chips: 999, seatIndex: 0 });
+
+    expect(result.ok).toBe(true);
+    const updates = mergedRootUpdates();
+    // The seat, the stack and the role come from the table, not from this
+    // phone, which is also exactly what the security rules require of a
+    // returning player.
+    expect(updates[`localpoker/rooms/ROOM12/players/${AUTH_UID}`]).toMatchObject({
+      id: AUTH_UID,
+      seatIndex: 3,
+      chips: 2750,
+      isHost: false,
+      connected: true,
+    });
+  });
+
+  it('still turns away somebody who was never at the table', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: 'somebodyelse',
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 7,
+      players: {
+        somebodyelse: { id: 'somebodyelse', name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true },
+      },
+    });
+    const { joinRoom } = await import('../roomSync');
+
+    const result = await joinRoom('ROOM12', player);
+
+    expect(result.ok).toBe(false);
+    expect(mergedRootUpdates()[`localpoker/rooms/ROOM12/players/${AUTH_UID}`]).toBeUndefined();
+  });
+
+  it('writes one in-app invite only when the host invites that friend', async () => {    readValues.set('localpoker/rooms/ROOM12', {
       code: 'ROOM12',
       hostId: AUTH_UID,
       status: 'lobby',
