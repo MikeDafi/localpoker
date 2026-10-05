@@ -601,3 +601,69 @@ describe('only hands that were actually shown get laid out', () => {
     expect(pickShown([])).toHaveLength(0);
   });
 });
+
+describe('a hand being run out', () => {
+  const alice = player('alice', [card(14, 's'), card(13, 's')]);
+  const bob = player('bob', [card(7, 'h'), card(7, 'd')]);
+  const carol = player('carol', [card(2, 'c'), card(3, 'c')]);
+
+  const lay = (
+    winners: ReturnType<typeof winner>[],
+    options: { undecided?: boolean; seatOrder?: boolean } = {},
+  ) =>
+    selectShowdownHands(winners, [alice, bob, carol], {
+      localPlayerId: 'alice',
+      localCardsShown: true,
+      label: (w) => w.label,
+      contested: true,
+      ...options,
+    });
+
+  it('lays every hand in the pot out before anything has won', () => {
+    const hands = lay([], { undecided: true });
+    expect(hands.map((h) => h.playerId)).toEqual(['alice', 'bob', 'carol']);
+    expect(hands.every((h) => h.outcome === 'pending')).toBe(true);
+    expect(hands.every((h) => h.hole.every((c) => c !== null))).toBe(true);
+  });
+
+  it('claims nothing about a hand nothing has decided yet', () => {
+    // A pending hand carries no label, because the only honest label is the
+    // one a finished board gives it.
+    expect(lay([], { undecided: true }).map((h) => h.label)).toEqual(['', '', '']);
+  });
+
+  it('shows the same hands in the same places once a board decides them', () => {
+    const before = lay([], { undecided: true, seatOrder: true });
+    // Bob wins this board, from the middle seat.
+    const after = lay([winner('bob', 'Trips')], { seatOrder: true });
+    expect(after.map((h) => h.playerId)).toEqual(before.map((h) => h.playerId));
+    expect(after.map((h) => h.outcome)).toEqual(['lost', 'won', 'lost']);
+  });
+
+  it('still puts the winner first at an ordinary showdown', () => {
+    expect(lay([winner('bob', 'Trips')]).map((h) => h.playerId)).toEqual(['bob', 'alice', 'carol']);
+  });
+
+  it('leaves a folded hand face down, chips in or not', () => {
+    const folded = { ...carol, folded: true };
+    const hands = selectShowdownHands([], [alice, bob, folded], {
+      localPlayerId: 'alice',
+      localCardsShown: true,
+      label: (w: { label: string }) => w.label,
+      contested: true,
+      undecided: true,
+    });
+    expect(hands.map((h) => h.playerId)).toEqual(['alice', 'bob']);
+  });
+
+  it('withholds my own cards until I have shown them, even undecided', () => {
+    const hands = selectShowdownHands([], [alice, bob], {
+      localPlayerId: 'alice',
+      localCardsShown: false,
+      label: (w: { label: string }) => w.label,
+      contested: true,
+      undecided: true,
+    });
+    expect(hands.map((h) => h.playerId)).toEqual(['bob']);
+  });
+});

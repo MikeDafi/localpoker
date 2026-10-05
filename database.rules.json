@@ -20,13 +20,12 @@
           /*
            * The last clause lets anyone delete a table nobody came back to.
            *
-           * A host losing its connection marks hostAwayAt and leaves the room
-           * standing, so a dropped phone no longer kills everyone's game. The
-           * cost is that a genuinely abandoned room has no owner left to tidy
-           * it up, and with no Cloud Functions there is no scheduled job to do
-           * it either. So whoever next trips over the corpse may bury it, but
-           * only once it is provably cold: deletion only, and only ten minutes
-           * after the marker was set.
+           * A host losing its connection marks hostAwayAt first, so a dropped
+           * phone does not end a game instantly. Clients close their own view
+           * after the connection grace period, but the database row still has
+           * no server process to tidy it up. So whoever next trips over the
+           * corpse may bury it, but only once it is provably cold: deletion
+           * only, and only ten minutes after the marker was set.
            */
           ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid) || (data.exists() && data.child('hostId').val() === auth.uid) || (data.exists() && data.child('status').val() === 'ended' && data.child('endedAt').isNumber() && data.child('endedAt').val() < now - 86400000 && newData.child('hostId').val() === auth.uid) || (!newData.exists() && data.exists() && ((data.child('hostAwayAt').isNumber() && data.child('hostAwayAt').val() < now - 600000) || (data.child('endedAt').isNumber() && data.child('endedAt').val() < now - 600000))))",
           ".validate": "newData.hasChildren(['code','hostId']) || !newData.exists()",
@@ -263,6 +262,23 @@
                 ".write": "auth != null && auth.uid === $playerId && newData.exists() && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
                 ".validate": "newData.isBoolean() && newData.val() === true"
               },
+              "$other": { ".validate": false }
+            }
+          },
+          /*
+           * Consent to leave the finished hand.
+           *
+           * The hand number is stored with the flag because the host clears
+           * this node as a normal client write, not a server transaction. If a
+           * clear is delayed or lost, an old answer must not count for the next
+           * hand and make the table run on its own.
+           */
+          "handReady": {
+            "$playerId": {
+              ".write": "auth != null && ((auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['handNumber','ts']) && newData.child('handNumber').isNumber() && newData.child('handNumber').val() >= 0 && newData.child('ts').isNumber())",
+              "handNumber": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "ts": { ".validate": "newData.isNumber()" },
               "$other": { ".validate": false }
             }
           },

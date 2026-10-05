@@ -13,9 +13,12 @@ import {
   runoutRunLabel,
   runoutStreet,
   RUNOUT_BEAT_MS,
+  RUNOUT_HOLD_MS,
   RUNOUT_LEAD_MS,
+  RUNOUT_RESULT_MS,
   SHOWDOWN_SETTLE_MS,
 } from '../runout';
+import { REVEAL_LAYOUT_MS } from '../showdownLayout';
 
 function ok(result: ReturnType<typeof applyAction>): GameState {
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
@@ -428,5 +431,32 @@ describe('the table paces a run-out over time', () => {
     });
     expect(action).toEqual({ kind: 'reset', revealed: 0 });
     expect(playOut(live).revealed).toBe(0);
+  });
+
+  it('lets the hands finish being laid out before the next board replaces them', () => {
+    /*
+     * The pause between one run-out board and the next used to be 1750ms,
+     * while laying the hands out beneath the board takes a little under two
+     * and a half seconds. So the board a player was still watching was taken
+     * away while the cards explaining it were in mid-air.
+     */
+    const base = { handOver: true, animationsOff: false, revealed: 5, boardLength: 5, resultsOpen: false, tabled: true };
+    const between = runoutAction({ ...base, moreRuns: true });
+    expect(between).toEqual({
+      kind: 'result',
+      delayMs: SHOWDOWN_SETTLE_MS + RUNOUT_RESULT_MS + REVEAL_LAYOUT_MS + RUNOUT_HOLD_MS,
+    });
+    expect((between as { delayMs: number }).delayMs).toBeGreaterThan(REVEAL_LAYOUT_MS + 3000);
+  });
+
+  it('does not hold the last board, which the result panel covers rather than replaces', () => {
+    const base = { handOver: true, animationsOff: false, revealed: 5, boardLength: 5, resultsOpen: false, tabled: true };
+    expect(runoutAction({ ...base, moreRuns: false })).toEqual({
+      kind: 'result',
+      delayMs: SHOWDOWN_SETTLE_MS + RUNOUT_RESULT_MS,
+    });
+    // Omitted entirely is the same as the last board, so every existing
+    // caller keeps the pacing it had.
+    expect(runoutAction(base)).toEqual(runoutAction({ ...base, moreRuns: false }));
   });
 });

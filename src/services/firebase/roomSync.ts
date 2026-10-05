@@ -17,6 +17,12 @@ import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRun
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
 import { blindsForMode, isTournamentMode } from '../../game/gameMode';
+import type { HandReadyRecord } from '../../game/handReady';
+import {
+  HOST_LEFT_REASON,
+  evaluateRoomClosure,
+  type RoomClosureNotice,
+} from '../../game/roomClosure';
 import {
   hasExposedHoleCard,
   normalizeHoleCardExposure,
@@ -33,6 +39,9 @@ import {
 } from '../../game/onlineSync';
 import { maskedPublicName } from '../../moderation/contentFilter';
 import { createGame, startHand, type GameConfig, type GameState, type PlayerInput } from '../../engine';
+
+export { HOST_DISCONNECTED_REASON, HOST_LEFT_REASON } from '../../game/roomClosure';
+export type { RoomClosureNotice } from '../../game/roomClosure';
 
 /**
  * When each player was first seen unreachable, keyed by room and player.
@@ -82,6 +91,7 @@ const runVotePath = (code: string, playerId: string): string => `${roomPath(code
 const viewPath = (code: string, playerId: string): string => `localpoker/views/${code}/${playerId}`;
 const emotePath = (code: string, playerId: string): string => `${roomPath(code)}/emotes/${playerId}`;
 const shownPath = (code: string, playerId: string): string => `${roomPath(code)}/shown/${playerId}`;
+const handReadyPath = (code: string, playerId: string): string => `${roomPath(code)}/handReady/${playerId}`;
 const exposedPath = (code: string, playerId: string, index: HoleCardIndex): string =>
   `${roomPath(code)}/exposed/${playerId}/${index}`;
 const userRoomPath = (playerId: string, code: string): string => `localpoker/userRooms/${playerId}/${code}`;
@@ -141,6 +151,27 @@ const toDbRunVote = (choice: 1 | 2 | 3 | 4): RoomRunVote => ({
   choice,
   ts: Date.now(),
 });
+
+const toDbHandReady = (handNumber: number): HandReadyRecord | null => {
+  if (!Number.isSafeInteger(handNumber) || handNumber < 0) {
+    return null;
+  }
+
+  return {
+    handNumber,
+    ts: Date.now(),
+  };
+};
+
+const roomHandReadyFrom = (value: unknown): HandReadyRecord | null => {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Partial<HandReadyRecord>;
+  const handNumber = record.handNumber;
+  const ts = record.ts;
+  if (typeof handNumber !== 'number' || !Number.isSafeInteger(handNumber) || handNumber < 0) return null;
+  if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return null;
+  return { handNumber, ts };
+};
 
 const exposedFromRoom = (room: Pick<RoomState, 'exposed'>): ExposedHoleCardsByPlayer => {
   const exposed: ExposedHoleCardsByPlayer = {};
@@ -250,11 +281,10 @@ const registerDisconnect = async (
        * the phone, taking a call, or walking through a tunnel killed everyone
        * else's game. Losing a connection is not the same as leaving.
        *
-       * The room is marked as awaiting the host instead. It stays playable,
-       * the host can walk back into it, and only once nobody has been near it
-       * for ABANDONED_AFTER_MS does it become fair game for deletion. Leaving
-       * on purpose still ends it immediately, because that is a decision
-       * rather than an accident.
+       * The room is marked with the first absence instead. Other clients use
+       * the same grace window as connection folding before they treat the
+       * table as closed, so a short background trip is survivable but a host
+       * who really disappeared cannot strand everyone at Next Hand.
        */
       await onDisconnect(ref(db, roomPath(code))).update({
         hostAwayAt: serverTimestamp() as unknown as number,
@@ -651,6 +681,7 @@ export const createRoom = async (
           updates[`${roomPath(roomCode)}/publicState`] = null;
           updates[`${roomPath(roomCode)}/shown`] = null;
           updates[`${roomPath(roomCode)}/exposed`] = null;
+          updates[`${roomPath(roomCode)}/handReady`] = null;
           updates[`${roomPath(roomCode)}/runVotes`] = null;
           updates[`${roomPath(roomCode)}/invited`] = null;
           updates[playersPath(roomCode)] = { [hostId]: hostPlayer };
@@ -1011,6 +1042,7 @@ export const removePlayerFromRoom = async (code: string, playerId: string): Prom
       [userRoomPath(target, roomCode)]: null,
       [`${roomPath(roomCode)}/shown/${target}`]: null,
       [`${roomPath(roomCode)}/exposed/${target}`]: null,
+      [`${roomPath(roomCode)}/handReady/${target}`]: null,
       [`${roomPath(roomCode)}/runVotes/${target}`]: null,
     });
   } catch (error) {
@@ -1034,12 +1066,14 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
     if (room?.hostId === cleanPlayerId) {
       const updates: Record<string, unknown> = {
         [`${roomPath(roomCode)}/status`]: 'ended',
-        [`${roomPath(roomCode)}/endedReason`]: 'Host left the room.',
+        [`${roomPath(roomCode)}/endedReason`]: HOST_LEFT_REASON,
         [`${roomPath(roomCode)}/endedAt`]: Date.now(),
+        [`${roomPath(roomCode)}/hostAwayAt`]: null,
         [`${roomPath(roomCode)}/actions`]: null,
         [`${roomPath(roomCode)}/publicState`]: null,
         [`${roomPath(roomCode)}/shown`]: null,
         [`${roomPath(roomCode)}/exposed`]: null,
+        [`${roomPath(roomCode)}/handReady`]: null,
         [`${roomPath(roomCode)}/runVotes`]: null,
         /*
          * Withdraw the adverts, not just the room.
@@ -1068,6 +1102,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
       [viewPath(roomCode, cleanPlayerId)]: null,
       [userRoomPath(cleanPlayerId, roomCode)]: null,
       [`${roomPath(roomCode)}/exposed/${cleanPlayerId}`]: null,
+      [`${roomPath(roomCode)}/handReady/${cleanPlayerId}`]: null,
       [`${roomPath(roomCode)}/runVotes/${cleanPlayerId}`]: null,
     });
   } catch (error) {
@@ -1105,6 +1140,87 @@ export const subscribeRoom = (
   } catch (error) {
     reportFirebaseError('subscribe-room', error);
     console.warn('Unable to subscribe to Firebase room.', error);
+    cb(null);
+    return noop;
+  }
+};
+
+/**
+ * Notifies observers that a room is over, even when the host vanished.
+ *
+ * A guest cannot safely mark a host's room ended, and there is no server to do
+ * it later. The write side stays host-only; everyone else derives the same
+ * closure after the connection grace period and can leave the dead table.
+ */
+export const subscribeRoomClosure = (
+  code: string,
+  cb: (closure: RoomClosureNotice | null) => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) {
+    cb(null);
+    return noop;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latestRoom: RoomState | null = null;
+  let hostDisconnectedSince: number | undefined;
+
+  const clearTimer = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const emit = () => {
+    clearTimer();
+    const closure = evaluateRoomClosure({
+      status: latestRoom?.status,
+      endedReason: latestRoom?.endedReason,
+      endedAt: latestRoom?.endedAt,
+      hostId: latestRoom?.hostId,
+      players: latestRoom?.players,
+      hostAwayAt: latestRoom?.hostAwayAt,
+      hostDisconnectedSince,
+      now: Date.now(),
+    });
+
+    hostDisconnectedSince = closure.hostDisconnectedSince;
+    if (closure.closed) {
+      cb(closure);
+      return;
+    }
+
+    cb(null);
+    if (typeof closure.checkAgainAt === 'number') {
+      timer = setTimeout(emit, Math.max(0, closure.checkAgainAt - Date.now() + 1));
+    }
+  };
+
+  try {
+    const off = onValue(
+      ref(db, roomPath(roomCode)),
+      (snapshot) => {
+        latestRoom = snapshot.exists() ? (snapshot.val() as RoomState) : null;
+        emit();
+      },
+      (error) => {
+        reportFirebaseError('room-closure-subscription-callback', error);
+        console.warn('Firebase room closure subscription failed.', error);
+        clearTimer();
+        cb(null);
+      },
+    );
+
+    return () => {
+      clearTimer();
+      off();
+    };
+  } catch (error) {
+    reportFirebaseError('subscribe-room-closure', error);
+    console.warn('Unable to subscribe to Firebase room closure.', error);
     cb(null);
     return noop;
   }
@@ -1260,6 +1376,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
     if (isNewPublishedHand) {
       table[`${roomPath(roomCode)}/shown`] = null;
       table[`${roomPath(roomCode)}/exposed`] = null;
+      table[`${roomPath(roomCode)}/handReady`] = null;
       table[`${roomPath(roomCode)}/runVotes`] = null;
     }
     await update(ref(db), table);
@@ -1336,6 +1453,7 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
       [`${roomPath(roomCode)}/publicState`]: publicState,
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/actionSeq`]: 0,
+      [`${roomPath(roomCode)}/handReady`]: null,
     };
 
     // Same rule as every other publish: a view only exists for someone who
@@ -1429,8 +1547,10 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
       [`${roomPath(roomCode)}/status`]: 'ended',
       [`${roomPath(roomCode)}/endedReason`]: reason.slice(0, 120),
       [`${roomPath(roomCode)}/endedAt`]: Date.now(),
+      [`${roomPath(roomCode)}/hostAwayAt`]: null,
       [`${roomPath(roomCode)}/actions`]: null,
       [`${roomPath(roomCode)}/publicState`]: null,
+      [`${roomPath(roomCode)}/handReady`]: null,
       // Stop advertising a table nobody can join any more, to anybody.
       ...discoveryTeardown(room, roomCode),
     };
@@ -1671,6 +1791,54 @@ export const subscribeExposedCards = (
     });
   } catch (error) {
     reportFirebaseError('subscribe-exposed-cards', error);
+    return noop;
+  }
+};
+
+/** Mark this player ready to leave the current hand behind. */
+export const markHandReady = async (code: string, handNumber: number): Promise<Result> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return unavailableResult();
+
+  const playerId = await authedPlayerId();
+  if (!playerId) return notSignedInResult();
+
+  const record = toDbHandReady(handNumber);
+  if (!record) {
+    return { ok: false, reason: 'Hand number is invalid.' };
+  }
+
+  try {
+    await set(ref(db, handReadyPath(roomCode, playerId)), record);
+    return { ok: true };
+  } catch (error) {
+    reportFirebaseError('mark-hand-ready', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+/** Readiness flags for the hand number stored in each value. */
+export const subscribeHandReady = (
+  code: string,
+  cb: (ready: Record<string, HandReadyRecord>) => void,
+): (() => void) => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return noop;
+
+  try {
+    return onValue(ref(db, `${roomPath(roomCode)}/handReady`), (snapshot) => {
+      const value = (snapshot.val() as Record<string, unknown> | null) ?? {};
+      const ready: Record<string, HandReadyRecord> = {};
+      for (const [playerId, record] of Object.entries(value)) {
+        const parsed = roomHandReadyFrom(record);
+        if (parsed) ready[playerId] = parsed;
+      }
+      cb(ready);
+    });
+  } catch (error) {
+    reportFirebaseError('subscribe-hand-ready', error);
     return noop;
   }
 };

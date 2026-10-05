@@ -42,7 +42,12 @@ export {
   createRoom,
   clearRebuyRequest,
   endRoom,
+  HOST_DISCONNECTED_REASON,
+  HOST_LEFT_REASON,
   TOO_FEW_PLAYERS_REASON,
+  markHandReady,
+  subscribeHandReady,
+  subscribeRoomClosure,
   getCachedHostGame,
   inviteFriendToRoom,
   isRoomResumeAvailable,
@@ -69,4 +74,5 @@ export {
   subscribeRoom,
   startRoomGame,
 } from './roomSync';
+export type { RoomClosureNotice } from './roomSync';
 export type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomState, RoomStatus } from './types';

@@ -429,6 +429,56 @@ function logOk(message) {
     }));
     logOk('and simply taking the next number is accepted');
 
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/CLOSE1'), {
+        code: 'CLOSE1', hostId: 'host', status: 'playing', createdAt: 57, actionSeq: 0,
+        players: {
+          host: { id: 'host', name: 'Host', isHost: true, connected: true },
+          player: { id: 'player', name: 'Player', isHost: false, connected: true },
+        },
+      });
+      await set(ref(ctx.database(), 'localpoker/rooms/AWAY1'), {
+        code: 'AWAY1', hostId: 'host', status: 'playing', createdAt: 58, actionSeq: 0,
+        players: {
+          host: { id: 'host', name: 'Host', isHost: true, connected: true },
+          player: { id: 'player', name: 'Player', isHost: false, connected: true },
+        },
+      });
+    });
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/CLOSE1/status': 'ended',
+      'localpoker/rooms/CLOSE1/endedReason': 'Host left the table.',
+      'localpoker/rooms/CLOSE1/endedAt': 59,
+    }));
+    logOk('the host can close the table with a reason');
+
+    await assertSucceeds(get(ref(playerDb, 'localpoker/rooms/CLOSE1/endedReason')));
+    logOk('a seated player can read why the table closed');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/rooms/CLOSE1/endedReason')));
+    logOk('a stranger cannot read why a private table closed');
+
+    await assertFails(update(ref(playerDb), {
+      'localpoker/rooms/CLOSE1/status': 'ended',
+      'localpoker/rooms/CLOSE1/endedReason': 'Player tried to close it.',
+      'localpoker/rooms/CLOSE1/endedAt': 60,
+    }));
+    logOk('a seated non-host cannot close the table');
+
+    await assertFails(update(ref(strangerDb), {
+      'localpoker/rooms/CLOSE1/status': 'ended',
+      'localpoker/rooms/CLOSE1/endedReason': 'Stranger tried to close it.',
+      'localpoker/rooms/CLOSE1/endedAt': 61,
+    }));
+    logOk('a stranger cannot close the table');
+
+    await assertSucceeds(set(ref(hostDb, 'localpoker/rooms/AWAY1/hostAwayAt'), 62));
+    logOk('the host can mark their own room as host-away');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/AWAY1/hostAwayAt'), 63));
+    logOk('a seated non-host cannot mark the host as away');
+
     /*
      * The whole create-then-join handshake, written exactly as the app writes
      * it, because the pieces all passing individually has twice now not meant
@@ -588,6 +638,51 @@ function logOk(message) {
 
     await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/shown'), null));
     logOk('a player cannot clear the table\'s shown hands wholesale');
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/handReady/player'), {
+      handNumber: 10, ts: 56,
+    }));
+    logOk('a seated player can mark themselves ready for the next hand');
+
+    await assertSucceeds(get(ref(hostDb, 'localpoker/rooms/PLAY1/handReady/player')));
+    logOk('another seated player can read hand readiness');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/rooms/PLAY1/handReady')));
+    logOk('someone not at the table cannot read hand readiness');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/handReady/host'), {
+      handNumber: 10, ts: 57,
+    }));
+    logOk('a player cannot mark somebody else ready');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/handReady/stranger'), {
+      handNumber: 10, ts: 58,
+    }));
+    logOk('a stranger cannot mark themselves ready in a room they never joined');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/handReady/player'), {
+      handNumber: 10, ts: 59,
+    }));
+    logOk('a stranger cannot mark a seated player ready');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/handReady/player'), {
+      handNumber: 10, ts: 60, playerId: 'host',
+    }));
+    logOk('hand readiness cannot carry an extra target player');
+
+    await assertSucceeds(set(ref(hostDb, 'localpoker/rooms/PLAY1/handReady/host'), {
+      handNumber: 10, ts: 61,
+    }));
+    logOk('the host marks only their own readiness as a player');
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PLAY1/state': { version: 1, handNumber: 11, street: 'preflop' },
+      'localpoker/rooms/PLAY1/handReady': null,
+    }));
+    logOk('the host clears readiness as part of publishing the next hand');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/handReady'), null));
+    logOk('a player cannot clear hand readiness wholesale');
 
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player/0'), true));
     logOk('a seated player can expose their own left card');

@@ -14,6 +14,7 @@
  */
 
 import type { GameState, Street } from '../engine/types';
+import { REVEAL_LAYOUT_MS } from './showdownLayout';
 
 /** Board sizes a run-out is allowed to pause at: flop, turn, river. */
 export const RUNOUT_STOPS = [3, 4, 5] as const;
@@ -36,6 +37,18 @@ export const RUNOUT_BEAT_MS = 1100;
  * it, which is the very thing the run-out exists to avoid.
  */
 export const RUNOUT_RESULT_MS = 750;
+
+/**
+ * How long a finished run-out board stays up once its hands have finished
+ * being laid out beneath it.
+ *
+ * Only applies when another board follows. The last board does not need it:
+ * the result panel opens on top of it and nothing replaces it until the next
+ * hand is asked for. Without this the next run started while the cards from
+ * the previous one were still travelling, so a player running it three ways
+ * saw three boards and read none of them.
+ */
+export const RUNOUT_HOLD_MS = 3000;
 
 /**
  * Pause between the last player acting and the hands being shown.
@@ -187,10 +200,18 @@ export interface RunoutInput {
   resultsOpen: boolean;
   /** Whether this hand has already been turned face up for a run-out. */
   tabled: boolean;
+  /**
+   * Whether another board follows this one.
+   *
+   * Only the screen knows how many ways the hand is being run, and the gap
+   * before a board is replaced is a different thing from the gap before a
+   * result panel opens over it.
+   */
+  moreRuns?: boolean;
 }
 
 export function runoutAction(input: RunoutInput): RunoutAction {
-  const { handOver, animationsOff, revealed, boardLength, resultsOpen, tabled } = input;
+  const { handOver, animationsOff, revealed, boardLength, resultsOpen, tabled, moreRuns } = input;
 
   if (!handOver) {
     return revealed !== boardLength || resultsOpen || tabled
@@ -210,7 +231,14 @@ export function runoutAction(input: RunoutInput): RunoutAction {
   if (resultsOpen) return { kind: 'idle' };
   // A run-out gets both pauses: one for the river to land, then the beat
   // before the hands are turned over. Everything else gets the second.
-  return { kind: 'result', delayMs: SHOWDOWN_SETTLE_MS + (tabled ? RUNOUT_RESULT_MS : 0) };
+  const settle = SHOWDOWN_SETTLE_MS + (tabled ? RUNOUT_RESULT_MS : 0);
+  /*
+   * A board that is about to be replaced owes the hands under it their whole
+   * animation plus time to be read. One that is about to be covered by the
+   * result panel owes nothing: the panel does not take the board away, and
+   * the end of hand timer is already the player's reading time.
+   */
+  return { kind: 'result', delayMs: settle + (moreRuns ? REVEAL_LAYOUT_MS + RUNOUT_HOLD_MS : 0) };
 }
 
 /**

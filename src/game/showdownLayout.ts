@@ -55,6 +55,37 @@ export const MIN_HAND_GAP = 8;
 export const MAX_REVEAL_HANDS = 6;
 
 /**
+ * The beats of a hand being tabled, in ms from the start of the showdown.
+ *
+ * These live here rather than in `ShowdownReveal`, which is the only thing
+ * that plays them, because the run-out pacing has to wait for them: a board
+ * that is replaced before its hands have finished travelling shows the player
+ * a result they never got to read. Keeping the numbers in a module both the
+ * animation and the pacing can import is what stops the two drifting apart,
+ * and it is the only way the pacing can be checked without a device.
+ */
+export const REVEAL_BEATS = {
+  flip: 260,
+  grow: 700,
+  move: 1350,
+  travelMs: 560,
+  ring: 2100,
+  perCard: 150,
+  /** Duration of the ring landing. Matches `motion.base` in the theme. */
+  ringMs: 220,
+} as const;
+
+/**
+ * How long the whole sequence takes for a two card hand, from the cards being
+ * face down at the seat to the ring landing under the board.
+ *
+ * The second card is staggered, so it, not the first, decides when the hand is
+ * finished moving.
+ */
+export const REVEAL_LAYOUT_MS =
+  REVEAL_BEATS.ring + REVEAL_BEATS.perCard + REVEAL_BEATS.ringMs;
+
+/**
  * How far apart two hands sit, given how many are sharing the row.
  *
  * The gap is the first thing asked to give. Space between hands only has to
@@ -72,8 +103,14 @@ export interface ShowdownWinnerHand {
   name: string;
   hole: (Card | null)[];
   label: string;
-  /** Gold or red: did this hand take a share of the pot? */
-  outcome: 'won' | 'lost';
+  /**
+   * Gold, red, or neither.
+   *
+   * `pending` is a hand that is face up but not yet beaten or paid: everybody
+   * all in, with board still to come. It has no verdict to colour, so it is
+   * neither ringed nor dimmed until one board decides it.
+   */
+  outcome: 'won' | 'lost' | 'pending';
 }
 
 /**
@@ -119,11 +156,40 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
      * other card over.
      */
     cardExposure?: (playerId: string) => HoleCardExposure | undefined;
+    /**
+     * Lay out every hand still in the pot even though nothing has won yet.
+     *
+     * A run-out turns all the remaining hands face up before a card of the
+     * board is dealt, because nobody left can act and there is nothing to
+     * protect. Without this the layout had to wait for `winners`, which is
+     * only populated once a board is complete, so the hands appeared at the
+     * river, vanished when the next run reset the board, and appeared again.
+     * The hands belong under the board for the whole sequence; it is the
+     * board above them that changes.
+     */
+    undecided?: boolean;
+    /**
+     * Keep the row in seat order instead of putting the winners first.
+     *
+     * Winners first is right for an ordinary showdown, where the row appears
+     * once and the eye should land on the hand that took it. It is wrong when
+     * the same row survives several boards: a hand that wins run two would
+     * jump from the right of the row to the left of it, which reads as the
+     * cards being dealt again rather than as the verdict changing.
+     */
+    seatOrder?: boolean;
   },
 ): ShowdownWinnerHand[] {
   const rows: ShowdownWinnerHand[] = [];
   const taken = new Set<string>();
   const shown = options.shownIds ? new Set(options.shownIds) : null;
+  // Applied on the way out rather than while building, so the cap still keeps
+  // the winners when more hands are tabled than the row can hold.
+  const ordered = (built: ShowdownWinnerHand[]): ShowdownWinnerHand[] => {
+    if (!options.seatOrder) return built;
+    const seat = new Map(players.map((p, i) => [p.id, i]));
+    return [...built].sort((a, b) => (seat.get(a.playerId) ?? 0) - (seat.get(b.playerId) ?? 0));
+  };
 
   const tabled = (p: { id: string; holeCards: Card[] }): boolean =>
     p.holeCards.length >= 2 &&
@@ -137,6 +203,17 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
     return [exposure[0] ? p.holeCards[0] ?? null : null, exposure[1] ? p.holeCards[1] ?? null : null];
   };
 
+  if (options.undecided) {
+    for (const p of players) {
+      if (p.folded || p.sittingOut) continue;
+      const fullyTabled = tabled(p);
+      if (!fullyTabled && !hasExposedHoleCard(exposureFor(p.id))) continue;
+      rows.push({ playerId: p.id, name: p.name, hole: visibleHole(p, fullyTabled), label: '', outcome: 'pending' });
+      if (rows.length >= MAX_REVEAL_HANDS) break;
+    }
+    return ordered(rows);
+  }
+
   for (const w of winners) {
     if (!w.hand?.cards?.length) continue;
     const p = players.find((pp) => pp.id === w.playerId);
@@ -145,13 +222,13 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
     if (!fullyTabled && !hasExposedHoleCard(exposureFor(p.id))) continue;
     taken.add(p.id);
     rows.push({ playerId: p.id, name: p.name, hole: visibleHole(p, fullyTabled), label: options.label(w), outcome: 'won' });
-    if (rows.length >= MAX_REVEAL_HANDS) return rows;
+    if (rows.length >= MAX_REVEAL_HANDS) return ordered(rows);
   }
 
   // Only a contested pot has losers to show. Everybody folding is not a
   // showdown, and turning the folded hands face up would expose cards their
   // owners paid to keep.
-  if (options.contested === false || rows.length === 0) return rows;
+  if (options.contested === false || rows.length === 0) return ordered(rows);
 
   for (const p of players) {
     if (taken.has(p.id) || p.folded || p.sittingOut) continue;
@@ -161,7 +238,7 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
     rows.push({ playerId: p.id, name: p.name, hole: visibleHole(p, fullyTabled), label: '', outcome: 'lost' });
     if (rows.length >= MAX_REVEAL_HANDS) break;
   }
-  return rows;
+  return ordered(rows);
 }
 
 export interface RevealHand {

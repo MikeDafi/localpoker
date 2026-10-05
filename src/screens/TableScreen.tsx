@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
-import { seatRingLane, seatRingSlot } from '../game/seatRing';
+import { seatRingBottom, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
 import { offeredNumberValues } from '../game/settingNumbers';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
@@ -65,6 +65,7 @@ import { emptyObservedTable, observeTransition } from '../game/observedStats';
 import { BOARD_THROW_MS, boardDealDelay } from '../game/boardDeal';
 import { isRunningOut, runoutAction, runoutFelt, runoutLabel, runoutRunLabel, SHOWDOWN_STEP_MS, SHOW_CHOICE_MS } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
+import { evaluateNextHandReadiness, type HandReadyRecord } from '../game/handReady';
 import {
   actionReadDelayMs,
   chipMotionEvents,
@@ -112,9 +113,13 @@ import {
   subscribeExposedCards,
   revealOwnHand,
   TOO_FEW_PLAYERS_REASON,
+  markHandReady,
+  subscribeHandReady,
+  subscribeRoomClosure,
   subscribeShownHands,
   subscribePrivateView,
   subscribeRoom,
+  type RoomClosureNotice,
   type RoomPrivateView,
   type RoomState,
 } from '../services/firebase';
@@ -437,7 +442,33 @@ export function TableScreen({ navigation, route }: Props) {
     });
   }, [firebaseOnline, isOnlineHost, roomCode]);
 
+  /*
+   * Who has asked for the next hand, and whether the table is finished.
+   *
+   * Both are read by everybody, host included. Only the host deals, but the
+   * host dealing the moment they personally tapped Next Hand is what made a
+   * guest's own button a lie: it said "Waiting for host" and the guest had no
+   * say in when their hand was taken away.
+   */
+  const [handReady, setHandReady] = useState<Record<string, HandReadyRecord>>({});
+  const [roomClosure, setRoomClosure] = useState<RoomClosureNotice | null>(null);
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline) {
+      setHandReady({});
+      return undefined;
+    }
+    return subscribeHandReady(roomCode, setHandReady);
+  }, [roomCode, firebaseOnline]);
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline) {
+      setRoomClosure(null);
+      return undefined;
+    }
+    return subscribeRoomClosure(roomCode, setRoomClosure);
+  }, [roomCode, firebaseOnline]);
+
   const botTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   /*
    * Consecutive missed turns, per player. Acting clears your own count, so
    * this only ever grows for somebody who has actually stopped answering.
@@ -815,8 +846,26 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const runShowdown = showingRunout && felt.street === 'showdown' && felt.winners.length > 0;
 
+  /*
+   * The hands are face up for the whole run-out, not just the finished boards.
+   *
+   * Nobody left can act once the chips are in, so every hand still in the pot
+   * is public from the moment the run-out starts. Laying them out only when a
+   * board happened to be complete meant they appeared at the river, vanished
+   * when the next run reset the board, and were dealt out again, which is the
+   * opposite of what the sequence is for: the hands are the fixed thing and
+   * the board above them is what changes.
+   */
+  const runoutTabling = showingRunout && tabledHand && remainingAtEnd > 1;
+
+  /** A verdict is on screen, whether from the result panel or a finished run. */
+  const verdictShown = isShowdown || runShowdown;
+
   const seatLost = (p: { id: string; folded?: boolean; sittingOut?: boolean; holeCards: unknown[] }) =>
-    lostAtShowdown(p, felt.winners, { contested: contestedShowdown });
+    // A finished run-out board has losers too. Keyed on `contestedShowdown`
+    // alone, the seats stayed plain until the last board, so the two runs
+    // before it announced a winner without saying who they had beaten.
+    lostAtShowdown(p, felt.winners, { contested: contestedShowdown || runShowdown });
 
   /**
    * What the table is waiting on while a board runs out, or null when it is not
@@ -926,13 +975,19 @@ export function TableScreen({ navigation, route }: Props) {
        * in, so there is no decision left to respect and no reveal order to
        * walk: every hand still in the pot is laid out for every board.
        */
-      localCardsShown: runShowdown ? true : humanCardsShown,
+      localCardsShown: runoutTabling ? true : humanCardsShown,
       label: (w) => handName(w.hand!.category),
-      contested: runShowdown ? true : contestedShowdown,
-      shownIds: runShowdown ? undefined : revealShown,
+      contested: runoutTabling ? true : contestedShowdown,
+      shownIds: runoutTabling ? undefined : revealShown,
       cardExposure: cardExposureForPlayer,
+      // Face up but nothing decided yet: the board under way has not finished.
+      undecided: runoutTabling && !runShowdown,
+      // The row outlives the board when a hand was turned up for a run-out, so
+      // promoting whoever won the board that just landed would shuffle the
+      // hands sideways under a board that is still changing.
+      seatOrder: handsTabled,
     });
-  }, [isShowdown, runShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
+  }, [isShowdown, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -1153,7 +1208,15 @@ export function TableScreen({ navigation, route }: Props) {
      * sound and it was being spoiled by a chime landing on top of it.
      */
     lastActionSoundAt.current = Date.now();
-    if (action === 'fold') { sound.play('fold'); return; }
+    /*
+     * A fold makes no sound at all.
+     *
+     * It had a cue, and at a full ring most actions are folds, so the table's
+     * most common noise was the one carrying the least information. Silence
+     * says the same thing and leaves the cues that matter, the knock and the
+     * chips, room to be heard.
+     */
+    if (action === 'fold') return;
     if (action === 'check') { sound.play('check'); return; }
     /*
      * Two real chip recordings rather than a count of synthetic clacks scaled
@@ -1317,20 +1380,24 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const evicted = useRef(false);
   useEffect(() => {
-    if (!roomCode || room?.status !== 'ended' || evicted.current) return;
+    if (!roomCode || !roomClosure || evicted.current) return;
     /*
      * The host is normally not told their own table ended, because they are
      * the one who ended it. The exception is a table that ended itself for
      * want of players: nobody chose that, so the host needs telling too.
+     *
+     * A host is never evicted for their own disconnection either. That
+     * closure is derived locally by each client from how long the host has
+     * been unreachable, and from the host's own seat the answer is always no.
      */
-    const endedForTooFew = room?.endedReason === TOO_FEW_PLAYERS_REASON;
+    const endedForTooFew = roomClosure.reason === TOO_FEW_PLAYERS_REASON;
     if (isOnlineHost && !endedForTooFew) return;
     evicted.current = true;
     clearSavedGameForClosedTable();
-    showAlert('Table closed', room?.endedReason || 'The host ended this table.', [
+    showAlert('Table closed', roomClosure.reason, [
       { text: 'Back to menu', onPress: () => navigation.replace('Home') },
     ]);
-  }, [room?.status, room?.endedReason, roomCode, isOnlineHost]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomClosure, roomCode, isOnlineHost]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
    * Which state a reveal is allowed to republish.
@@ -1420,8 +1487,7 @@ export function TableScreen({ navigation, route }: Props) {
     setTurnTimeouts((counts) => gone.reduce((acc, id) => noteActed(acc, id), counts));
   }, [turnTimeouts, handOver, roomCode, firebaseOnline, isOnlineHost, human.id]);
 
-  const onTimerExpire = useCallback(() => {
-    if (handOver) return;
+  const onTimerExpire = useCallback(() => {    if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
     if (!actor) return;
     /*
@@ -1537,6 +1603,7 @@ export function TableScreen({ navigation, route }: Props) {
       boardLength: activeRunBoardLength,
       resultsOpen,
       tabled: tabledHand,
+      moreRuns: activeRunIndex < runCount - 1,
     });
 
     switch (action.kind) {
@@ -2167,6 +2234,70 @@ export function TableScreen({ navigation, route }: Props) {
   const rebuyMessage = rebuyNotice(rebuyState, human.id);
   const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
 
+  /*
+   * The next hand needs everybody, not just the host.
+   *
+   * The host deals, so the host used to decide alone when a hand ended, and
+   * every guest got a dead button reading "Waiting for host". That is the
+   * wrong way round: the person whose cards are about to be taken away is the
+   * one with a reason to want another moment with them. Now everyone asks,
+   * and the host deals once nobody is still looking.
+   *
+   * It only binds when there is somebody to wait for. A table of bots, or one
+   * whose other humans have gone, deals on the host's word as before, because
+   * otherwise a guest losing signal would stop the game for good.
+   */
+  const nextHandReadiness = useMemo(
+    () =>
+      evaluateNextHandReadiness({
+        handNumber: state.handNumber,
+        players: room?.players ?? {},
+        ready: handReady,
+        publicPlayers: room?.publicState?.players,
+      }),
+    [state.handNumber, room?.players, room?.publicState?.players, handReady],
+  );
+  const consentRequired =
+    !!roomCode && firebaseOnline && nextHandReadiness.activePlayerIds.length >= 2;
+  const iAmReady =
+    consentRequired && !!authRoomId && nextHandReadiness.readyPlayerIds.includes(authRoomId);
+  const waitingOnOthers = authRoomId
+    ? nextHandReadiness.waitingPlayers.filter((p) => p.id !== authRoomId)
+    : nextHandReadiness.waitingPlayers;
+
+  /*
+   * Only the host deals, and only once per hand.
+   *
+   * Guarded by hand number rather than by a boolean, because the readiness
+   * flags are cleared by the publish that starts the next hand, so there is a
+   * window in which they still say everybody is ready for the hand that just
+   * finished.
+   */
+  const dealtAfterHand = useRef(-1);
+  useEffect(() => {
+    if (!isOnlineHost || !consentRequired || !isShowdown) return;
+    if (!nextHandReadiness.canStartNextHand) return;
+    if (dealtAfterHand.current === state.handNumber) return;
+    dealtAfterHand.current = state.handNumber;
+    nextHand();
+    // nextHand closes over the current hand and is recreated every render, so
+    // depending on it would re-fire this on every frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnlineHost, consentRequired, isShowdown, nextHandReadiness.canStartNextHand, state.handNumber]);
+
+  /** Ask for the next hand: mine alone offline, everybody's at a live table. */
+  const askForNextHand = useCallback(() => {
+    if (!consentRequired || !roomCode) {
+      nextHand();
+      return;
+    }
+    void markHandReady(roomCode, state.handNumber).then((result) => {
+      if (!result.ok) noteSync(false);
+    });
+    // Same reason as the effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consentRequired, roomCode, state.handNumber, noteSync]);
+
   useEffect(() => {
     if (!roomCode || !firebaseOnline || !isOnlineHost) {
       return undefined;
@@ -2351,10 +2482,10 @@ export function TableScreen({ navigation, route }: Props) {
   };
 
   /*
-   * Opponents sit around the oval: across the top rail, and down the left and
-   * right rails once there are more of them than the top will hold. The
-   * placement, and the proof that no two pods can touch at any seat count on
-   * any screen, is in `src/game/seatRing.ts`.
+   * Opponents sit above the board, spread across the top rail and curving
+   * with it, with a second arc nesting inside the first once there are more
+   * of them than one arc holds. The placement, and the proof that no two pods
+   * can touch at any seat count on any screen, is in `src/game/seatRing.ts`.
    */
   /**
    * Avatar size scales with how crowded the table is: heads-up there is plenty
@@ -2363,25 +2494,24 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const avatarSize = Math.round(Math.max(40, Math.min(66, 74 - opponents.length * 5)));
   /*
-   * The pod is narrower than it was, by 10pt at every seat count.
+   * The pod is as narrow as the avatar inside it allows.
    *
-   * That 10pt is what buys the extra seat across the top rail, and the top
-   * rail is the part that reads as a table. At a full ring the old width fit
-   * three pods across an iPhone SE and five had to go somewhere else; this
-   * fits four, which is the difference between two seats down each rail and
-   * three. The avatar itself is unchanged, so faces are no smaller, the pod
-   * simply stops reserving margin it was not using.
+   * Every point of pod width is a point the arc cannot use, and the arc's
+   * capacity is what decides whether the usual table needs a second row of
+   * seats at all. At `avatarSize + 20` five opponents, which is the default,
+   * fit across one arc on every phone from an iPhone 13 mini up, and the
+   * board keeps the whole felt. At the old width they did not, and it cost
+   * the five community cards a third of their size. The avatar is unchanged,
+   * so faces are no smaller, the pod simply stops reserving margin it was not
+   * using.
    */
-  const SEAT_W = Math.max(66, avatarSize + 26);
+  const SEAT_W = Math.max(62, avatarSize + 20);
   const seatRingInput = {
     count: opponents.length,
     width: area.w,
     height: stageH,
     podWidth: SEAT_W,
     podHeight: podH,
-    // Keep the deepest rail seat off the hero's own pod, which is not on the
-    // ring and so is invisible to the ring's own overlap guarantee.
-    bottomReserve: heroPodH + 6,
   };
   const seatPos = (idx: number, n: number) =>
     seatRingSlot({ ...seatRingInput, index: idx, count: n });
@@ -2392,21 +2522,13 @@ export function TableScreen({ navigation, route }: Props) {
    * so the lane never jumps when a bet chip or "Folded" tag comes and goes,
    * the table has to stay put between "your turn" and "hand over".
    *
-   * Only the seats across the TOP are measured down from. A seat on a rail
-   * sits beside the board rather than above it, so counting it would push the
-   * five cards off the bottom of the felt to clear something that was never
-   * in their way. Those seats cost the board width instead, which is what
-   * they actually cost, and `laneInset` is that width.
+   * Measured from the lowest pod, which is every pod now. Seats briefly sat
+   * beside the board instead of above it, and that needed the lane to know
+   * which seats were in its way horizontally. It also left the board about
+   * half the cloth, which is why it is gone.
    */
-  const seatLane = seatRingLane(seatRingInput);
-  const measuredLaneTop = (opponents.length ? seatLane.top : 0) + 6;
+  const measuredLaneTop = (opponents.length ? seatRingBottom(seatRingInput) : 0) + 6;
   const measuredLaneBottom = heroPodH + 6;
-  /*
-   * Symmetric, even though the two rails can in principle differ, because the
-   * board is centred and an asymmetric inset would only move it off centre
-   * without giving it a point more room.
-   */
-  const laneInset = Math.max(seatLane.leftInset, seatLane.rightInset);
 
   /*
    * The lane is latched the first time both pods have really been measured,
@@ -2453,15 +2575,7 @@ export function TableScreen({ navigation, route }: Props) {
     height: Math.max(0, stageH - 2 * (FELT_INSET + FELT_RAIL)),
     centreY: stageH / 2,
   };
-  /*
-   * The cloth, less whatever the rail seats are standing on.
-   *
-   * The oval says how wide the felt is at a given height. It does not know
-   * that two pods are parked on it, and the board is sized from this, so
-   * without the inset the five cards are laid straight through the players
-   * sitting beside them.
-   */
-  const cloth = (y: number) => Math.max(0, feltWidthAt(y, clothOval) - 2 * laneInset);
+  const cloth = (y: number) => feltWidthAt(y, clothOval);
 
   // --- Dealing the hole cards -------------------------------------------------
   // Cards are thrown one at a time from the middle of the table, going around
@@ -2857,15 +2971,7 @@ export function TableScreen({ navigation, route }: Props) {
         <View
           style={[
             styles.centerZone,
-            /*
-             * Padded rather than inset, so the board stays between the rail
-             * seats while `boardBox` keeps measuring in table coordinates.
-             * Moving the zone itself would have been the obvious way to make
-             * room, and it would have silently shifted every flight path that
-             * reads `boardBox.x`, which is the pot chips and every tabled
-             * hand at a showdown.
-             */
-            { top: laneTop, bottom: laneBottom, paddingHorizontal: laneInset },
+            { top: laneTop, bottom: laneBottom },
             layingOut && styles.centerZoneTop,
           ]}
           pointerEvents="box-none"
@@ -2895,7 +3001,7 @@ export function TableScreen({ navigation, route }: Props) {
                   </View>
                 );
               }
-              const highlighted = isShowdown && winningCardKeys.has(`${card.rank}${card.suit}`);
+              const highlighted = verdictShown && winningCardKeys.has(`${card.rank}${card.suit}`);
               return (
                 <View key={`card-${i}-${card.rank}${card.suit}`} style={[styles.boardCardWrap, highlighted && styles.winCard]}>
                   <DealtCard
@@ -2909,7 +3015,7 @@ export function TableScreen({ navigation, route }: Props) {
                     delay={boardDelay(i)}
                     fromX={boardThrowFrom(i).x}
                     fromY={boardThrowFrom(i).y}
-                    dimmed={isShowdown && !highlighted}
+                    dimmed={verdictShown && !highlighted}
                   />
                 </View>
               );
@@ -2998,7 +3104,7 @@ export function TableScreen({ navigation, route }: Props) {
                 cardsLeft={pos.left + SEAT_W / 2 > area.w / 2}
                 handOff={showdownHands.some((h) => h.playerId === p.id)}
                 avatarSize={avatarSize}
-                won={isShowdown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
+                won={verdictShown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
                 lost={seatLost(p)}
                 reaction={reactionFor(p.id)}
                 idleMotion={settings.avatarIdleMotion && !animsOff}
@@ -3285,7 +3391,7 @@ export function TableScreen({ navigation, route }: Props) {
                   seconds={endOfHandSeconds + showdownHold}
                   active
                   resetKey={`showdown-${state.handNumber}-${showdownHold}`}
-                  onExpire={() => { setReveal((r) => (r === 'auto' ? 'muck' : r)); nextHand(); }}
+                  onExpire={() => { setReveal((r) => (r === 'auto' ? 'muck' : r)); askForNextHand(); }}
                   label="Next hand in"
                 />
               </View>
@@ -3350,15 +3456,26 @@ export function TableScreen({ navigation, route }: Props) {
                     ? 'Waiting for players…'
                     : tournamentWinnerId
                       ? 'Finish Tournament'
-                      : roomCode && !isOnlineHost
-                      ? 'Waiting for host…'
-                      : 'Next Hand'
+                      : consentRequired
+                        ? iAmReady
+                          ? waitingOnOthers.length === 1
+                            ? `Waiting for ${waitingOnOthers[0].name}…`
+                            : `Waiting for ${waitingOnOthers.length} players…`
+                          : 'Next Hand'
+                        : roomCode && !isOnlineHost
+                          ? 'Waiting for host…'
+                          : 'Next Hand'
                 }
                 variant="green"
                 size="lg"
                 style={styles.nextBtn}
-                disabled={!!roomCode && !isOnlineHost}
-                onPress={nextHand}
+                /*
+                 * A guest may ask for the next hand now, and is only locked
+                 * out once they have. Still disabled outright at a table with
+                 * nobody left to wait for, where the host alone deals.
+                 */
+                disabled={consentRequired ? iAmReady : !!roomCode && !isOnlineHost}
+                onPress={askForNextHand}
               />
               {/*
                 * Only while the hand is still yours to hide.

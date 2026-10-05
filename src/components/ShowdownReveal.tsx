@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated';
 import { PlayingCard, Suit } from './PlayingCard';
+import { REVEAL_BEATS } from '../game/showdownLayout';
 import { colors, radii, motion, easings } from '../theme/theme';
 
 export interface RevealCard {
@@ -19,8 +20,11 @@ export interface ShowdownRevealProps {
   /** Size the cards sit at beside the avatar, and the size they grow to. */
   smallSize: number;
   bigSize: number;
-  /** Gold for a hand that took the pot, red for one that was beaten. */
-  tone: 'won' | 'lost';
+  /**
+   * Gold for a hand that took the pot, red for one that was beaten, neither
+   * while a run-out is still deciding which it is.
+   */
+  tone: 'won' | 'lost' | 'pending';
   /** Whether each card is part of the winning five. Only read for a winner. */
   highlight: boolean[];
   /** Off when animations are disabled, cards are simply placed, face up. */
@@ -29,15 +33,14 @@ export interface ShowdownRevealProps {
   revealKey?: string;
 }
 
-/** Beats of the reveal, in ms from the start of the showdown. */
-export const REVEAL = {
-  flip: 260,
-  grow: 700,
-  move: 1350,
-  travelMs: 560,
-  ring: 2100,
-  perCard: 150,
-};
+/**
+ * Beats of the reveal, in ms from the start of the showdown.
+ *
+ * Defined in `showdownLayout` rather than here because the run-out pacing has
+ * to outlast them, and it cannot import a component. Re-exported so callers
+ * that care about the animation keep reading it from the thing that plays it.
+ */
+export const REVEAL = REVEAL_BEATS;
 
 /**
  * The winner's hole cards being shown and then laid out with the board.
@@ -98,7 +101,7 @@ function RevealedCard({
   to: { x: number; y: number };
   smallSize: number;
   bigSize: number;
-  tone: 'won' | 'lost';
+  tone: 'won' | 'lost' | 'pending';
   highlight: boolean;
   animate: boolean;
   index: number;
@@ -146,7 +149,19 @@ function RevealedCard({
     // left the unused hole card at full brightness while the unused board card
     // dimmed, which read as though it counted.
     ring.value = withDelay(REVEAL.ring + stagger, withTiming(1, { duration: motion.base }));
-  }, [animate, highlight, stagger, travel, flip, grow, ring]);
+    /*
+     * Deliberately not keyed on `highlight` or `tone`.
+     *
+     * Running it twice on the same tabled hand sends the cards back to the
+     * seat to be flipped and pushed out again. Nothing about the hand has
+     * changed when that happens; the board above it has. During a run-out the
+     * verdict flips with every board, so this used to replay the whole
+     * entrance two or three times a hand, which is exactly the cards coming
+     * and going that the hands are meant to sit still through. Once the ring
+     * has landed it stays at 1, and the two styles below simply read the
+     * current verdict from it.
+     */
+  }, [animate, stagger, travel, flip, grow, ring]);
 
   const moveStyle = useAnimatedStyle(() => {
     const t = travel.value;
@@ -178,11 +193,20 @@ function RevealedCard({
    * neither is dimmed.
    */
   const lost = tone === 'lost';
-  const ringed = lost || highlight;
+  /*
+   * A hand that is face up but not yet decided.
+   *
+   * Everyone is all in and the board is still coming, so there is no verdict
+   * to draw. Falling through to the winner's branch would have dimmed every
+   * card, because nothing is part of a best five yet, and a table of dimmed
+   * cards reads as every hand having lost.
+   */
+  const undecided = tone === 'pending';
+  const ringed = !undecided && (lost || highlight);
   const ringStyle = useAnimatedStyle(() => ({ opacity: ringed ? ring.value : 0 }));
   const dimStyle = useAnimatedStyle(() => ({
     // Cards outside the best five fade back once the ring lands on the others.
-    opacity: ringed ? 1 : 1 - 0.55 * ring.value,
+    opacity: ringed || undecided ? 1 : 1 - 0.55 * ring.value,
   }));
 
   return (
