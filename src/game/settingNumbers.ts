@@ -1,4 +1,4 @@
-import type { SettingField } from '../game/settings';
+import type { SettingField } from './settings';
 
 export type NumberSettingOptionField = Pick<SettingField, 'min' | 'max' | 'presets' | 'step'>;
 

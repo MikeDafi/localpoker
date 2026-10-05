@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { offeredNumberValues, type NumberSettingOptionField } from '../settingNumberOptions';
+import { offeredNumberValues, type NumberSettingOptionField } from '../settingNumbers';
 
 describe('offeredNumberValues', () => {
   it('inserts the current value in sorted order when presets do not contain it', () => {

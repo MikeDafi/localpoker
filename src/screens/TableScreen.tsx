@@ -10,7 +10,7 @@ import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { seatRingLane, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
-import { offeredNumberValues } from '../components/settingNumberOptions';
+import { offeredNumberValues } from '../game/settingNumbers';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import {
@@ -3713,13 +3713,13 @@ function MenuSettingRow({
   }
 
   /*
-   * Numbers are picked from a short list, never stepped.
+   * Numbers are picked from a short list here, never stepped.
    *
-   * The plus and minus pair was wrong in the one place it had to be right.
-   * Changing a 2000 stack to 25000 was more than twenty taps on a sheet that
-   * is open over a live hand, and nobody has ever wanted 2100. These are the
-   * values people actually choose, one tap each, and the field's own range
-   * still clamps anything a saved game brings with it.
+   * Only here. Game Setup still has a plus and minus pair, and should: it is
+   * a full screen with room for a readout and a hold-to-ramp, and setting a
+   * table up is the one time somebody might want a number nobody else would
+   * pick. This is a sheet over a live hand with room for neither, and getting
+   * from a 2000 stack to 25000 in it was more than twenty taps.
    */
   const step = field.step ?? 1;
   const min = field.min ?? 0;

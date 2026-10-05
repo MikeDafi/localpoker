@@ -54,16 +54,19 @@ export interface SettingField {
   premium?: boolean;
   modes?: readonly GameMode[];
   /**
-   * The values a number field offers, instead of a plus and minus pair.
+   * The values a number field offers in the table's own menu, instead of a
+   * plus and minus pair.
    *
-   * Stepping was the wrong control for every one of these. Going from a 2000
-   * stack to 25000 was more than twenty taps, and the range exists because
-   * somebody might want 25000, not because anyone wants 2100. A row of the
-   * values people actually pick is one tap for all of them.
+   * Only the menu. Game Setup still steps, because it is a full screen with
+   * room for a readout and a hold-to-ramp, and because setting a table up is
+   * the one time somebody might genuinely want a number nobody else would
+   * pick. The menu is a sheet over a live hand with none of that room, and
+   * getting from a 2000 stack to 25000 there was more than twenty taps.
    *
    * `min`, `max` and `step` stay, because `normalizeSettings` still clamps
-   * with them and a value saved by an older build has to land somewhere
-   * legal. The presets are what is offered, not what is allowed.
+   * with them, Game Setup still steps by them, and a value saved by an older
+   * build has to land somewhere legal. The presets are what the menu offers,
+   * not what the setting allows.
    */
   presets?: readonly number[];
   /**
