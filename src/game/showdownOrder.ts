@@ -87,7 +87,21 @@ export function showdownOrder(input: ShowdownOrderInput): ShowdownOrder {
     : clockwiseFrom(players, dealerIndex, false);
 
   const winners = new Set(winnerIds);
-  const mustShow = order.filter((id, i) => i === 0 || winners.has(id));
+  /*
+   * Only a claim forces a hand face up.
+   *
+   * The first player in the order used to be forced to show whatever the
+   * order was built from, which meant that on a river everybody checked, the
+   * first player left of the button had their losing hand published for
+   * nothing. Nobody made a claim on a checked round, so there is nothing to
+   * back up, and a beaten hand is exactly the thing a player is entitled to
+   * throw away unseen.
+   *
+   * A winner is still forced, because you cannot be paid for a hand nobody
+   * saw, and the aggressor is still forced, because they bet and have to
+   * show for it. Everyone else may muck.
+   */
+  const mustShow = order.filter((id, i) => (aggressor !== null && i === 0) || winners.has(id));
   return { order, mustShow };
 }
 

@@ -123,3 +123,52 @@ describe('botShowsHand', () => {
     expect(botShowsHand({ order: o, playerId: 'd', stillBest: false })).toBe(false);
   });
 });
+
+/*
+ * A river everybody checked is nobody's claim. The first player left of the
+ * button still shows first, because somebody has to go first, but being
+ * first is not a reason to publish a losing hand: they made no bet to back
+ * up, and throwing a beaten hand away unseen is the point of showing in turn.
+ */
+describe('a checked through river forces nobody but the winner', () => {
+  const seats = [
+    { id: 'a', holeCards: [1, 2] },
+    { id: 'b', holeCards: [3, 4] },
+    { id: 'c', holeCards: [5, 6] },
+  ];
+
+  it('lets the first to show muck when there was no aggressor', () => {
+    const order = showdownOrder({
+      players: seats,
+      dealerIndex: 0,
+      lastAggressorIndex: null,
+      winnerIds: ['c'],
+    });
+    expect(order.order[0]).toBe('b');
+    expect(canMuck(order, 'b')).toBe(true);
+    // The winner still cannot hide, you cannot be paid for a hand nobody saw.
+    expect(canMuck(order, 'c')).toBe(false);
+  });
+
+  it('still forces the aggressor when there was a bet', () => {
+    const order = showdownOrder({
+      players: seats,
+      dealerIndex: 0,
+      lastAggressorIndex: 1,
+      winnerIds: ['c'],
+    });
+    expect(order.order[0]).toBe('b');
+    expect(canMuck(order, 'b')).toBe(false);
+  });
+
+  it('does not table a beaten hand that was never the aggressor', () => {
+    const order = showdownOrder({
+      players: seats,
+      dealerIndex: 0,
+      lastAggressorIndex: null,
+      winnerIds: ['c'],
+    });
+    // 'a' is beaten and made no claim, so it mucks rather than showing.
+    expect(botShowsHand({ order, playerId: 'a', stillBest: false })).toBe(false);
+  });
+});

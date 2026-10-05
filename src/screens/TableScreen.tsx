@@ -78,6 +78,7 @@ import {
   type ChipPoint,
 } from '../game/chipMotion';
 import { applyHostIntent, hydrateGameState } from '../game/onlineSync';
+import { abandonedPlayers, noteActed, noteTimeout, type TimeoutCounts } from '../game/turnTimeouts';
 import type { Difficulty } from '../engine/bot';
 import {
   createGame, startHand, canStartHand, applyAction, legalActions, decideAction, handName, evaluateHand, compareHands, randomFloat, rerunShowdownFromSettled,
@@ -413,6 +414,7 @@ export function TableScreen({ navigation, route }: Props) {
     return subscribeActions(roomCode, (action) => {
       setState((prev) => {
         const currentState = getCachedHostGame(roomCode) ?? stateRef.current ?? prev;
+        setTurnTimeouts((counts) => noteActed(counts, action.playerId));
         const result = applyHostIntent(currentState, action.playerId, {
           type: action.type,
           amount: action.amount,
@@ -435,6 +437,11 @@ export function TableScreen({ navigation, route }: Props) {
   }, [firebaseOnline, isOnlineHost, roomCode]);
 
   const botTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /*
+   * Consecutive missed turns, per player. Acting clears your own count, so
+   * this only ever grows for somebody who has actually stopped answering.
+   */
+  const [turnTimeouts, setTurnTimeouts] = useState<TimeoutCounts>({});
   /** When an action last played a cue, so the turn cue can stay off it. */
   const lastActionSoundAt = useRef(0);
   const handFlags = useRef({ vpip: false, pfr: false });
@@ -726,15 +733,32 @@ export function TableScreen({ navigation, route }: Props) {
   // Track when the current turn's countdown began so leaving/resuming carries
   // over the remaining time instead of resetting the timer to full.
   const turnKey = `${state.handNumber}:${state.street}:${state.currentPlayerIndex}`;
-  const [turnStartedAt, setTurnStartedAt] = useState<number>(() =>
-    (resuming ? resumedTurnStartedAt(savedGame) : Date.now()));
-  const prevTurnKey = useRef(turnKey);
+  /*
+   * When the current turn's clock started, carried with the turn it belongs to.
+   *
+   * These two used to be separate, a key computed during render and a start
+   * time written by an effect, and that is a race with teeth. The key changes
+   * in the render where play moves to the next seat, but the start time only
+   * catches up a render later, so for one render the timer is told "this is a
+   * new turn" while still being handed the PREVIOUS turn's start. If the last
+   * turn took longer than the clock allows, the remaining time computes as
+   * zero and the timer fires immediately.
+   *
+   * That is not a cosmetic problem. On the host, an expired turn belonging to
+   * a remote player makes the host act for them, so the opponent was folded
+   * without ever being asked. Pairing the key with its start means a start
+   * time can never be read against the wrong turn: until the state catches
+   * up, the turn is treated as beginning now, which is the truth.
+   */
+  const [turnStart, setTurnStart] = useState<{ key: string; at: number }>(() => ({
+    key: turnKey,
+    at: resuming ? resumedTurnStartedAt(savedGame) : Date.now(),
+  }));
   useEffect(() => {
-    if (prevTurnKey.current !== turnKey) {
-      prevTurnKey.current = turnKey;
-      setTurnStartedAt(Date.now());
-    }
-  }, [turnKey]);
+    if (turnStart.key === turnKey) return;
+    setTurnStart({ key: turnKey, at: Date.now() });
+  }, [turnKey, turnStart.key]);
+  const turnStartedAt = turnStart.key === turnKey ? turnStart.at : Date.now();
 
   const humanWon = isShowdown && felt.winners.some((w) => w.playerId === human.id && w.amount > 0);
   const remainingAtEnd = felt.players.filter((p) => !p.folded && !p.sittingOut).length;
@@ -1155,6 +1179,8 @@ export function TableScreen({ navigation, route }: Props) {
     setState((prev) => {
       const id = actorId ?? prev.players[prev.currentPlayerIndex]?.id;
       if (!id) return prev;
+      // Acting is proof they are here, so the count starts again from nothing.
+      setTurnTimeouts((counts) => noteActed(counts, id));
       const res = applyAction(prev, id, action, amount);
       return res.ok ? res.state : prev;
     });
@@ -1373,10 +1399,37 @@ export function TableScreen({ navigation, route }: Props) {
     });
   }, [roomCode, firebaseOnline, isOnlineHost, noteSync, stateToRepublish]);
 
+  /*
+   * Give up the seat of anybody who has stopped answering.
+   *
+   * Host only, because only the host can change the roster, and only between
+   * hands: taking a seat away mid hand would leave chips in a pot belonging
+   * to nobody. The count is cleared as they go, so a player who comes back
+   * and sits down again starts clean rather than being thrown straight out.
+   */
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !isOnlineHost) return;
+    const gone = abandonedPlayers(turnTimeouts).filter((id) => id !== human.id);
+    if (gone.length === 0 || !handOver) return;
+    for (const id of gone) {
+      removePlayerFromRoom(roomCode, id).catch((error: unknown) => {
+        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'remove-absent-player' } });
+      });
+    }
+    setTurnTimeouts((counts) => gone.reduce((acc, id) => noteActed(acc, id), counts));
+  }, [turnTimeouts, handOver, roomCode, firebaseOnline, isOnlineHost, human.id]);
+
   const onTimerExpire = useCallback(() => {
     if (handOver) return;
     const actor = state.players[state.currentPlayerIndex];
     if (!actor) return;
+    /*
+     * A seat that never answers is worse than an empty one: every turn costs
+     * the table the whole clock, and the hand only moves because the host
+     * acts for them. Counted here, acted on below once the forced action has
+     * been applied, so the hand is never left mid air.
+     */
+    setTurnTimeouts((prev) => noteTimeout(prev, actor.id));
     if (actor.id === human.id) {
       if (!legal) return;
       if (legal.actions.includes('check')) onHumanAction('check');
@@ -2024,8 +2077,12 @@ export function TableScreen({ navigation, route }: Props) {
       startedAt: tournamentStartedAt,
       now: tournamentNow,
       currentBlinds: state.config,
+      // The hand about to be played, which is what the ladder counts.
+      handNumber: state.handNumber + 1,
+      levelLengthHands: settings.blindLevelLengthHands,
     }),
-    [settings.gameMode, tournamentStartedAt, state.config, tournamentNow],
+    [settings.gameMode, settings.blindLevelLengthHands, tournamentStartedAt,
+      state.config, state.handNumber, tournamentNow],
   );
   const tournamentStatusText = tournamentStatus ? formatTournamentStatus(tournamentStatus) : null;
 

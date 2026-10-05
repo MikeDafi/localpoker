@@ -3,6 +3,7 @@ import {
   TURBO_STRUCTURE,
   blindsDue,
   levelAt,
+  handsUntilNextLevel,
   levelAtHand,
   type BlindLevel,
   type LevelState,
@@ -127,6 +128,8 @@ export interface TournamentTableStatus {
   levelNumber: number;
   level: BlindLevel;
   msUntilNextLevel: number | null;
+  /** Hands until the blinds climb, when the ladder is counted in hands. */
+  handsUntilNextLevel?: number | null;
   nextLevel: BlindLevel | null;
   pendingForNextHand: boolean;
 }
@@ -136,14 +139,29 @@ export function tournamentTableStatus(input: {
   startedAt: number | null | undefined;
   now: number;
   currentBlinds: { smallBlind: number; bigBlind: number; ante?: number };
+  handNumber?: number;
+  levelLengthHands?: number;
 }): TournamentTableStatus | null {
   const level = tournamentLevelForMode(input);
   if (!level) return null;
+  /*
+   * When the ladder is counted in hands, the thing to report is hands.
+   *
+   * The header was showing a wall clock countdown while the levels were
+   * advancing on hand numbers, so it was counting something that had no
+   * bearing on when the blinds would actually go up. Two players could sit
+   * on the same table watching different numbers tick towards a change that
+   * neither of them triggered.
+   */
+  const byHand = typeof input.levelLengthHands === 'number' && input.levelLengthHands > 0;
   return {
     mode: input.mode,
     levelNumber: level.index + 1,
     level: level.level,
-    msUntilNextLevel: level.msUntilNextLevel,
+    msUntilNextLevel: byHand ? null : level.msUntilNextLevel,
+    handsUntilNextLevel: byHand && level.nextLevel
+      ? handsUntilNextLevel(input.handNumber ?? 1, input.levelLengthHands!)
+      : null,
     nextLevel: level.nextLevel,
     pendingForNextHand: blindsDue(input.currentBlinds, level.level),
   };
@@ -165,9 +183,12 @@ export function formatLevelClock(ms: number | null): string {
 
 export function formatTournamentStatus(status: TournamentTableStatus): string {
   const level = `Level ${status.levelNumber} ${formatBlindLevel(status.level)}`;
-  const suffix = status.msUntilNextLevel === null
-    ? 'final level'
-    : `up in ${formatLevelClock(status.msUntilNextLevel)}`;
+  const hands = status.handsUntilNextLevel;
+  const suffix = hands !== null && hands !== undefined
+    ? `up in ${hands} ${hands === 1 ? 'hand' : 'hands'}`
+    : status.msUntilNextLevel === null
+      ? 'final level'
+      : `up in ${formatLevelClock(status.msUntilNextLevel)}`;
   return status.pendingForNextHand
     ? `${level} next hand · ${suffix}`
     : `${level} · ${suffix}`;
