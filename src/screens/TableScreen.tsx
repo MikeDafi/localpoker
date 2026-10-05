@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import Animated, { FadeInUp, Easing } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp, FadeOut, Easing } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
@@ -19,7 +19,7 @@ import {
 import { applyOutfit } from '../game/outfits';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
-import { blindsForMode, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
+import { blindsForMode, formatBlindLevel, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
 import { FeltSurface } from '../components/FeltSurface';
 import { DealtCard } from '../components/DealtCard';
 import { HoleCards } from '../components/HoleCards';
@@ -131,6 +131,12 @@ const HUMAN_ID = 'me';
 const FELT_INSET = 4;
 const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
+
+/** How long the blind increase is announced across the board. */
+const BLINDS_UP_BANNER_MS = 3000;
+
+/** A pause after the betting closes, before the next street is dealt. */
+const STREET_BEAT_MS = 900;
 
 /** Clear air between an action's cue and the cue for whoever is next. */
 const ACTION_CUE_SPACING_MS = 420;
@@ -1459,11 +1465,27 @@ export function TableScreen({ navigation, route }: Props) {
     });
 
     switch (action.kind) {
-      case 'reset':
-        if (revealedBoard !== action.revealed) setRevealedBoard(action.revealed);
+      case 'reset': {
         if (resultsOpen) setResultsOpen(false);
         if (tabledHand) setTabledHand(false);
-        return undefined;
+        if (revealedBoard === action.revealed) return undefined;
+        /*
+         * A beat before the next street lands.
+         *
+         * The last player to act closed the betting and the engine advanced
+         * the street in the same instant, so the flop appeared on top of the
+         * action that paid for it and there was no moment in which to read
+         * what had just happened. Only when cards are being ADDED: a new hand
+         * resets this to zero and should not be made to wait for it.
+         */
+        if (action.revealed < revealedBoard || animsOff) {
+          setRevealedBoard(action.revealed);
+          return undefined;
+        }
+        const revealed = action.revealed;
+        const beat = setTimeout(() => setRevealedBoard(revealed), STREET_BEAT_MS);
+        return () => clearTimeout(beat);
+      }
       case 'settle':
         if (revealedBoard !== action.revealed) setRevealedBoard(action.revealed);
         if (!resultsOpen) setResultsOpen(true);
@@ -1985,6 +2007,39 @@ export function TableScreen({ navigation, route }: Props) {
     [settings.gameMode, tournamentStartedAt, state.config, tournamentNow],
   );
   const tournamentStatusText = tournamentStatus ? formatTournamentStatus(tournamentStatus) : null;
+
+  /*
+   * Say it out loud when the blinds go up.
+   *
+   * The level sits in a small pill in the header, which is exactly where
+   * nobody is looking during a hand, so a level change was something you
+   * discovered by being surprised at the size of your next blind. It is
+   * announced across the board for a few seconds instead, in the one place
+   * every player at the table is already watching.
+   */
+  const [blindsUpAt, setBlindsUpAt] = useState<number | null>(null);
+  const announcedLevel = useRef<number | null>(null);
+  useEffect(() => {
+    const level = tournamentStatus?.levelNumber ?? null;
+    if (level === null) {
+      announcedLevel.current = null;
+      return;
+    }
+    // The first reading is where the table already was, not a climb.
+    if (announcedLevel.current === null) {
+      announcedLevel.current = level;
+      return;
+    }
+    if (level <= announcedLevel.current) return;
+    announcedLevel.current = level;
+    setBlindsUpAt(Date.now());
+  }, [tournamentStatus?.levelNumber]);
+
+  useEffect(() => {
+    if (blindsUpAt === null) return undefined;
+    const timer = setTimeout(() => setBlindsUpAt(null), BLINDS_UP_BANNER_MS);
+    return () => clearTimeout(timer);
+  }, [blindsUpAt]);
   const tournamentWinnerId = tournament ? tournamentWinner(state.players) : null;
   const tournamentWinnerPlayer = tournamentWinnerId
     ? state.players.find((p) => p.id === tournamentWinnerId)
@@ -2257,8 +2312,35 @@ export function TableScreen({ navigation, route }: Props) {
   const lowestSeatTop = opponents.length
     ? Math.max(...opponents.map((_, i) => seatPos(i, opponents.length).top))
     : 0;
-  const laneTop = lowestSeatTop + podH + 6;
-  const laneBottom = heroPodH + 6;
+  const measuredLaneTop = lowestSeatTop + podH + 6;
+  const measuredLaneBottom = heroPodH + 6;
+
+  /*
+   * The lane is latched the first time both pods have really been measured,
+   * and never recomputed after that.
+   *
+   * High-water marks were supposed to be enough, and they are not. The hero's
+   * pod starts from a guess of 96 and drops to its real height the frame
+   * after it is laid out, which is a shrink the maxima deliberately allow
+   * because the guess was wrong. Everything about the board is derived from
+   * this lane, so that one step resized the five cards and moved them down
+   * the felt, and the placeholders sat in a different place in a hand than
+   * between hands.
+   *
+   * Latching is the only thing that actually delivers what is wanted here,
+   * which is that the board does not move. A pod is designed not to change
+   * height mid hand anyway, the bet row is reserved whether or not there is a
+   * bet, so there is nothing legitimate left to track after the first
+   * measurement.
+   */
+  const [lockedLane, setLockedLane] = useState<{ top: number; bottom: number } | null>(null);
+  useEffect(() => {
+    if (lockedLane || heroH === null || area.h <= 0) return;
+    setLockedLane({ top: measuredLaneTop, bottom: measuredLaneBottom });
+  }, [lockedLane, heroH, area.h, measuredLaneTop, measuredLaneBottom]);
+
+  const laneTop = lockedLane ? lockedLane.top : measuredLaneTop;
+  const laneBottom = lockedLane ? lockedLane.bottom : measuredLaneBottom;
 
   /*
    * How much cloth there actually is.
@@ -2679,6 +2761,21 @@ export function TableScreen({ navigation, route }: Props) {
           ]}
           pointerEvents="box-none"
         >
+          {blindsUpAt !== null && (
+            <Animated.View
+              entering={FadeInDown.duration(motion.fast)}
+              exiting={FadeOut.duration(motion.base)}
+              style={styles.blindsUpBanner}
+              pointerEvents="none"
+            >
+              <Text style={styles.blindsUpText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                BLINDS UP
+              </Text>
+              <Text style={styles.blindsUpLevel} numberOfLines={1}>
+                {tournamentStatus ? formatBlindLevel(tournamentStatus.level) : ''}
+              </Text>
+            </Animated.View>
+          )}
           <View style={styles.board} onLayout={(e) => setBoardBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y, w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
             {Array.from({ length: BOARD_CELLS }).map((_, i) => {
               const card = felt.board[i];
@@ -3559,6 +3656,25 @@ const styles = StyleSheet.create({
   // The gold win ring must not change the board's geometry, or every card
   // visibly jumps outward the moment a hand is won. The border is therefore
   // always present and merely changes colour.
+  /*
+   * Over the board rather than beside it, and translucent so the cards it
+   * covers are still readable underneath. Three seconds is long enough to
+   * land and short enough not to be in the way of a hand being played.
+   */
+  blindsUpBanner: {
+    position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center',
+    zIndex: 25, paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(12,16,14,0.62)',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.gold,
+  },
+  blindsUpText: {
+    fontFamily: fonts.bold, fontSize: 34, letterSpacing: 2, color: colors.gold, textAlign: 'center',
+  },
+  blindsUpLevel: {
+    fontFamily: fonts.semibold, fontSize: 16, color: colors.onDark, textAlign: 'center', marginTop: 2,
+  },
   boardCardWrap: { marginHorizontal: 0, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
   winCard: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.16)' },
   /*
