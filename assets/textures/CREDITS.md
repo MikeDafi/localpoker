@@ -228,6 +228,26 @@ then normalised to a 0.91 peak. It keeps the cue short while making a raise read
 as a handful instead of the single chip used for a call. Final file is mono,
 44.1kHz, 16-bit PCM, 242ms, 21KB.
 
+**Re-edited** (`scripts/make-chip-sounds.py`). The first versions of these two
+cues were a byte copy of the single `chip.wav` transient, and three identical
+copies of it. Measured, both sat at a spectral centroid near 6kHz with a 0.92
+peak, while every other cue in the app peaks between 0.16 and 0.39, so the
+betting sounds were the brightest and loudest things on the table and were
+built from one unvarying click. That is a user interface tick, not money.
+
+Both are now a cluster of the same CC0 hit at several pitches, with jittered
+onsets, a one pole low pass, and levels that sit with the rest of the mix:
+
+| | before | after |
+|---|---|---|
+| `chipCall.wav` | 140ms, 1 onset, ~5989Hz, peak 0.92 | 210ms, 2 onsets, ~3705Hz, peak 0.42 |
+| `chipRaise.wav` | 242ms, 2 onsets, ~6320Hz, peak 0.91 | 306ms, 4 onsets, ~3789Hz, peak 0.46 |
+
+The pitch variation is the important part: identical repeats read as a machine,
+and no two real chips land on the same note. Deterministic, the offsets and
+gains are a fixed table rather than a random number generator, so regenerating
+produces identical bytes.
+
 ### `check.wav`: knuckles rapping on a wooden table
 
 | | |
@@ -262,7 +282,10 @@ most table-like spacing of the three. It was isolated with
 `ffmpeg -i knock_on_wood_or_door.ogg -af "atrim=start=2.464:end=2.844,asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.002,afade=t=out:st=0.360:d=0.018" -ar 44100 -ac 1 -c:a pcm_s16le check.wav`,
 cutting 4ms before the first rap's attack (so the hit is immediate) and ending
 before the third rap begins, leaving exactly two raps. Final file is mono,
-44.1kHz, 16-bit PCM, 390ms, 34KB.
+44.1kHz, 16-bit PCM, 390ms, 34KB. Levelled to a 0.55 peak by
+`scripts/make-chip-sounds.py`: the recording and its character are untouched,
+it was simply the loudest thing on the table by a wide margin, which reads as
+harshness rather than as wood.
 
 ---
 
