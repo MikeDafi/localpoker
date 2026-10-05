@@ -2,7 +2,7 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-aud
 import { captureError } from './telemetry';
 
 export type SoundName =
-  | 'tap' | 'select' | 'deal' | 'chip' | 'check' | 'fold'
+  | 'tap' | 'select' | 'deal' | 'chip' | 'chipCall' | 'chipRaise' | 'check' | 'fold'
   | 'turn' | 'turnOther' | 'coins' | 'win' | 'lose' | 'error' | 'start' | 'tick' | 'tickUrgent';
 
 const SOURCES: Record<SoundName, number> = {
@@ -10,6 +10,8 @@ const SOURCES: Record<SoundName, number> = {
   select: require('../../assets/sounds/select.wav'),
   deal: require('../../assets/sounds/deal.wav'),
   chip: require('../../assets/sounds/chip.wav'),
+  chipCall: require('../../assets/sounds/chipCall.wav'),
+  chipRaise: require('../../assets/sounds/chipRaise.wav'),
   check: require('../../assets/sounds/check.wav'),
   fold: require('../../assets/sounds/fold.wav'),
   turn: require('../../assets/sounds/turn.wav'),
@@ -89,6 +91,12 @@ export const sound = {
     } catch (error) {
       reportSoundError('play', error, name);
     }
+  },
+  playChipCall() {
+    this.play('chipCall');
+  },
+  playChipRaise() {
+    this.play('chipRaise');
   },
   /**
    * A handful of chips, one after another.

@@ -3,6 +3,12 @@ import type { SavedGame } from '../state/AppContext';
 /** A friends/online game is abandoned once everyone leaves; don't resume a stale one. */
 export const STALE_FRIENDS_RESUME_MS = 15_000;
 
+export const nextSavedGameWriteVersion = (current: number): number =>
+  Number.isSafeInteger(current) && current >= 0 ? current + 1 : 1;
+
+export const isCurrentSavedGameWrite = (writeVersion: number, currentVersion: number): boolean =>
+  writeVersion === currentVersion;
+
 /**
  * Whether a saved game may be resumed. Local (vs-bots) games are always
  * resumable.

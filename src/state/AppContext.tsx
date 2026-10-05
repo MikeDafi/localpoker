@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showAlert } from '../components/alertBus';
 import { PalConfig, randomPal, normalizePal, palFromSeed } from '../avatar/palConfig';
 import { GameSettings, DEFAULT_GAME_SETTINGS, normalizeSettings } from '../game/settings';
+import { isCurrentSavedGameWrite, nextSavedGameWriteVersion } from '../game/savedGame';
 import { friendRequestAlertKeys, freshFriendRequestForAlert } from '../game/friendRequestAlert';
 import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
 import { emptyCosmetics, migrateCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
@@ -301,6 +302,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS);
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
+  const savedGameWriteVersion = useRef(0);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const activeAccount = useRef<string>(GUEST_ACCOUNT);
   const seenFriendRequestAlerts = useRef<Set<string>>(new Set());
@@ -338,9 +340,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (av === 'true') setAgeVerified(true);
         if (b) setBlockedUsers(JSON.parse(b));
         if (oh) setOpponentHistory(JSON.parse(oh));
-        const hadPersistedUserData = Boolean(p || s || a || f || st || g || av || b || acct || oh || cos);
         const readCloset = readCosmetics(cos);
-        const migratedCloset = migrateCosmetics(readCloset, { grantLegacyEmojiEmotes: hadPersistedUserData });
+        const migratedCloset = migrateCosmetics(readCloset, { grantLegacyEmojiEmotes: false });
         setCosmeticsState(migratedCloset);
         if (migratedCloset !== readCloset || !cos) {
           AsyncStorage.setItem(COSMETICS_KEY, JSON.stringify(migratedCloset)).catch((error) => {
@@ -971,11 +972,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resetStats = useCallback(() => persistStats(DEFAULT_STATS), [persistStats]);
 
   const saveGame = useCallback((g: SavedGame) => {
+    const writeVersion = nextSavedGameWriteVersion(savedGameWriteVersion.current);
+    savedGameWriteVersion.current = writeVersion;
     setSavedGame(g);
-    persist(SAVED_GAME_KEY, g);
-  }, [persist]);
+    AsyncStorage.setItem(SAVED_GAME_KEY, JSON.stringify(g))
+      .then(() => {
+        if (isCurrentSavedGameWrite(writeVersion, savedGameWriteVersion.current)) return;
+        /*
+         * AsyncStorage writes cannot be cancelled once dispatched. If a clear
+         * happened while this write was in flight, remove the stale value after
+         * it lands so the persisted state still matches the in-memory clear.
+         */
+        AsyncStorage.removeItem(SAVED_GAME_KEY).catch((error) => {
+          reportStorageError('clear-stale-saved-game-write', SAVED_GAME_KEY, error);
+        });
+      })
+      .catch((error) => {
+        reportStorageError('persist', SAVED_GAME_KEY, error);
+      });
+  }, []);
 
   const clearSavedGame = useCallback(() => {
+    savedGameWriteVersion.current = nextSavedGameWriteVersion(savedGameWriteVersion.current);
     setSavedGame(null);
     AsyncStorage.removeItem(SAVED_GAME_KEY).catch((error) => {
       reportStorageError('clear-saved-game', SAVED_GAME_KEY, error);

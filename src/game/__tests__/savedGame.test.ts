@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isResumable, resumedTurnStartedAt, STALE_FRIENDS_RESUME_MS } from '../savedGame';
+import {
+  isCurrentSavedGameWrite,
+  isResumable,
+  nextSavedGameWriteVersion,
+  resumedTurnStartedAt,
+  STALE_FRIENDS_RESUME_MS,
+} from '../savedGame';
 import type { SavedGame } from '../../state/AppContext';
 
 const base = (over: Partial<SavedGame> = {}): SavedGame => ({
@@ -84,5 +90,19 @@ describe('resumedTurnStartedAt', () => {
     const saved = base({ turnStartedAt: 1_005_000, savedAt: 1_000_000 });
     const now = 2_000_000;
     expect(resumedTurnStartedAt(saved, now)).toBeLessThanOrEqual(now);
+  });
+});
+
+describe('saved game persistence writes', () => {
+  it('makes a clear beat an older save that settles later', () => {
+    let version = 0;
+    const saveVersion = nextSavedGameWriteVersion(version);
+    version = saveVersion;
+
+    const clearVersion = nextSavedGameWriteVersion(version);
+    version = clearVersion;
+
+    expect(isCurrentSavedGameWrite(saveVersion, version)).toBe(false);
+    expect(isCurrentSavedGameWrite(clearVersion, version)).toBe(true);
   });
 });

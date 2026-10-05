@@ -127,7 +127,8 @@ writeWav('tap.wav', tone(660, 0.08, { type: 'tri', vol: 0.4, decay: 2 }));
 writeWav('select.wav', seq(tone(520, 0.05, { type: 'tri', vol: 0.35, decay: 2 }), tone(720, 0.06, { type: 'tri', vol: 0.35, decay: 2 })));
 writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }), tone(300, 0.05, { type: 'tri', vol: 0.2, decay: 3 })));
 /*
- * chip.wav and check.wav are NOT generated here any more.
+ * chip.wav, chipCall.wav, chipRaise.wav and check.wav are NOT generated here
+ * any more.
  *
  * They are real recordings now, a clay chip and knuckles on wood, because
  * three attempts at synthesising them were rejected and the third was right
@@ -135,9 +136,9 @@ writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }
  * additive synthesis of a few partials does not reach. Their provenance and
  * licences are in assets/textures/CREDITS.md.
  *
- * Nothing below may write those two filenames. This script is run by hand to
- * regenerate the rest, and doing so used to overwrite them silently, which
- * would have put the synthesised versions back without anybody noticing.
+ * Nothing below may write those filenames. This script is run by hand to
+ * regenerate the rest, and doing so used to overwrite recordings silently,
+ * which would have put the synthesised versions back without anybody noticing.
  */
 /*
  * Raising no longer has a cue of its own.

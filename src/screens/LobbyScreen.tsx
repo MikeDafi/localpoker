@@ -24,6 +24,7 @@ import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson, withOwnDevi
 import { GAME_MODE_LABELS } from '../game/gameMode';
 import { pinCosmetics } from '../game/cosmetics';
 import { shouldLeaveRoomOnLobbyUnmount } from '../game/lobbyRoom';
+import { isResumable } from '../game/savedGame';
 import type { GameSettings } from '../game/settings';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
@@ -40,7 +41,7 @@ const parseRoomPal = (palJson?: string): PalConfig | undefined => {
 
 export function LobbyScreen({ navigation, route }: Props) {
   const { roomCode, host, settings: hostSettings } = route.params;
-  const { profile, friends, cosmetics } = useApp();
+  const { profile, friends, cosmetics, savedGame } = useApp();
   const online = isFirebaseConfigured();
 
   const me: RoomPlayer = useMemo(() => ({
@@ -103,6 +104,7 @@ export function LobbyScreen({ navigation, route }: Props) {
       settings: tableSettings,
       seed: Date.now(),
       roomCode,
+      resume: current?.status === 'playing' && savedGame?.roomCode === roomCode && isResumable(savedGame),
     });
   };
 

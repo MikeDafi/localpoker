@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInUp, Easing } from 'react-native-reanimated';
@@ -10,9 +10,12 @@ import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
-import { pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
+import { isMidGameSafe, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
-import { SETTINGS_SCHEMA, availableSettingOptions, type GameSettings } from '../game/settings';
+import {
+  SETTINGS_SCHEMA, availableSettingOptions, gameSetupSectionsForMode,
+  type GameSettings, type SettingField,
+} from '../game/settings';
 import { applyOutfit } from '../game/outfits';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
@@ -35,7 +38,6 @@ import { RunCountWheel } from '../components/RunCountWheel';
 import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
-import { chipSoundsFor, chipsCommitted } from '../game/betSound';
 import {
   displayHoleCards,
   exposeHoleCard,
@@ -107,6 +109,7 @@ import {
   exposeOwnCard,
   subscribeExposedCards,
   revealOwnHand,
+  TOO_FEW_PLAYERS_REASON,
   subscribeShownHands,
   subscribePrivateView,
   subscribeRoom,
@@ -129,8 +132,11 @@ const FELT_INSET = 4;
 const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
 
-/** How long the table sits on a finished hand before dealing the next one. */
-const SHOWDOWN_HOLD_SEC = 10;
+/** Clear air between an action's cue and the cue for whoever is next. */
+const ACTION_CUE_SPACING_MS = 420;
+
+/** Floor for the end of hand wait, however short the turn timer is set. */
+const SHOWDOWN_HOLD_SEC = 8;
 
 /** Added to that whenever somebody turns their hand over, so it can be seen. */
 const SHOWDOWN_REVEAL_EXTRA_SEC = 3;
@@ -423,6 +429,8 @@ export function TableScreen({ navigation, route }: Props) {
   }, [firebaseOnline, isOnlineHost, roomCode]);
 
   const botTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When an action last played a cue, so the turn cue can stay off it. */
+  const lastActionSoundAt = useRef(0);
   const handFlags = useRef({ vpip: false, pfr: false });
   const handHintErrorReported = useRef(false);
   // Guard against re-recording a hand that was already scored before we left:
@@ -507,6 +515,16 @@ export function TableScreen({ navigation, route }: Props) {
    * left is exactly the part that was too short.
    */
   const [showdownHold, setShowdownHold] = useState(0);
+
+  /*
+   * How long a finished hand is left on screen.
+   *
+   * The table's own turn timer, rather than a separate constant. Setting a
+   * twenty second clock and then being given ten to look at the result is the
+   * table ignoring the one number the player actually chose. Floored so a very
+   * fast clock still leaves time to read who won.
+   */
+  const endOfHandSeconds = Math.max(SHOWDOWN_HOLD_SEC, settings.turnTimerSec);
   const [localCardExposure, setLocalCardExposure] = useState<HoleCardExposure>([false, false]);
   const [area, setArea] = useState({ w: width, h: 0 });
   // Pod heights are measured, but kept as *high-water marks*: a pod grows and
@@ -1095,22 +1113,26 @@ export function TableScreen({ navigation, route }: Props) {
    * a handful, which is the same comparison a player is already making.
    */
   const actionSound = (action: PlayerAction, amount?: number, actorId?: string) => {
+    /*
+     * Remember when an action last made a noise.
+     *
+     * Acting moves play to the next seat in the same instant, so the turn cue
+     * below fired on top of this one and the two sounded like a single muddy
+     * event. The knock of a check was the clearest casualty: it is a good
+     * sound and it was being spoiled by a chime landing on top of it.
+     */
+    lastActionSoundAt.current = Date.now();
     if (action === 'fold') { sound.play('fold'); return; }
     if (action === 'check') { sound.play('check'); return; }
-    const actor = state.players.find((p) => p.id === (actorId ?? state.players[state.currentPlayerIndex]?.id));
-    const chips = chipsCommitted({
-      action,
-      amount,
-      playerBet: actor?.currentBet ?? 0,
-      playerChips: actor?.chips ?? 0,
-      tableBet: state.currentBet,
-    });
     /*
-     * The pot as it stands before this bet joins it, taken from `state` rather
-     * than the rendered `felt` so the ratio cannot be measured against a pot
-     * the animation has not caught up to yet.
+     * Two real chip recordings rather than a count of synthetic clacks scaled
+     * by bet size. The old version said "how big" by playing more of the same
+     * sound, which at speed ran together into a rattle and told you nothing.
+     * A call and a raise are different acts, so they are different sounds:
+     * one short handful against three, which is audible without comparing.
      */
-    sound.playChips(chipSoundsFor(chips, totalCommittedChips(state)));
+    if (action === 'call') { sound.playChipCall(); return; }
+    sound.playChipRaise();
   };
 
   /**
@@ -1262,9 +1284,16 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const evicted = useRef(false);
   useEffect(() => {
-    if (!roomCode || isOnlineHost || room?.status !== 'ended' || evicted.current) return;
+    if (!roomCode || room?.status !== 'ended' || evicted.current) return;
+    /*
+     * The host is normally not told their own table ended, because they are
+     * the one who ended it. The exception is a table that ended itself for
+     * want of players: nobody chose that, so the host needs telling too.
+     */
+    const endedForTooFew = room?.endedReason === TOO_FEW_PLAYERS_REASON;
+    if (isOnlineHost && !endedForTooFew) return;
     evicted.current = true;
-    clearSavedGame();
+    clearSavedGameForClosedTable();
     showAlert('Table closed', room?.endedReason || 'The host ended this table.', [
       { text: 'Back to menu', onPress: () => navigation.replace('Home') },
     ]);
@@ -1489,8 +1518,22 @@ export function TableScreen({ navigation, route }: Props) {
      * The two cues are deliberately inverted, rising for you and falling for
      * everyone else, so they are distinguishable without being compared.
      */
-    if (isHumanTurn) sound.play('turn');
-    else if (current && !handOver) sound.play('turnOther');
+    const cue = isHumanTurn ? 'turn' : (current && !handOver ? 'turnOther' : null);
+    if (!cue) return undefined;
+    /*
+     * Wait out whatever the action just played rather than talking over it.
+     * Delayed rather than dropped: knowing play has moved on is the whole
+     * job of this cue, so it still has to arrive, just not at the same
+     * moment as the chips or the knock.
+     */
+    const since = Date.now() - lastActionSoundAt.current;
+    const wait = Math.max(0, ACTION_CUE_SPACING_MS - since);
+    if (wait === 0) {
+      sound.play(cue);
+      return undefined;
+    }
+    const timer = setTimeout(() => sound.play(cue), wait);
+    return () => clearTimeout(timer);
     // Keyed on who is to act, not on whether it is you. Keying on the latter
     // meant play passing between two opponents made no sound at all, because
     // the flag never changed.
@@ -1502,6 +1545,30 @@ export function TableScreen({ navigation, route }: Props) {
   // thrash (state changes many times/sec during bot sequences). Full state is
   // kept so a mid-hand resume is correct; this snapshot is local-only.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /*
+   * A closed table must stay closed.
+   *
+   * Clearing the save and walking away was not enough: the debounced save
+   * below, and the flush on unmount, both fire AFTER the clear and wrote the
+   * dead table straight back. Home then offered Resume for a room that no
+   * longer existed. These two flags make a clear win against anything already
+   * in flight, which is the only ordering that is safe.
+   */
+  const skipNextTableSave = useRef(false);
+  const steppedAwaySave = useRef(false);
+
+  const cancelPendingSave = () => {
+    if (!saveTimer.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+  };
+
+  const clearSavedGameForClosedTable = () => {
+    skipNextTableSave.current = true;
+    steppedAwaySave.current = false;
+    cancelPendingSave();
+    clearSavedGame();
+  };
   // The latest snapshot, so the unmount flush below writes current data without
   // re-subscribing the effect on every state change.
   const snapshot = useRef({ state, settings, seed, roomCode, turnStartedAt, shouldSaveLocalState, tournamentStartedAt });
@@ -1510,6 +1577,7 @@ export function TableScreen({ navigation, route }: Props) {
     if (!shouldSaveLocalState) return undefined;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
+      if (skipNextTableSave.current) return;
       saveGame({
         stateJson: JSON.stringify(state),
         settings,
@@ -1539,7 +1607,8 @@ export function TableScreen({ navigation, route }: Props) {
     // Chips are played on a stagger, so leaving mid-rattle would otherwise
     // carry the sound onto whatever screen comes next.
     sound.stopChips();
-    if (saveTimer.current) clearTimeout(saveTimer.current);
+    cancelPendingSave();
+    if (skipNextTableSave.current) return;
     const s = snapshot.current;
     if (!s.shouldSaveLocalState) return;
     saveGame({
@@ -1551,6 +1620,9 @@ export function TableScreen({ navigation, route }: Props) {
       savedAt: Date.now(),
       turnStartedAt: s.turnStartedAt,
       ...(s.tournamentStartedAt !== null ? { tournamentStartedAt: s.tournamentStartedAt } : {}),
+      // A deliberate step away has to survive the flush, or the home screen
+      // applies the staleness rule meant for somebody who was dropped.
+      ...(steppedAwaySave.current ? { steppedAway: true } : {}),
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1666,7 +1738,7 @@ export function TableScreen({ navigation, route }: Props) {
             if (roomCode && firebaseOnline && isOnlineHost) {
               endRoom(roomCode, roomReason).catch(() => {});
             }
-            clearSavedGame();
+            clearSavedGameForClosedTable();
             navigation.replace('Home');
           },
         },
@@ -1686,7 +1758,7 @@ export function TableScreen({ navigation, route }: Props) {
     }
     if (humanEliminated && !isOnlineHost) {
       showAlert('Out of tournament', 'You are out of chips, so your tournament is over.', [
-        { text: 'Back to menu', onPress: () => { clearSavedGame(); navigation.replace('Home'); } },
+        { text: 'Back to menu', onPress: () => { clearSavedGameForClosedTable(); navigation.replace('Home'); } },
       ]);
       return;
     }
@@ -1726,7 +1798,7 @@ export function TableScreen({ navigation, route }: Props) {
     }
     if (!tournament && human.chips <= 0) {
       showAlert('Out of chips', 'Rebuy for free and keep playing?', [
-        { text: 'Back to menu', style: 'cancel', onPress: () => { clearSavedGame(); navigation.replace('Home'); } },
+        { text: 'Back to menu', style: 'cancel', onPress: () => { clearSavedGameForClosedTable(); navigation.replace('Home'); } },
         { text: 'Rebuy (free)', onPress: () => { rebuy(); startNext(); } },
       ]);
       return;
@@ -1820,6 +1892,9 @@ export function TableScreen({ navigation, route }: Props) {
 
   /** Go to the home screen with the table still standing behind you. */
   const stepAway = () => {
+    steppedAwaySave.current = true;
+    skipNextTableSave.current = false;
+    cancelPendingSave();
     const s = snapshot.current;
     saveGame({
       stateJson: JSON.stringify(s.state),
@@ -1853,7 +1928,7 @@ export function TableScreen({ navigation, route }: Props) {
          * games are deliberately kept, because resuming one is the whole
          * point of saving it.
          */
-        clearSavedGame();
+        clearSavedGameForClosedTable();
         navigation.replace('Home');
       });
   };
@@ -2028,7 +2103,7 @@ export function TableScreen({ navigation, route }: Props) {
       showAlert(
         'Out of chips',
         'You ran out of time to rebuy, so your seat has been freed up. Thanks for playing!',
-        [{ text: 'Back to menu', onPress: () => { clearSavedGame(); navigation.replace('Home'); } }],
+        [{ text: 'Back to menu', onPress: () => { clearSavedGameForClosedTable(); navigation.replace('Home'); } }],
       );
       return;
     }
@@ -2522,7 +2597,7 @@ export function TableScreen({ navigation, route }: Props) {
             label="Back to menu"
             variant="green"
             size="lg"
-            onPress={() => { clearSavedGame(); navigation.replace('Home'); }}
+            onPress={() => { clearSavedGameForClosedTable(); navigation.replace('Home'); }}
           />
         </View>
       </ScreenBackground>
@@ -2868,11 +2943,19 @@ export function TableScreen({ navigation, route }: Props) {
             entering={FadeInUp.duration(motion.base).easing(Easing.bezier(...easings.out))}
             style={styles.resultCard}
           >
-            <Text style={styles.resultTitle}>Run it how many times?</Text>
-            <Text style={styles.resultLine}>
-              Highest vote wins. No answer means 1.
-            </Text>
+            {/*
+              * The question sits beside the wheel rather than above it.
+              *
+              * Stacked, the card was a title, a subtitle, three rows of wheel
+              * and a countdown, which ran off the bottom of the screen with
+              * the countdown it was timing out on cut off. Side by side the
+              * card is only as tall as the wheel.
+              */}
             <View style={styles.runVoteRow}>
+              <View style={styles.runVoteCopy}>
+                <Text style={styles.runVoteTitle}>Run it how many times?</Text>
+                <Text style={styles.runVoteNote}>Highest vote wins. No answer means 1.</Text>
+              </View>
               <RunCountWheel
                 value={humanRunVote?.choice ?? 1}
                 enabled={runVoteCanAnswer}
@@ -2895,9 +2978,25 @@ export function TableScreen({ navigation, route }: Props) {
         ) : isShowdown ? (
           <Animated.View
             entering={FadeInUp.duration(motion.base).easing(Easing.bezier(...easings.out))}
-            style={styles.resultCard}
+            style={[styles.resultCard, { maxHeight: winH * 0.46 }]}
             onLayout={(e) => setResultH(e.nativeEvent.layout.height)}
           >
+            {/*
+              * The result, everything except the buttons, scrolls.
+              *
+              * On a short phone a hand that ends with a rebuy offer, a winner
+              * line per player and a countdown grew the card past the bottom
+              * of the screen and took Next Hand with it, so the one control
+              * that moves the game on could not be reached at all. The card
+              * is capped now and the body gives way, because the buttons are
+              * the part that must never be the thing that gets cut.
+              */}
+            <ScrollView
+              style={styles.resultBody}
+              contentContainerStyle={styles.resultBodyContent}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
             {/* Your cards are not repeated here: they are already on the table
                 in front of you, and reprinting them turned the result card into
                 a second, smaller copy of your hand competing with the real one. */}
@@ -2973,7 +3072,7 @@ export function TableScreen({ navigation, route }: Props) {
             {!animsOff && !rebuyMessage && (!roomCode || !firebaseOnline || isOnlineHost) && (
               <View style={{ marginTop: spacing.xs }}>
                 <TurnTimer
-                  seconds={SHOWDOWN_HOLD_SEC + showdownHold}
+                  seconds={endOfHandSeconds + showdownHold}
                   active
                   resetKey={`showdown-${state.handNumber}-${showdownHold}`}
                   onExpire={() => { setReveal((r) => (r === 'auto' ? 'muck' : r)); nextHand(); }}
@@ -3027,6 +3126,7 @@ export function TableScreen({ navigation, route }: Props) {
                 <WiiButton label="Muck" variant="white" onPress={() => answerShowChoice(false)} />
               </View>
             )}
+            </ScrollView>
             <View style={styles.nextRow}>
               <WiiButton
                 label={
@@ -3138,7 +3238,6 @@ export function TableScreen({ navigation, route }: Props) {
         settings={settings}
         ownedCosmeticIds={cosmetics.ownedCosmeticIds}
         onChange={(patch) => updateSettings(pickMidGameSafe(patch))}
-        onChangeOwn={(patch) => updateSettings(pickDeviceOnly(patch))}
       />
     </ScreenBackground>
   );
@@ -3164,7 +3263,6 @@ function TableMenu({
   settings,
   ownedCosmeticIds,
   onChange,
-  onChangeOwn,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -3173,8 +3271,21 @@ function TableMenu({
   settings: GameSettings;
   ownedCosmeticIds: readonly string[];
   onChange: (patch: Partial<GameSettings>) => void;
-  onChangeOwn: (patch: Partial<GameSettings>) => void;
 }) {
+  /*
+   * Only the fields this mode uses, and only the ones a live table can
+   * honour. `gameSetupSectionsForMode` already drops what the mode does not
+   * use and anything device local; `isMidGameSafe` drops the handful that
+   * cannot change with seats already dealt in, which is the table size, the
+   * bot count and the game mode itself.
+   */
+  const midGameFields = useMemo(
+    () => gameSetupSectionsForMode(settings.gameMode, !!roomCode)
+      .flatMap((section) => section.fields)
+      .filter((field) => isMidGameSafe(String(field.key))),
+    [settings.gameMode, roomCode],
+  );
+
   if (!visible) return null;
 
   const cycle = (key: 'feltStyle' | 'chipStyle' | 'cardBack') => {
@@ -3201,6 +3312,7 @@ function TableMenu({
         {/* Swallows taps on the sheet so only the backdrop closes it. */}
         <Pressable style={styles.menuSheet} onPress={() => {}}>
           <Text style={styles.menuTitle}>Table</Text>
+          <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
 
           {roomCode ? (
             <View style={styles.menuRow} accessibilityLabel={`Room code ${roomCode}`}>
@@ -3260,80 +3372,33 @@ function TableMenu({
             </>
           ) : null}
 
-          {/*
-            * Your own device, whoever you are at this table.
-            *
-            * These are above the host's section in importance and below it on
-            * screen only because the host's rows describe the table everyone
-            * is looking at. Nothing here reaches anybody else, which is why
-            * it is not behind `isHost`: a guest who cannot mute the game
-            * until the session ends has to put the phone down instead, and
-            * that was the only way to change any of these mid game.
-            */}
-          <Text style={styles.menuSectionTitle}>Just for you</Text>
-
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => onChangeOwn({ soundEnabled: !settings.soundEnabled })}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: settings.soundEnabled }}
-            accessibilityLabel="Sound effects"
-          >
-            <Text style={styles.menuRowLabel}>Sound</Text>
-            <Text style={[styles.menuRowValue, settings.soundEnabled && styles.menuRowValueOn]}>
-              {settings.soundEnabled ? 'On' : 'Off'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => onChangeOwn({ hapticsEnabled: !settings.hapticsEnabled })}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: settings.hapticsEnabled }}
-            accessibilityLabel="Haptics"
-          >
-            <Text style={styles.menuRowLabel}>Haptics</Text>
-            <Text style={[styles.menuRowValue, settings.hapticsEnabled && styles.menuRowValueOn]}>
-              {settings.hapticsEnabled ? 'On' : 'Off'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => onChangeOwn({ animationSpeed: nextAnimationSpeed(settings.animationSpeed) })}
-            accessibilityRole="button"
-            accessibilityLabel={`Animation speed, currently ${settings.animationSpeed}`}
-            accessibilityHint="Changes to the next speed"
-          >
-            <Text style={styles.menuRowLabel}>Animations</Text>
-            <Text style={styles.menuRowValue}>{ANIMATION_SPEED_LABELS[settings.animationSpeed] ?? settings.animationSpeed}</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => onChangeOwn({ autoMuck: !settings.autoMuck })}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: settings.autoMuck }}
-            accessibilityLabel="Auto muck losing hands"
-          >
-            <Text style={styles.menuRowLabel}>Auto muck</Text>
-            <Text style={[styles.menuRowValue, settings.autoMuck && styles.menuRowValueOn]}>
-              {settings.autoMuck ? 'On' : 'Off'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => onChangeOwn({ showLiveStats: !settings.showLiveStats })}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: settings.showLiveStats }}
-            accessibilityLabel="Live stats overlay"
-          >
-            <Text style={styles.menuRowLabel}>Live stats</Text>
-            <Text style={[styles.menuRowValue, settings.showLiveStats && styles.menuRowValueOn]}>
-              {settings.showLiveStats ? 'On' : 'Off'}
-            </Text>
-          </Pressable>
+          {isHost ? (
+            <>
+              {/*
+                * The rules of the game, the same list Game Setup shows for
+                * this mode, because what matters differs per mode: a cash
+                * table has no ante or level length and a tournament does.
+                *
+                * Sound, haptics and animation speed used to live here and do
+                * not any more. They are about a phone rather than a table,
+                * they belong in Settings, and they were taking the room that
+                * the things people actually want to change were missing from.
+                */}
+              <Text style={styles.menuSectionTitle}>Game rules</Text>
+              {midGameFields.map((field) => (
+                <MenuSettingRow
+                  key={String(field.key)}
+                  field={field}
+                  value={settings[field.key]}
+                  onChange={onChange}
+                />
+              ))}
+              <Text style={styles.menuNote}>
+                Every rule here is read when a hand starts, so a change lands on the next
+                hand and never moves under the one being played.
+              </Text>
+            </>
+          ) : null}
 
           {/*
             * No Leave game button here any more.
@@ -3344,12 +3409,108 @@ function TableMenu({
             * destroy the table was the wrong way round, so the arrow asks
             * which one you meant instead.
             */}
+          </ScrollView>
           <View style={styles.menuActions}>
             <WiiButton label="Close" size="sm" variant="white" onPress={onClose} />
           </View>
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+/**
+ * One editable rule in the table menu.
+ *
+ * A compact echo of the Game Setup row rather than the row itself: that one
+ * is built for a full screen with help text, a slider and a big stepper, and
+ * this has to fit a sheet over a live hand. Numbers step, everything else
+ * cycles, so every rule is one tap wide and nothing here opens a sub screen.
+ */
+function MenuSettingRow({
+  field,
+  value,
+  onChange,
+}: {
+  field: SettingField;
+  value: GameSettings[keyof GameSettings];
+  onChange: (patch: Partial<GameSettings>) => void;
+}) {
+  const set = (next: unknown) => onChange({ [field.key]: next } as Partial<GameSettings>);
+
+  if (field.type === 'toggle') {
+    const on = value === true;
+    return (
+      <Pressable
+        style={styles.menuRow}
+        onPress={() => set(!on)}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: on }}
+        accessibilityLabel={field.label}
+      >
+        <Text style={styles.menuRowLabel}>{field.label}</Text>
+        <Text style={[styles.menuRowValue, on && styles.menuRowValueOn]}>{on ? 'On' : 'Off'}</Text>
+      </Pressable>
+    );
+  }
+
+  if (field.type === 'select') {
+    const options = field.options ?? [];
+    const at = options.findIndex((option) => option.value === value);
+    const current = options[at];
+    return (
+      <Pressable
+        style={styles.menuRow}
+        onPress={() => {
+          if (options.length < 2) return;
+          set(options[(at + 1) % options.length].value);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`${field.label}, currently ${current?.label ?? String(value)}`}
+        accessibilityHint="Changes to the next option"
+      >
+        <Text style={styles.menuRowLabel}>{field.label}</Text>
+        <Text style={styles.menuRowValue}>{current?.label ?? String(value)}</Text>
+      </Pressable>
+    );
+  }
+
+  /*
+   * Numbers step by the field's own step, clamped to its own range, so the
+   * menu cannot produce a value Game Setup would have refused.
+   */
+  const step = field.step ?? 1;
+  const min = field.min ?? 0;
+  const max = field.max ?? Number.MAX_SAFE_INTEGER;
+  const current = typeof value === 'number' ? value : min;
+  const nudge = (direction: 1 | -1) => {
+    set(Math.max(min, Math.min(max, current + direction * step)));
+  };
+  return (
+    <View style={styles.menuRow}>
+      <Text style={styles.menuRowLabel}>{field.label}</Text>
+      <View style={styles.menuStepper}>
+        <Pressable
+          onPress={() => nudge(-1)}
+          disabled={current <= min}
+          style={[styles.menuStepBtn, current <= min && styles.menuStepBtnOff]}
+          accessibilityRole="button"
+          accessibilityLabel={`Decrease ${field.label}`}
+        >
+          <Text style={styles.menuStepText}>-</Text>
+        </Pressable>
+        <Text style={styles.menuStepValue}>{current.toLocaleString()}</Text>
+        <Pressable
+          onPress={() => nudge(1)}
+          disabled={current >= max}
+          style={[styles.menuStepBtn, current >= max && styles.menuStepBtnOff]}
+          accessibilityRole="button"
+          accessibilityLabel={`Increase ${field.label}`}
+        >
+          <Text style={styles.menuStepText}>+</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -3461,6 +3622,17 @@ const styles = StyleSheet.create({
   menuRowValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark },
   menuRowValueOn: { color: colors.green },
   menuNote: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.onDarkMuted, marginTop: spacing.xs },
+  // Capped so a long rule list cannot push the Close button off a short
+  // phone, which is the same mistake the result card made.
+  menuScroll: { maxHeight: 420 },
+  menuStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  menuStepBtn: {
+    width: 28, height: 28, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt,
+    borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center',
+  },
+  menuStepBtnOff: { opacity: 0.35 },
+  menuStepText: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark },
+  menuStepValue: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark, minWidth: 64, textAlign: 'center' },
   menuSectionTitle: {
     fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkMuted,
     marginTop: spacing.md, marginBottom: spacing.xs, letterSpacing: 0.4,
@@ -3513,16 +3685,23 @@ const styles = StyleSheet.create({
   coin: { width: 17, height: 17, borderRadius: 8.5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.goldDeep },
   coinT: { fontFamily: fonts.bold, color: '#2A2210', fontSize: 11 },
   coinEarned: { fontFamily: fonts.bold, fontSize: 13, color: colors.gold, ...numeric },
+  // Shrinkable, so the buttons below keep their full height whatever the
+  // body contains.
+  resultBody: { flexShrink: 1 },
+  resultBodyContent: { paddingBottom: spacing.xs },
   nextRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   nextBtn: { flex: 1 },
   // 44pt because that is the smallest target iOS considers reachable, and the
   // button is now a circle with no words to widen it.
   showChoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   showChoiceLabel: { fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkSoft },
-  runVoteRow: { alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm },
+  runVoteRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs },
+  runVoteCopy: { flex: 1 },
+  runVoteTitle: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark },
+  runVoteNote: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.onDarkMuted, marginTop: 2 },
   notSeated: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   notSeatedTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, textAlign: 'center' },
   notSeatedBody: { fontFamily: fonts.regular, fontSize: 14, color: colors.onDarkSoft, textAlign: 'center', marginBottom: spacing.md },
-  muckBtn: { width: 62, height: 62, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  muckBtn: { width: 48, height: 48, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   adWrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.xs },
 });

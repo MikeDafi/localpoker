@@ -5,7 +5,17 @@ import { colors, fonts, radii, shadows, spacing, type, motion, easings } from '.
 import { sound } from '../services/sound';
 import { GIF_LIBRARY, gifUrl, gifThumbUrl } from '../services/gifs';
 import { shuffleForDay } from '../game/dailyShuffle';
-import { EMOJI_EMOTES, resolveEmojiEmotes, resolveGifEmotes, resolvePalMotions } from '../game/cosmetics';
+import {
+  canSendEmotePayload,
+  EMOJI_EMOTES,
+  resolveEmojiEmoteOptions,
+  resolveGifEmoteOptions,
+  resolvePalMotionOptions,
+  resolveStickerEmoteOptions,
+  resolveTextEmoteOptions,
+  STICKER_EMOTES,
+  TEXT_EMOTES,
+} from '../game/cosmetics';
 import { DEFAULT_PAL, type PalConfig } from '../avatar/palConfig';
 import { PalMotion } from './PalMotion';
 
@@ -24,19 +34,11 @@ export type Emote = { type: 'emoji' | 'text' | 'sticker' | 'gif' | 'palMotion'; 
 export const EMOJIS = Object.values(EMOJI_EMOTES).map((emoji) => emoji.emoji);
 
 /** Animated "sticker" reactions, each plays a looping animation in the bubble. */
-export const STICKERS: Emote[] = [
-  { type: 'sticker', value: '🎉', anim: 'burst' },
-  { type: 'sticker', value: '🔥', anim: 'pulse' },
-  { type: 'sticker', value: '😂', anim: 'shake' },
-  { type: 'sticker', value: '💰', anim: 'bounce' },
-  { type: 'sticker', value: '🃏', anim: 'spin' },
-  { type: 'sticker', value: '👀', anim: 'shake' },
-  { type: 'sticker', value: '🚀', anim: 'bounce' },
-  { type: 'sticker', value: '💎', anim: 'pulse' },
-];
+export const STICKERS: Emote[] = Object.values(STICKER_EMOTES)
+  .map((sticker) => ({ type: 'sticker', value: sticker.sticker, anim: sticker.anim }));
 
 /** One-tap canned lines. */
-export const QUICK_TEXTS = ['Nice hand!', 'All in!', 'Bluffing?', 'GG', "Let's go!", 'Fold!', 'Wow!', 'Unlucky'];
+export const QUICK_TEXTS = Object.values(TEXT_EMOTES).map((text) => text.text);
 
 // Curated GIF pack lives in services/gifs.
 export { GIF_LIBRARY };
@@ -72,31 +74,45 @@ export function EmoteBar({
   // easy reach are not the same six forever, while the tray still holds still
   // for as long as anyone is playing.
   const gifs = useMemo(
-    () => shuffleForDay(resolveGifEmotes({ owned: ownedCosmeticIds }))
-      .map((g) => ({ send: gifUrl(g.gifId), thumb: gifThumbUrl(g.gifId) })),
+    () => shuffleForDay(resolveGifEmoteOptions({ owned: ownedCosmeticIds }))
+      .map((g) => ({
+        id: g.id,
+        send: gifUrl(g.gifId),
+        thumb: gifThumbUrl(g.gifId),
+        locked: g.locked,
+      })),
     [ownedCosmeticIds],
   );
   const emojis = useMemo(
-    () => resolveEmojiEmotes({ owned: ownedCosmeticIds }),
+    () => resolveEmojiEmoteOptions({ owned: ownedCosmeticIds }),
     [ownedCosmeticIds],
   );
-  // Owned motions only, exactly as the GIF and emoji rows work. The wave is
-  // free, so the row is never empty and the feature is discoverable.
+  const stickers = useMemo(
+    () => resolveStickerEmoteOptions({ owned: ownedCosmeticIds }),
+    [ownedCosmeticIds],
+  );
+  const quickTexts = useMemo(
+    () => resolveTextEmoteOptions({ owned: ownedCosmeticIds }),
+    [ownedCosmeticIds],
+  );
+  // Every motion stays visible, not only the owned ones. A locked chip is a
+  // store preview in the place where the player wanted to use it.
   const motions = useMemo(
-    () => resolvePalMotions({ owned: ownedCosmeticIds }),
+    () => resolvePalMotionOptions({ owned: ownedCosmeticIds }),
     [ownedCosmeticIds],
   );
 
-  const send = (emote: Emote) => {
+  const send = (emote: Emote): boolean => {
+    if (!canSendEmotePayload(emote, ownedCosmeticIds)) return false;
     onEmote(emote);
     setOpen(false);
+    return true;
   };
 
   const sendText = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    send({ type: 'text', value: trimmed.slice(0, 40) });
-    setText('');
+    if (send({ type: 'text', value: trimmed.slice(0, 40) })) setText('');
   };
 
   return (
@@ -148,8 +164,15 @@ export function EmoteBar({
                 initialNumToRender={8}
                 windowSize={5}
                 renderItem={({ item: g }) => (
-                  <Pressable style={styles.gifChip} onPress={() => send({ type: 'gif', value: g.send })} accessibilityLabel="Send GIF">
-                    <Image source={{ uri: g.thumb }} style={styles.gifThumb} resizeMode="cover" />
+                  <Pressable
+                    style={[styles.gifChip, g.locked && styles.lockedChip]}
+                    onPress={() => send({ type: 'gif', value: g.send })}
+                    disabled={g.locked}
+                    accessibilityState={{ disabled: g.locked }}
+                    accessibilityLabel={g.locked ? 'Locked GIF, buy it in the Store' : 'Send GIF'}
+                  >
+                    <Image source={{ uri: g.thumb }} style={[styles.gifThumb, g.locked && styles.lockedMedia]} resizeMode="cover" />
+                    {g.locked ? <LockedMark /> : null}
                   </Pressable>
                 )}
               />
@@ -164,13 +187,18 @@ export function EmoteBar({
                     {motions.map((m) => (
                       <Pressable
                         key={m.id}
-                        style={styles.motionChip}
+                        style={[styles.motionChip, m.locked && styles.lockedChip]}
                         onPress={() => send({ type: 'palMotion', value: m.motionId })}
+                        disabled={m.locked}
                         accessibilityRole="button"
-                        accessibilityLabel={`Send ${m.name}`}
+                        accessibilityState={{ disabled: m.locked }}
+                        accessibilityLabel={m.locked ? `Locked ${m.name}, buy it in the Store` : `Send ${m.name}`}
                       >
-                        <PalMotion config={pal} motionId={m.motionId} size={MOTION_CHIP_PAL} loop />
-                        <Text style={styles.motionName} numberOfLines={1}>{m.name}</Text>
+                        <View style={m.locked && styles.lockedMotionPreview}>
+                          <PalMotion config={pal} motionId={m.motionId} size={MOTION_CHIP_PAL} loop />
+                        </View>
+                        <Text style={[styles.motionName, m.locked && styles.lockedLabel]} numberOfLines={1}>{m.name}</Text>
+                        {m.locked ? <LockedMark /> : null}
                       </Pressable>
                     ))}
                   </ScrollView>
@@ -178,9 +206,17 @@ export function EmoteBar({
               )}
 
               <Text style={styles.sectionLabel}>Animated stickers</Text>              <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickerRow} keyboardShouldPersistTaps="handled">
-                {STICKERS.map((s, i) => (
-                  <Pressable key={i} style={styles.stickerChip} onPress={() => send(s)} accessibilityLabel={`Send animated ${s.value}`}>
-                    <Text style={styles.stickerEmoji}>{s.value}</Text>
+                {stickers.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    style={[styles.stickerChip, s.locked && styles.lockedChip]}
+                    onPress={() => send({ type: 'sticker', value: s.sticker, anim: s.anim })}
+                    disabled={s.locked}
+                    accessibilityState={{ disabled: s.locked }}
+                    accessibilityLabel={s.locked ? `Locked animated ${s.sticker}, buy it in the Store` : `Send animated ${s.sticker}`}
+                  >
+                    <Text style={[styles.stickerEmoji, s.locked && styles.lockedEmoji]}>{s.sticker}</Text>
+                    {s.locked ? <LockedMark compact /> : null}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -188,8 +224,16 @@ export function EmoteBar({
               <Text style={styles.sectionLabel}>Emojis</Text>
               <View style={styles.emojiGrid}>
                 {emojis.map((e) => (
-                  <Pressable key={e} style={styles.emojiChip} onPress={() => send({ type: 'emoji', value: e })} accessibilityLabel={`Send ${e}`}>
-                    <Text style={styles.emoji}>{e}</Text>
+                  <Pressable
+                    key={e.id}
+                    style={[styles.emojiChip, e.locked && styles.lockedChip]}
+                    onPress={() => send({ type: 'emoji', value: e.emoji })}
+                    disabled={e.locked}
+                    accessibilityState={{ disabled: e.locked }}
+                    accessibilityLabel={e.locked ? `Locked ${e.emoji}, buy it in the Store` : `Send ${e.emoji}`}
+                  >
+                    <Text style={[styles.emoji, e.locked && styles.lockedEmoji]}>{e.emoji}</Text>
+                    {e.locked ? <LockedMark compact /> : null}
                   </Pressable>
                 ))}
               </View>
@@ -199,9 +243,16 @@ export function EmoteBar({
                 opening it lifts only this row (no bouncy full-sheet jump). */}
             <View style={styles.bottomBar}>
               <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow} keyboardShouldPersistTaps="handled">
-                {QUICK_TEXTS.map((t) => (
-                  <Pressable key={t} style={styles.quickChip} onPress={() => send({ type: 'text', value: t })}>
-                    <Text style={styles.quickChipText}>{t}</Text>
+                {quickTexts.map((t) => (
+                  <Pressable
+                    key={t.id}
+                    style={[styles.quickChip, t.locked && styles.lockedQuickChip]}
+                    onPress={() => send({ type: 'text', value: t.text })}
+                    disabled={t.locked}
+                    accessibilityState={{ disabled: t.locked }}
+                    accessibilityLabel={t.locked ? `Locked ${t.text}, buy it in the Store` : `Send ${t.text}`}
+                  >
+                    <Text style={[styles.quickChipText, t.locked && styles.lockedLabel]}>{t.locked ? `🔒 ${t.text}` : t.text}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -225,6 +276,15 @@ export function EmoteBar({
         </KeyboardAvoidingView>
       </Modal>
     </>
+  );
+}
+
+function LockedMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <View style={styles.lockOverlay} pointerEvents="none">
+      <Text style={compact ? styles.lockIconCompact : styles.lockIcon}>🔒</Text>
+      {!compact ? <Text style={styles.lockText}>Store</Text> : null}
+    </View>
   );
 }
 
@@ -258,28 +318,51 @@ const styles = StyleSheet.create({
   gifRow: { gap: 8, paddingVertical: 4, paddingRight: 8 },
   gifChip: { width: 96, height: 76, borderRadius: radii.md, overflow: 'hidden', backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
   gifThumb: { width: '100%', height: '100%' },
+  lockedChip: { borderColor: colors.gold, backgroundColor: colors.surface },
+  lockedMedia: { opacity: 0.35 },
+  lockOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(5,9,11,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  lockIcon: { fontSize: 16 },
+  lockIconCompact: { fontSize: 13 },
+  lockText: { fontFamily: fonts.bold, fontSize: 9, color: colors.gold },
   stickerRow: { gap: 10, paddingVertical: 6, paddingRight: 8 },
   stickerChip: {
     width: 56, height: 56, borderRadius: radii.lg, backgroundColor: colors.surfaceAlt,
     borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
   stickerEmoji: { fontSize: 32 },
+  lockedEmoji: { opacity: 0.38 },
   motionRow: { gap: 10, paddingVertical: 6, paddingRight: 8 },
   motionChip: {
     width: 84, paddingVertical: 8, borderRadius: radii.lg, backgroundColor: colors.surfaceAlt,
     borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center', gap: 4,
+    overflow: 'hidden',
   },
   motionName: { fontFamily: fonts.semibold, fontSize: 11, color: colors.onDarkSoft, maxWidth: 76 },
+  lockedMotionPreview: { opacity: 0.35 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
   emojiChip: {
     width: 52, height: 52, borderRadius: radii.md, backgroundColor: colors.surfaceAlt,
     borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
   emoji: { fontSize: 30 },
   bottomBar: { borderTopWidth: 1, borderTopColor: colors.surfaceBorder, paddingTop: spacing.sm, marginTop: spacing.xs },
   quickRow: { gap: 8, paddingBottom: 8, paddingRight: 8 },
   quickChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder },
   quickChipText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDarkSoft },
+  lockedQuickChip: { borderColor: colors.gold, backgroundColor: colors.surface },
+  lockedLabel: { color: colors.onDarkMuted },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   input: {
     flex: 1, height: 46, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt,

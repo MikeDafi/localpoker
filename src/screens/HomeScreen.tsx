@@ -10,7 +10,7 @@ import { FriendsIcon, BotIcon, StatsIcon, ProfileIcon, CartIcon , SettingsIcon, 
 import { colors, fonts, radii, shadows, spacing, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { isResumable } from '../game/savedGame';
-import { sweepMyStaleRooms } from '../services/firebase';
+import { isRoomResumeAvailable, sweepMyStaleRooms } from '../services/firebase';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -23,6 +23,19 @@ export function HomeScreen({ navigation }: Props) {
   // A friends game abandoned for >15s is no longer resumable; clear it.
   React.useEffect(() => {
     if (savedGame && !isResumable(savedGame)) clearSavedGame();
+  }, [savedGame, clearSavedGame]);
+
+  React.useEffect(() => {
+    if (!savedGame?.roomCode || !isResumable(savedGame)) return undefined;
+    let cancelled = false;
+    isRoomResumeAvailable(savedGame.roomCode)
+      .then((available) => {
+        if (!cancelled && available === false) clearSavedGame();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [savedGame, clearSavedGame]);
 
   /*

@@ -8,7 +8,13 @@
  * asserted against each other in tests instead of by eye.
  */
 import { colors } from '../theme/theme';
-import { PURCHASABLE_EMOJI_EMOTES, PURCHASABLE_GIF_EMOTES, PURCHASABLE_PAL_MOTIONS } from './cosmetics';
+import {
+  PURCHASABLE_EMOJI_EMOTES,
+  PURCHASABLE_GIF_EMOTES,
+  PURCHASABLE_PAL_MOTIONS,
+  PURCHASABLE_STICKER_EMOTES,
+  PURCHASABLE_TEXT_EMOTES,
+} from './cosmetics';
 
 /**
  * Reactions lead.
@@ -51,14 +57,18 @@ const GIF_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_GIF_EMOTES).ma
   swatches: gif.swatches,
 }));
 
-const EMOTE_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_EMOJI_EMOTES).map((emoji) => ({
-  id: emoji.id,
+const EMOTE_STORE_ITEMS: CosmeticItem[] = [
+  ...Object.values(PURCHASABLE_EMOJI_EMOTES),
+  ...Object.values(PURCHASABLE_STICKER_EMOTES),
+  ...Object.values(PURCHASABLE_TEXT_EMOTES),
+].map((emote) => ({
+  id: emote.id,
   category: 'emotes',
-  name: emoji.name,
-  price: emoji.price,
-  description: emoji.description,
-  emoji: emoji.emoji,
-  swatches: emoji.swatches,
+  name: emote.name,
+  price: emote.price,
+  description: emote.description,
+  emoji: emote.emoji,
+  swatches: emote.swatches,
 }));
 
 const PAL_MOTION_STORE_ITEMS: CosmeticItem[] = Object.values(PURCHASABLE_PAL_MOTIONS).map((motion) => ({
@@ -338,10 +348,10 @@ const CATEGORY_DEFINITIONS: CosmeticCategory[] = [
   },
   {
     id: 'emotes',
-    label: 'Emoji Emotes',
+    label: 'Table Emotes',
     shortLabel: 'Emotes',
     emoji: '😎',
-    description: 'Emoji reactions for the emote tray.',
+    description: 'Emoji, sticker and quick-text reactions for the emote tray.',
     items: EMOTE_STORE_ITEMS,
   },
   {

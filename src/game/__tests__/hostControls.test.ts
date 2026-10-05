@@ -11,21 +11,39 @@ import { DEFAULT_GAME_SETTINGS } from '../settings';
 describe('mid game host controls', () => {
   /*
    * The whole point of the module. A table is an agreement: people sat down
-   * at these stakes, with this stack and this clock. On a host authoritative
-   * model there is no server to appeal to, so a host who could rewrite the
-   * terms mid-session could change the game out from under everyone and
-   * nobody could even prove it.
+   * at these stakes. That argument lost: these are play money tables you open
+   * for friends, and wanting to lengthen the clock or push the blinds along
+   * mid session is ordinary. What is still refused is only what the table
+   * could not honour, because the seats are already dealt in.
    */
-  it('refuses every term players agreed to by sitting down', () => {
+  it('refuses the settings a live table could not honour', () => {
     for (const key of AGREED_SETTING_KEYS) {
       expect(isMidGameSafe(key), `"${key}" must not be changeable mid game`).toBe(false);
     }
   });
 
-  it('allows only cosmetics and who can find the table', () => {
+  it('allows the look, the listing, the rules of play and the bots', () => {
     expect([...MID_GAME_SAFE_SETTING_KEYS].sort()).toEqual(
-      ['cardBack', 'cardFace', 'chipStyle', 'feltStyle', 'roomVisibility'].sort(),
+      [
+        'ante', 'bigBlind', 'blindLevelLengthHands', 'botSpeed', 'cardBack', 'cardFace',
+        'chipStyle', 'difficulty', 'feltStyle', 'mixedDifficulty',
+        'roomVisibility', 'smallBlind', 'startingStack', 'turnTimerSec',
+      ].sort(),
     );
+  });
+
+  /*
+   * The two lists must stay disjoint. A key on both would be refused by one
+   * rule and allowed by the other, and which won would depend on lookup
+   * order, which is the kind of thing that works until it does not.
+   */
+  it('never calls the same setting both changeable and fixed', () => {
+    for (const key of AGREED_SETTING_KEYS) {
+      expect(
+        (MID_GAME_SAFE_SETTING_KEYS as readonly string[]).includes(key),
+        `"${key}" is on both lists`,
+      ).toBe(false);
+    }
   });
 
   it('names real settings, so a typo cannot quietly allow nothing', () => {
@@ -48,25 +66,34 @@ describe('mid game host controls', () => {
       });
     });
 
-    it('drops an agreed term even when it arrives beside a safe one', () => {
+    it('still drops a setting the table cannot honour, beside a safe one', () => {
       const out = pickMidGameSafe({
         feltStyle: 'table-lunar',
         bigBlind: 999_999,
-        startingStack: 1,
-        turnTimerSec: 1,
+        gameMode: 'turbo',
+        numOpponents: 1,
       });
-      expect(out).toEqual({ feltStyle: 'table-lunar' });
+      // The blind goes through now. The seats and the mode do not.
+      expect(out).toEqual({ feltStyle: 'table-lunar', bigBlind: 999_999 });
+    });
+
+    it('lets the host retune the rules of play', () => {
+      const patch = {
+        smallBlind: 25, bigBlind: 50, ante: 5,
+        startingStack: 12_000, turnTimerSec: 45, blindLevelLengthHands: 6,
+      };
+      expect(pickMidGameSafe(patch)).toEqual(patch);
     });
 
     it('returns nothing for an empty or wholly unsafe patch', () => {
       expect(pickMidGameSafe({})).toEqual({});
-      expect(pickMidGameSafe({ bigBlind: 50, ante: 10 })).toEqual({});
+      expect(pickMidGameSafe({ gameMode: 'cash', numOpponents: 3 })).toEqual({});
     });
 
     it('does not mutate what it was given', () => {
-      const patch = { feltStyle: 'table-lunar', bigBlind: 50 };
+      const patch = { feltStyle: 'table-lunar', numOpponents: 5 };
       pickMidGameSafe(patch);
-      expect(patch).toEqual({ feltStyle: 'table-lunar', bigBlind: 50 });
+      expect(patch).toEqual({ feltStyle: 'table-lunar', numOpponents: 5 });
     });
 
     it('passes a cosmetic through for every cosmetic key', () => {

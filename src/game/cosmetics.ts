@@ -1,5 +1,10 @@
 import { colors } from '../theme/theme';
-import { GIF_LIBRARY } from '../services/gifs';
+import { GIF_LIBRARY, gifUrl } from '../services/gifs';
+import {
+  FREE_PAL_MOTION_COSMETIC_IDS as PAL_MOTION_FREE_IDS,
+  PAL_MOTIONS as PAL_MOTION_CATALOG,
+  palMotionByMotionId as lookupPalMotionByMotionId,
+} from './palMotions';
 
 /**
  * Pal motions are cosmetics like any other, and they are described in their
@@ -89,6 +94,35 @@ export interface EmojiCosmetic {
   description: string;
   swatches: readonly [string, string, string];
 }
+
+export type StickerEmoteAnim = 'bounce' | 'spin' | 'pulse' | 'shake' | 'burst';
+
+export interface StickerEmoteCosmetic {
+  id: string;
+  sticker: string;
+  anim: StickerEmoteAnim;
+  name: string;
+  price: number;
+  description: string;
+  emoji: string;
+  swatches: readonly [string, string, string];
+}
+
+export interface TextEmoteCosmetic {
+  id: string;
+  text: string;
+  name: string;
+  price: number;
+  description: string;
+  emoji: string;
+  swatches: readonly [string, string, string];
+}
+
+export type CosmeticEmotePayload = {
+  type: 'emoji' | 'text' | 'sticker' | 'gif' | 'palMotion';
+  value: string;
+  anim?: string;
+};
 
 /** The felt the game has always had, and what anything unknown falls back to. */
 export const CLASSIC_FELT = 'classic';
@@ -270,6 +304,11 @@ export const PURCHASABLE_GIF_EMOTES = Object.fromEntries(
 ) as Record<string, GifCosmetic>;
 
 const EMOJI_EMOTE_LIST = [
+  /*
+   * Only the table glue stays free: nice hand, good luck and thanks. Those
+   * are friendly, universal and teach the tray without charging for manners.
+   * The louder comedy, hype, flex and needle faces are the upsell.
+   */
   {
     id: 'emoji-thumbsup',
     emoji: '👍',
@@ -282,7 +321,7 @@ const EMOJI_EMOTE_LIST = [
     id: 'emoji-laugh',
     emoji: '😂',
     name: 'Table Laugh',
-    price: 0,
+    price: 350,
     description: 'A friendly laugh when the table gets silly.',
     swatches: ['#FDE68A', '#F59E0B', '#7C2D12'],
   },
@@ -290,7 +329,7 @@ const EMOJI_EMOTE_LIST = [
     id: 'emoji-steam',
     emoji: '😤',
     name: 'Steam Vent',
-    price: 0,
+    price: 400,
     description: 'A safe way to show a frustrating beat.',
     swatches: ['#EF4444', '#7F1D1D', '#FCA5A5'],
   },
@@ -298,7 +337,7 @@ const EMOJI_EMOTE_LIST = [
     id: 'emoji-thinking',
     emoji: '🤔',
     name: 'Thinking',
-    price: 0,
+    price: 350,
     description: 'A tanking face for tough choices.',
     swatches: ['#94A3B8', '#334155', '#E2E8F0'],
   },
@@ -306,7 +345,7 @@ const EMOJI_EMOTE_LIST = [
     id: 'emoji-sweat-smile',
     emoji: '😅',
     name: 'Close One',
-    price: 0,
+    price: 300,
     description: 'A small oops for awkward runouts.',
     swatches: ['#7DD3FC', '#0284C7', '#E0F2FE'],
   },
@@ -411,6 +450,207 @@ export const PURCHASABLE_EMOJI_EMOTES = Object.fromEntries(
 ) as Record<string, EmojiCosmetic>;
 export const LEGACY_EMOJI_GRANT_IDS = Object.keys(PURCHASABLE_EMOJI_EMOTES);
 export const LEGACY_EMOJI_GRANT_MIGRATION = 'legacy-emoji-emotes-2026-10-03';
+
+const STICKER_EMOTE_LIST = [
+  /*
+   * The free stickers are quiet poker-language chips, not the fireworks. A
+   * player can acknowledge the table and show they are watching for free, but
+   * the big celebration, laugh and flex stickers belong in the Store.
+   */
+  {
+    id: 'sticker-joker',
+    sticker: '🃏',
+    anim: 'spin',
+    name: 'Joker Spin',
+    price: 0,
+    description: 'A calm poker nod for any hand.',
+    emoji: '🃏',
+    swatches: [colors.surfaceAlt, colors.blue, colors.gold],
+  },
+  {
+    id: 'sticker-eyes',
+    sticker: '👀',
+    anim: 'shake',
+    name: 'Watching',
+    price: 0,
+    description: 'A quiet read when the action gets interesting.',
+    emoji: '👀',
+    swatches: ['#CBD5E1', '#475569', '#F8FAFC'],
+  },
+  {
+    id: 'sticker-confetti',
+    sticker: '🎉',
+    anim: 'burst',
+    name: 'Confetti Pop',
+    price: 400,
+    description: 'A loud burst for a pot worth celebrating.',
+    emoji: '🎉',
+    swatches: [colors.gold, colors.accentPink, colors.accentAlt],
+  },
+  {
+    id: 'sticker-fire',
+    sticker: '🔥',
+    anim: 'pulse',
+    name: 'On Fire',
+    price: 450,
+    description: 'A heater sticker for hot streaks.',
+    emoji: '🔥',
+    swatches: ['#F97316', '#EF4444', '#FDE68A'],
+  },
+  {
+    id: 'sticker-laugh',
+    sticker: '😂',
+    anim: 'shake',
+    name: 'Big Laugh',
+    price: 350,
+    description: 'A wobbling laugh for table chaos.',
+    emoji: '😂',
+    swatches: ['#FDE68A', '#F59E0B', '#7C2D12'],
+  },
+  {
+    id: 'sticker-money-bag',
+    sticker: '💰',
+    anim: 'bounce',
+    name: 'Money Bounce',
+    price: 550,
+    description: 'A chip flex for stacked pots.',
+    emoji: '💰',
+    swatches: [colors.green, colors.gold, '#FDE68A'],
+  },
+  {
+    id: 'sticker-rocket',
+    sticker: '🚀',
+    anim: 'bounce',
+    name: 'Moon Shot',
+    price: 500,
+    description: 'A launch sticker for all-in energy.',
+    emoji: '🚀',
+    swatches: [colors.accent, colors.accentAlt, '#DBEAFE'],
+  },
+  {
+    id: 'sticker-diamond',
+    sticker: '💎',
+    anim: 'pulse',
+    name: 'Diamond Flex',
+    price: 500,
+    description: 'A shiny flex for premium runouts.',
+    emoji: '💎',
+    swatches: ['#B8E7FF', '#FFFFFF', colors.blue],
+  },
+] as const satisfies readonly StickerEmoteCosmetic[];
+
+export const STICKER_EMOTES: Record<string, StickerEmoteCosmetic> = Object.fromEntries(
+  STICKER_EMOTE_LIST.map((sticker) => [sticker.id, sticker]),
+) as Record<string, StickerEmoteCosmetic>;
+export const FREE_STICKER_COSMETIC_IDS = STICKER_EMOTE_LIST
+  .filter((sticker) => sticker.price === 0)
+  .map((sticker) => sticker.id);
+export const PURCHASABLE_STICKER_EMOTES = Object.fromEntries(
+  STICKER_EMOTE_LIST.filter((sticker) => sticker.price > 0).map((sticker) => [sticker.id, sticker]),
+) as Record<string, StickerEmoteCosmetic>;
+
+const TEXT_EMOTE_LIST = [
+  {
+    id: 'text-nice-hand',
+    text: 'Nice hand!',
+    name: 'Nice Hand',
+    price: 0,
+    description: 'Friendly table manners after a good pot.',
+    emoji: '👍',
+    swatches: [colors.blue, colors.blueDeep, '#DBEAFE'],
+  },
+  {
+    id: 'text-gg',
+    text: 'GG',
+    name: 'Good Game',
+    price: 0,
+    description: 'The universal table sign-off.',
+    emoji: '🤝',
+    swatches: ['#FDBA74', '#92400E', '#FFEDD5'],
+  },
+  {
+    id: 'text-all-in',
+    text: 'All in!',
+    name: 'All In',
+    price: 350,
+    description: 'A bold line for shove spots.',
+    emoji: '🚀',
+    swatches: [colors.accent, colors.accentAlt, '#DBEAFE'],
+  },
+  {
+    id: 'text-bluffing',
+    text: 'Bluffing?',
+    name: 'Bluff Check',
+    price: 300,
+    description: 'A playful needle for suspicious bets.',
+    emoji: '👀',
+    swatches: ['#CBD5E1', '#475569', '#F8FAFC'],
+  },
+  {
+    id: 'text-lets-go',
+    text: "Let's go!",
+    name: 'Hype Line',
+    price: 300,
+    description: 'A little extra hype when the table wakes up.',
+    emoji: '🙌',
+    swatches: ['#FDE68A', '#F59E0B', colors.accentPink],
+  },
+  {
+    id: 'text-fold',
+    text: 'Fold!',
+    name: 'Fold Needle',
+    price: 250,
+    description: 'A cheeky push for someone in the tank.',
+    emoji: '😴',
+    swatches: ['#93C5FD', '#312E81', '#E0E7FF'],
+  },
+  {
+    id: 'text-wow',
+    text: 'Wow!',
+    name: 'Wow Line',
+    price: 300,
+    description: 'A short line for impossible boards.',
+    emoji: '😮',
+    swatches: [colors.accentAlt, colors.blue, '#E0F2FE'],
+  },
+  {
+    id: 'text-unlucky',
+    text: 'Unlucky',
+    name: 'Bad Beat Line',
+    price: 250,
+    description: 'A quick note for rough rivers.',
+    emoji: '😭',
+    swatches: ['#60A5FA', '#1D4ED8', '#E0F2FE'],
+  },
+] as const satisfies readonly TextEmoteCosmetic[];
+
+export const TEXT_EMOTES: Record<string, TextEmoteCosmetic> = Object.fromEntries(
+  TEXT_EMOTE_LIST.map((text) => [text.id, text]),
+) as Record<string, TextEmoteCosmetic>;
+export const FREE_TEXT_COSMETIC_IDS = TEXT_EMOTE_LIST
+  .filter((text) => text.price === 0)
+  .map((text) => text.id);
+export const PURCHASABLE_TEXT_EMOTES = Object.fromEntries(
+  TEXT_EMOTE_LIST.filter((text) => text.price > 0).map((text) => [text.id, text]),
+) as Record<string, TextEmoteCosmetic>;
+
+export const EMOTE_COSMETICS = {
+  ...EMOJI_EMOTES,
+  ...STICKER_EMOTES,
+  ...TEXT_EMOTES,
+} as Record<string, EmojiCosmetic | StickerEmoteCosmetic | TextEmoteCosmetic>;
+
+export const FREE_EMOTE_COSMETIC_IDS = [
+  ...FREE_EMOJI_COSMETIC_IDS,
+  ...FREE_STICKER_COSMETIC_IDS,
+  ...FREE_TEXT_COSMETIC_IDS,
+] as const;
+
+export const FREE_REACTION_COSMETIC_IDS = [
+  ...FREE_GIF_COSMETIC_IDS,
+  ...FREE_EMOTE_COSMETIC_IDS,
+  ...PAL_MOTION_FREE_IDS,
+] as const;
 
 /**
  * Keyed by the store item id, so a purchase and its palette cannot drift
@@ -628,6 +868,19 @@ export function resolveGifEmotes(input: {
   return Object.values(GIF_EMOTES).filter((gif) => freeSet.has(gif.id) || ownedSet.has(gif.id));
 }
 
+export function isFreeOrOwnedCosmetic(id: string, owned?: readonly string[]): boolean {
+  return FREE_REACTION_COSMETIC_IDS.includes(id) || (owned ?? []).includes(id);
+}
+
+export function resolveGifEmoteOptions(input: {
+  owned?: readonly string[];
+}): (GifCosmetic & { locked: boolean })[] {
+  return Object.values(GIF_EMOTES).map((gif) => ({
+    ...gif,
+    locked: !isFreeOrOwnedCosmetic(gif.id, input.owned),
+  }));
+}
+
 export function resolveEmojiEmotes(input: {
   owned?: readonly string[];
 }): string[] {
@@ -636,6 +889,68 @@ export function resolveEmojiEmotes(input: {
   return Object.values(EMOJI_EMOTES)
     .filter((emoji) => freeSet.has(emoji.id) || ownedSet.has(emoji.id))
     .map((emoji) => emoji.emoji);
+}
+
+export function resolveEmojiEmoteOptions(input: {
+  owned?: readonly string[];
+}): (EmojiCosmetic & { locked: boolean })[] {
+  return Object.values(EMOJI_EMOTES).map((emoji) => ({
+    ...emoji,
+    locked: !isFreeOrOwnedCosmetic(emoji.id, input.owned),
+  }));
+}
+
+export function resolveStickerEmoteOptions(input: {
+  owned?: readonly string[];
+}): (StickerEmoteCosmetic & { locked: boolean })[] {
+  return Object.values(STICKER_EMOTES).map((sticker) => ({
+    ...sticker,
+    locked: !isFreeOrOwnedCosmetic(sticker.id, input.owned),
+  }));
+}
+
+export function resolveTextEmoteOptions(input: {
+  owned?: readonly string[];
+}): (TextEmoteCosmetic & { locked: boolean })[] {
+  return Object.values(TEXT_EMOTES).map((text) => ({
+    ...text,
+    locked: !isFreeOrOwnedCosmetic(text.id, input.owned),
+  }));
+}
+
+export function resolvePalMotionOptions(input: {
+  owned?: readonly string[];
+}) {
+  return Object.values(PAL_MOTION_CATALOG).map((motion) => ({
+    ...motion,
+    locked: !isFreeOrOwnedCosmetic(motion.id, input.owned),
+  }));
+}
+
+export function emoteCosmeticIdForPayload(emote: CosmeticEmotePayload): string | null {
+  if (emote.type === 'emoji') {
+    return Object.values(EMOJI_EMOTES).find((emoji) => emoji.emoji === emote.value)?.id ?? null;
+  }
+  if (emote.type === 'text') {
+    const text = emote.value.trim();
+    return Object.values(TEXT_EMOTES).find((entry) => entry.text === text)?.id ?? null;
+  }
+  if (emote.type === 'sticker') {
+    return Object.values(STICKER_EMOTES).find((sticker) => sticker.sticker === emote.value)?.id ?? null;
+  }
+  if (emote.type === 'gif') {
+    return Object.values(GIF_EMOTES).find((gif) => gifUrl(gif.gifId) === emote.value)?.id ?? null;
+  }
+  if (emote.type === 'palMotion') {
+    return lookupPalMotionByMotionId(emote.value)?.id ?? null;
+  }
+  return null;
+}
+
+export function canSendEmotePayload(emote: CosmeticEmotePayload, owned?: readonly string[]): boolean {
+  const id = emoteCosmeticIdForPayload(emote);
+  if (!id) return emote.type === 'text' && emote.value.trim().length > 0;
+  return isFreeOrOwnedCosmetic(id, owned);
 }
 
 /** The id a table settles on, exported so the host can publish it to a room. */

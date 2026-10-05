@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
-import { colors, radii, shadows } from '../theme/theme';
+import { colors, shadows } from '../theme/theme';
 import { CardBack, type CardBackVariant } from './CardBack';
 import { courtArt } from '../game/courtArt';
 import {
@@ -143,19 +143,20 @@ export function CardFaceContent({
 export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, corners, back }: PlayingCardProps) {
   const g = useMemo(() => faceGeometry(size), [size]);
   const cardOpacity = dimmed ? 0.55 : 1;
+  const cardRadius = g.w * 0.085;
 
   if (faceDown || rank == null || suit == null) {
     // One shared back at every size: an opponent's 18pt card is the same
     // artwork as your 86pt hole card, just smaller.
     return (
-      <View style={[styles.card, { width: g.w, height: g.h, opacity: cardOpacity }, shadows.soft, style]}>
+      <View style={[styles.card, { width: g.w, height: g.h, borderRadius: cardRadius, opacity: cardOpacity }, shadows.soft, style]}>
         <CardBack size={size} variant={back} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.card, { width: g.w, height: g.h, opacity: cardOpacity }, shadows.soft, style]}>
+    <View style={[styles.card, { width: g.w, height: g.h, borderRadius: cardRadius, opacity: cardOpacity }, shadows.soft, style]}>
       <Svg width={g.w} height={g.h}>
         <CardFaceContent rank={rank} suit={suit} size={size} corners={corners} />
       </Svg>
@@ -206,7 +207,10 @@ function CourtFigure({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radii.sm,
-    overflow: 'hidden',
+    /*
+     * The SVG already owns the card shape. A fixed native clip is too round
+     * once opponent cards are scaled down, so it shaves the printed corners.
+     */
+    overflow: 'visible',
   },
 });

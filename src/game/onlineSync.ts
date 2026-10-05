@@ -100,6 +100,17 @@ export type HostIntentValidationOptions = {
   lastAppliedSeq?: number;
 };
 export type ConnectionSyncResult = { state: GameState; changed: boolean };
+export type OnlineTablePlayerCountSource = {
+  status?: string;
+  players?: Record<string, unknown> | null;
+};
+
+export function shouldEndOnlineTableForTooFewPlayers(
+  room: OnlineTablePlayerCountSource | null | undefined,
+): boolean {
+  if (!room || room.status !== 'playing') return false;
+  return Object.keys(room.players ?? {}).length < 2;
+}
 
 const ACTIONS: readonly PlayerAction[] = ['fold', 'check', 'call', 'bet', 'raise', 'allin'];
 

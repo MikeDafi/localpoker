@@ -192,7 +192,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
   if (compact) {
     return (
       <View style={styles.cWrap}>
-        {emote && <EmoteBubble emote={emote} pal={pal} />}
+        {emote && <EmoteBubble emote={emote} pal={pal} mine={isHuman} />}
         <View style={styles.cAvatarWrap}>
         {hasHoleCardsToDisplay && !dimmed && !handOff && (
           <Animated.View
@@ -288,7 +288,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
 
   return (
     <View style={styles.wrap}>
-      {emote && <EmoteBubble emote={emote} pal={pal} />}
+      {emote && <EmoteBubble emote={emote} pal={pal} mine={isHuman} />}
       {!isHuman && hasHoleCardsToDisplay && (
         <View style={styles.cards}>
           {/*
@@ -384,7 +384,7 @@ function BetChips({ amount }: { amount: number }) {
 }
 
 /** A short-lived reaction bubble that pops above a player's seat. */
-function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
+function EmoteBubble({ emote, pal, mine }: { emote: Emote; pal: PalConfig; mine: boolean }) {
   const t = useSharedValue(0);
   useEffect(() => {
     if (emote.anim) {
@@ -414,7 +414,7 @@ function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
   const entering = isText || isGif
     ? FadeInDown.duration(motion.fast).easing(Easing.bezier(...easings.out))
     : ZoomIn.duration(motion.fast).easing(Easing.bezier(...easings.out));
-  const textStyle = isText ? styles.emoteText : emote.type === 'sticker' ? styles.emoteSticker : styles.emoteEmoji;
+  const textStyle = isText ? [styles.emoteText, styles.messageText] : emote.type === 'sticker' ? styles.emoteSticker : styles.emoteEmoji;
 
   /*
    * A motion has nothing to put up here.
@@ -427,8 +427,8 @@ function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
   if (emote.type === 'palMotion') return null;
 
   return (
-    <View style={styles.emoteAnchor} pointerEvents="none">
-      <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)} style={[styles.emoteBubble, emote.type === 'sticker' && styles.emoteBubbleSticker, isGif && styles.emoteBubbleGif, shadows.soft]}>
+    <View style={[styles.emoteAnchor, isText && (mine ? styles.emoteAnchorMine : styles.emoteAnchorTheirs)]} pointerEvents="none">
+      <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)} style={[styles.emoteBubble, isText && styles.messageBubble, isText && (mine ? styles.messageBubbleMine : styles.messageBubbleTheirs), emote.type === 'sticker' && styles.emoteBubbleSticker, isGif && styles.emoteBubbleGif, shadows.soft]}>
         {isGif ? (
           <Image source={{ uri: emote.value }} style={styles.emoteGif} resizeMode="cover" />
         ) : (
@@ -442,16 +442,22 @@ function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center' },
   emoteAnchor: { position: 'absolute', top: -44, left: 0, right: 0, alignItems: 'center', zIndex: 30 },
+  emoteAnchorMine: { alignItems: 'flex-end' },
+  emoteAnchorTheirs: { alignItems: 'flex-start' },
   emoteBubble: {
     backgroundColor: colors.surface, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorderStrong,
     paddingHorizontal: spacing.md, paddingVertical: 5, maxWidth: 150,
   },
+  messageBubble: { borderWidth: 0, paddingVertical: spacing.sm },
+  messageBubbleMine: { backgroundColor: colors.green },
+  messageBubbleTheirs: { backgroundColor: colors.panelAlt },
   emoteBubbleSticker: { backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0 },
   emoteBubbleGif: { padding: 3, paddingHorizontal: 3, paddingVertical: 3, borderRadius: radii.md, maxWidth: 120 },
   emoteGif: { width: 96, height: 72, borderRadius: radii.sm },
   emoteEmoji: { fontSize: 30 },
   emoteSticker: { fontSize: 44 },
   emoteText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDark, textAlign: 'center' },
+  messageText: { color: colors.ink, textAlign: 'left' },
   cards: { flexDirection: 'row', marginBottom: 3 },
   podWrap: { alignItems: 'center', justifyContent: 'center' },
   glow: {

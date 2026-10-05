@@ -6,23 +6,42 @@ import {
   CLASSIC_CHIPS,
   CLASSIC_FELT,
   EMOJI_EMOTES,
+  EMOTE_COSMETICS,
   FELT_PALETTES,
+  FREE_EMOJI_COSMETIC_IDS,
+  FREE_EMOTE_COSMETIC_IDS,
   FREE_GIF_COSMETIC_IDS,
+  FREE_REACTION_COSMETIC_IDS,
+  FREE_STICKER_COSMETIC_IDS,
+  FREE_TEXT_COSMETIC_IDS,
   GIF_EMOTES,
   LEGACY_EMOJI_GRANT_IDS,
-  PURCHASABLE_GIF_EMOTES,
+  PAL_MOTIONS,
   PURCHASABLE_EMOJI_EMOTES,
+  PURCHASABLE_GIF_EMOTES,
+  PURCHASABLE_STICKER_EMOTES,
+  PURCHASABLE_TEXT_EMOTES,
   STARTER_CARD_BACKS,
+  STICKER_EMOTES,
+  TEXT_EMOTES,
   gifCosmeticId,
+  canSendEmotePayload,
+  emoteCosmeticIdForPayload,
+  isFreeOrOwnedCosmetic,
   migrateCosmetics,
   resolveCardBack,
   resolveChips,
   resolveEmojiEmotes,
+  resolveEmojiEmoteOptions,
   resolveFelt,
+  resolveGifEmoteOptions,
   resolveGifEmotes,
+  resolvePalMotionOptions,
+  resolveStickerEmoteOptions,
+  resolveTextEmoteOptions,
   pinCosmetics,
 } from '../cosmetics';
-import { GIF_LIBRARY } from '../../services/gifs';
+import { GIF_LIBRARY, gifUrl } from '../../services/gifs';
 
 describe('cosmetic palettes', () => {
   /*
@@ -328,8 +347,12 @@ describe('gif emotes', () => {
 
 describe('emoji emotes', () => {
   it('keeps ordinary table talk free and sells novelty reactions', () => {
-    expect(resolveEmojiEmotes({ owned: [] })).toEqual(['👍', '😂', '😤', '🤔', '😅', '🍀', '🤝']);
+    expect(resolveEmojiEmotes({ owned: [] })).toEqual(['👍', '🍀', '🤝']);
     expect(Object.values(PURCHASABLE_EMOJI_EMOTES).map((emoji) => emoji.emoji)).toEqual([
+      '😂',
+      '😤',
+      '🤔',
+      '😅',
       '😮',
       '😎',
       '🔥',
@@ -379,5 +402,105 @@ describe('emoji emotes', () => {
       expect(migrated.ownedCosmeticIds).not.toContain(id);
     }
     expect(migrated.appliedMigrations?.length).toBeGreaterThan(0);
+  });
+});
+
+describe('reaction emote ownership', () => {
+  it('keeps about one fifth of the whole emote catalogue free', () => {
+    const total =
+      Object.keys(GIF_EMOTES).length
+      + Object.keys(EMOJI_EMOTES).length
+      + Object.keys(STICKER_EMOTES).length
+      + Object.keys(TEXT_EMOTES).length
+      + Object.keys(PAL_MOTIONS).length;
+    const free = FREE_REACTION_COSMETIC_IDS.length;
+
+    expect(total).toBe(121);
+    expect(free).toBe(24);
+    expect(free / total).toBeGreaterThan(0.19);
+    expect(free / total).toBeLessThan(0.21);
+    expect(FREE_EMOTE_COSMETIC_IDS).toEqual([
+      ...FREE_EMOJI_COSMETIC_IDS,
+      ...FREE_STICKER_COSMETIC_IDS,
+      ...FREE_TEXT_COSMETIC_IDS,
+    ]);
+  });
+
+  it('puts paid sticker and text emotes in the same cosmetic catalogue as emoji', () => {
+    expect(Object.keys(EMOTE_COSMETICS)).toHaveLength(
+      Object.keys(EMOJI_EMOTES).length
+      + Object.keys(STICKER_EMOTES).length
+      + Object.keys(TEXT_EMOTES).length,
+    );
+    expect(Object.keys(PURCHASABLE_STICKER_EMOTES)).toHaveLength(6);
+    expect(Object.keys(PURCHASABLE_TEXT_EMOTES)).toHaveLength(6);
+    expect(Object.values(PURCHASABLE_TEXT_EMOTES).map((entry) => entry.text)).toEqual([
+      'All in!',
+      'Bluffing?',
+      "Let's go!",
+      'Fold!',
+      'Wow!',
+      'Unlucky',
+    ]);
+  });
+
+  it('marks locked and owned options without hiding store inventory', () => {
+    expect(isFreeOrOwnedCosmetic('emoji-thumbsup', [])).toBe(true);
+    expect(isFreeOrOwnedCosmetic('emoji-fire', [])).toBe(false);
+    expect(isFreeOrOwnedCosmetic('emoji-fire', ['emoji-fire'])).toBe(true);
+
+    const owned = ['emoji-fire', 'sticker-rocket', 'text-all-in', 'pal-motion-cry'];
+    expect(resolveEmojiEmoteOptions({ owned })).toHaveLength(Object.keys(EMOJI_EMOTES).length);
+    expect(resolveEmojiEmoteOptions({ owned }).find((entry) => entry.id === 'emoji-fire')?.locked).toBe(false);
+    expect(resolveEmojiEmoteOptions({ owned }).find((entry) => entry.id === 'emoji-laugh')?.locked).toBe(true);
+    expect(resolveStickerEmoteOptions({ owned }).find((entry) => entry.id === 'sticker-rocket')?.locked).toBe(false);
+    expect(resolveTextEmoteOptions({ owned }).find((entry) => entry.id === 'text-all-in')?.locked).toBe(false);
+    expect(resolvePalMotionOptions({ owned }).find((entry) => entry.id === 'pal-motion-cry')?.locked).toBe(false);
+
+    const paidGif = Object.values(PURCHASABLE_GIF_EMOTES)[0]!;
+    const otherPaidGifId = Object.keys(PURCHASABLE_GIF_EMOTES).find((id) => id !== paidGif.id)!;
+    const gifOptions = resolveGifEmoteOptions({ owned: [paidGif.id] });
+    expect(gifOptions).toHaveLength(Object.keys(GIF_EMOTES).length);
+    expect(gifOptions.find((entry) => entry.id === paidGif.id)?.locked).toBe(false);
+    expect(gifOptions.find((entry) => entry.id === otherPaidGifId)?.locked).toBe(true);
+  });
+
+  it('maps payloads to cosmetic ids before sending', () => {
+    expect(emoteCosmeticIdForPayload({ type: 'emoji', value: '🔥' })).toBe('emoji-fire');
+    expect(emoteCosmeticIdForPayload({ type: 'sticker', value: '🚀', anim: 'bounce' })).toBe('sticker-rocket');
+    expect(emoteCosmeticIdForPayload({ type: 'text', value: '  All in!  ' })).toBe('text-all-in');
+    const paidGif = Object.values(PURCHASABLE_GIF_EMOTES)[0]!;
+    expect(emoteCosmeticIdForPayload({ type: 'gif', value: gifUrl(paidGif.gifId) })).toBe(paidGif.id);
+    expect(emoteCosmeticIdForPayload({ type: 'palMotion', value: 'cry' })).toBe('pal-motion-cry');
+  });
+
+  it('refuses locked catalogue emotes until the matching cosmetic is owned', () => {
+    const paidGif = Object.values(PURCHASABLE_GIF_EMOTES)[0]!;
+    const locked = [
+      { type: 'emoji', value: '🔥' },
+      { type: 'sticker', value: '🚀', anim: 'bounce' },
+      { type: 'text', value: 'All in!' },
+      { type: 'gif', value: gifUrl(paidGif.gifId) },
+      { type: 'palMotion', value: 'cry' },
+    ] as const;
+
+    for (const payload of locked) {
+      expect(canSendEmotePayload(payload, []), JSON.stringify(payload)).toBe(false);
+    }
+
+    expect(canSendEmotePayload({ type: 'emoji', value: '🔥' }, ['emoji-fire'])).toBe(true);
+    expect(canSendEmotePayload({ type: 'sticker', value: '🚀', anim: 'bounce' }, ['sticker-rocket'])).toBe(true);
+    expect(canSendEmotePayload({ type: 'text', value: 'All in!' }, ['text-all-in'])).toBe(true);
+    expect(canSendEmotePayload({ type: 'gif', value: gifUrl(paidGif.gifId) }, [paidGif.id])).toBe(true);
+    expect(canSendEmotePayload({ type: 'palMotion', value: 'cry' }, ['pal-motion-cry'])).toBe(true);
+  });
+
+  it('allows free catalogue emotes and custom typed text', () => {
+    expect(canSendEmotePayload({ type: 'emoji', value: '👍' }, [])).toBe(true);
+    expect(canSendEmotePayload({ type: 'sticker', value: '🃏', anim: 'spin' }, [])).toBe(true);
+    expect(canSendEmotePayload({ type: 'text', value: 'GG' }, [])).toBe(true);
+    expect(canSendEmotePayload({ type: 'gif', value: gifUrl(GIF_EMOTES[FREE_GIF_COSMETIC_IDS[0]!]!.gifId) }, [])).toBe(true);
+    expect(canSendEmotePayload({ type: 'palMotion', value: 'wave' }, [])).toBe(true);
+    expect(canSendEmotePayload({ type: 'text', value: 'Good luck everyone' }, [])).toBe(true);
   });
 });

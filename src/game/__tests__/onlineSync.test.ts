@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, createGame, startHand, type ActionResult, type GameConfig, type GameState, type PlayerInput } from '../../engine';
-import { applyHostIntent, redactGameState, validateHostIntent } from '../onlineSync';
+import { applyHostIntent, redactGameState, shouldEndOnlineTableForTooFewPlayers, validateHostIntent } from '../onlineSync';
 
 const config: GameConfig = {
   smallBlind: 5,
@@ -99,5 +99,38 @@ describe('host intent validation', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.state.players[0].currentBet).toBe(10);
+  });
+});
+
+describe('online table lifecycle', () => {
+  it('ends a playing table once fewer than two seats remain', () => {
+    expect(shouldEndOnlineTableForTooFewPlayers({
+      status: 'playing',
+      players: {
+        host: { id: 'host' },
+      },
+    })).toBe(true);
+  });
+
+  it('keeps live playing tables and lobbies that are still waiting for players', () => {
+    expect(shouldEndOnlineTableForTooFewPlayers({
+      status: 'playing',
+      players: {
+        host: { id: 'host' },
+        guest: { id: 'guest' },
+      },
+    })).toBe(false);
+    expect(shouldEndOnlineTableForTooFewPlayers({
+      status: 'lobby',
+      players: {
+        host: { id: 'host' },
+      },
+    })).toBe(false);
+    expect(shouldEndOnlineTableForTooFewPlayers({
+      status: 'ended',
+      players: {
+        host: { id: 'host' },
+      },
+    })).toBe(false);
   });
 });

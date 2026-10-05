@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, type TextStyle } from 'react-native';
+import { scaleLargeTextSize } from './largeTextCurve';
 
 /**
  * A single global text scale, for the Large Text accessibility setting.
@@ -14,7 +15,7 @@ import { StyleSheet, Text, type TextStyle } from 'react-native';
  * grows inside it rather than pushing it around.
  */
 
-/** How much Large Text enlarges type. Enough to matter, small enough to fit. */
+/** A signal that Large Text is active. The curve decides each actual size. */
 export const LARGE_TEXT_SCALE = 1.15;
 
 let currentScale = 1;
@@ -33,8 +34,8 @@ export function getTextScale(): number {
 export function scaleTextStyle(style: TextStyle | undefined, scale: number): TextStyle | undefined {
   if (scale === 1 || !style) return style;
   const next: TextStyle = { ...style };
-  if (typeof next.fontSize === 'number') next.fontSize = Math.round(next.fontSize * scale);
-  if (typeof next.lineHeight === 'number') next.lineHeight = Math.round(next.lineHeight * scale);
+  if (typeof next.fontSize === 'number') next.fontSize = Math.round(scaleLargeTextSize(next.fontSize));
+  if (typeof next.lineHeight === 'number') next.lineHeight = Math.round(scaleLargeTextSize(next.lineHeight));
   return next;
 }
 

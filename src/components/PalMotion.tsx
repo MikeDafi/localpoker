@@ -112,7 +112,7 @@ export function PalMotion({
     ) => {
       const steps = palMotionTrack(frames, key, rest);
       const restValue = rest[key] * unit;
-      if (palMotionTrackIsStill(steps, rest[key])) {
+      if (steps.length === 0 || palMotionTrackIsStill(steps, rest[key])) {
         channel.value = restValue;
         return;
       }
@@ -210,6 +210,9 @@ function buildSequence(
     duration: step.duration,
     easing: EASING_CURVES[step.easing],
   }));
+  // Empty tracks hold rest. Passing no first animation to withSequence leaves
+  // the shared value in an undefined animation state.
+  if (timings.length === 0) return restValue;
   if (gapMs !== null && gapMs > 0) {
     timings.push(withTiming(restValue, { duration: gapMs, easing: Easing.linear }));
   }

@@ -27,6 +27,7 @@ import { readConnection } from '../../game/connectionGrace';
 import {
   applyConnectionStatusToGameState,
   redactGameState,
+  shouldEndOnlineTableForTooFewPlayers,
   type ExposedHoleCardsByPlayer,
   type PublicGameState,
 } from '../../game/onlineSync';
@@ -551,6 +552,14 @@ export const inviteFriendToRoom = async (
  * The Join Room list should not fill with tables belonging to one person who
  * is not at any of them.
  */
+/**
+ * Why a table ended itself.
+ *
+ * Exported because the table screen matches on it: this is the one ending
+ * the host did not choose, so it is the one they have to be told about.
+ */
+export const TOO_FEW_PLAYERS_REASON = 'Table closed because fewer than two players remain.';
+
 export const MAX_ROOMS_PER_HOST = 3;
 
 /**
@@ -794,6 +803,11 @@ const reconcileHostPresence = async (roomCode: string, room: RoomState | null): 
       return;
     }
 
+    if (shouldEndOnlineTableForTooFewPlayers(room)) {
+      await endRoom(roomCode, TOO_FEW_PLAYERS_REASON);
+      return;
+    }
+
     const cached = getCachedHostGame(roomCode);
     if (!cached) {
       return;
@@ -876,6 +890,26 @@ const isPermissionDenied = (error: unknown): boolean => {
   if (typeof code === 'string' && code.toUpperCase().includes('PERMISSION_DENIED')) return true;
   const message = (error as { message?: unknown } | null)?.message;
   return typeof message === 'string' && message.toUpperCase().includes('PERMISSION_DENIED');
+};
+
+export const isRoomResumeAvailable = async (code: string): Promise<boolean | null> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return null;
+
+  const playerId = await authedPlayerId();
+  if (!playerId) return null;
+
+  try {
+    const roomSnapshot = await get(ref(db, roomPath(roomCode)));
+    if (!roomSnapshot.exists()) return false;
+    const room = roomSnapshot.val() as Partial<RoomState> | null;
+    return room?.status !== 'ended' && !!room?.players?.[playerId];
+  } catch (error) {
+    if (isPermissionDenied(error)) return false;
+    reportFirebaseError('check-room-resume', error);
+    return null;
+  }
 };
 
 export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result> => {

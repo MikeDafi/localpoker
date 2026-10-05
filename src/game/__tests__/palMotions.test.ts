@@ -13,13 +13,68 @@ import {
   palMotionTrackIsStill,
   resolvePalMotions,
   type PalMotion,
+  type PalMotionChannel,
 } from '../palMotions';
 
 const motions = Object.values(PAL_MOTIONS);
+const CATALOGUE_MOTION_IDS = [
+  'wave',
+  'cry',
+  'shrug',
+  'facepalm',
+  'think',
+  'fist-pump',
+  'laugh',
+  'tip-hat',
+  'shush',
+  'slow-clap',
+] as const;
+const ADDED_MOTION_IDS = [
+  'facepalm',
+  'think',
+  'fist-pump',
+  'laugh',
+  'tip-hat',
+  'shush',
+  'slow-clap',
+] as const;
+const MOVING_CHANNELS: readonly PalMotionChannel[] = ['translateX', 'translateY', 'rotate', 'scale'];
+
+function framesMove(frames: readonly PalMotion['frames'][number][], rest: typeof PAL_MOTION_REST): boolean {
+  return MOVING_CHANNELS.some((channel) => !palMotionTrackIsStill(palMotionTrack(frames, channel, rest), rest[channel]));
+}
+
+function motionMoves(motion: PalMotion): boolean {
+  return framesMove(motion.frames, PAL_MOTION_REST)
+    || (motion.accent ? framesMove(motion.accent.frames, PAL_MOTION_ACCENT_REST) : false);
+}
+
+function channelDelta(frames: readonly PalMotion['frames'][number][], channel: PalMotionChannel, rest: typeof PAL_MOTION_REST): number {
+  return Math.max(
+    0,
+    ...palMotionTrack(frames, channel, rest).map((step) => Math.abs(step.value - rest[channel])),
+  );
+}
+
+function hasSeatReadableMotion(motion: PalMotion): boolean {
+  const bodyReadable = channelDelta(motion.frames, 'translateX', PAL_MOTION_REST) >= 0.07
+    || channelDelta(motion.frames, 'translateY', PAL_MOTION_REST) >= 0.07
+    || channelDelta(motion.frames, 'rotate', PAL_MOTION_REST) >= 6
+    || channelDelta(motion.frames, 'scale', PAL_MOTION_REST) >= 0.04;
+  if (bodyReadable) return true;
+
+  const accent = motion.accent;
+  if (!accent) return false;
+  return channelDelta(accent.frames, 'translateX', PAL_MOTION_ACCENT_REST) >= 0.08
+    || channelDelta(accent.frames, 'translateY', PAL_MOTION_ACCENT_REST) >= 0.08
+    || channelDelta(accent.frames, 'rotate', PAL_MOTION_ACCENT_REST) >= 10
+    || channelDelta(accent.frames, 'scale', PAL_MOTION_ACCENT_REST) >= 0.08;
+}
 
 describe('the motions themselves', () => {
-  it('ships the three the first cut promised', () => {
-    expect(motions.map((motion) => motion.motionId)).toEqual(['wave', 'cry', 'shrug']);
+  it('ships exactly ten motions in catalogue order', () => {
+    expect(motions).toHaveLength(10);
+    expect(motions.map((motion) => motion.motionId)).toEqual(CATALOGUE_MOTION_IDS);
   });
 
   it('keys every motion by its own store id', () => {
@@ -75,19 +130,48 @@ describe('the motions themselves', () => {
 
   it('returns every motion to rest, so a seat cannot be left leaning', () => {
     for (const motion of motions) {
-      const last = motion.frames[motion.frames.length - 1]!;
-      expect(last.translateX ?? PAL_MOTION_REST.translateX, motion.id).toBe(0);
-      expect(last.translateY ?? PAL_MOTION_REST.translateY, motion.id).toBe(0);
-      expect(last.rotate ?? PAL_MOTION_REST.rotate, motion.id).toBe(0);
-      expect(last.scale ?? PAL_MOTION_REST.scale, motion.id).toBe(1);
+      for (const channel of MOVING_CHANNELS) {
+        const track = palMotionTrack(motion.frames, channel);
+        expect(track[track.length - 1]?.value, `${motion.id} ${channel}`).toBe(PAL_MOTION_REST[channel]);
+      }
     }
   });
 
-  it('fades every accent back out rather than leaving it parked', () => {
+  it('returns every accent to rest while it fades out', () => {
     for (const motion of motions) {
       if (!motion.accent) continue;
-      const last = motion.accent.frames[motion.accent.frames.length - 1]!;
-      expect(last.opacity, `${motion.id} accent`).toBe(0);
+      const channels: readonly PalMotionChannel[] = [...MOVING_CHANNELS, 'opacity'];
+      for (const channel of channels) {
+        const track = palMotionTrack(motion.accent.frames, channel, PAL_MOTION_ACCENT_REST);
+        expect(track[track.length - 1]?.value, `${motion.id} accent ${channel}`).toBe(PAL_MOTION_ACCENT_REST[channel]);
+      }
+    }
+  });
+
+  it('makes every motion move on at least one visible channel', () => {
+    for (const motion of motions) {
+      expect(motionMoves(motion), `${motion.id} movement`).toBe(true);
+    }
+  });
+
+  it('rejects a deliberately still motion as movement', () => {
+    const stillMotion: PalMotion = {
+      id: 'pal-motion-still',
+      motionId: 'still',
+      name: 'Still',
+      price: 300,
+      description: 'A negative control.',
+      emoji: '🙂',
+      swatches: ['#000000', '#000000', '#000000'],
+      face: 'idle',
+      frames: [{ duration: 160 }, { duration: 160, easing: 'linear' }],
+    };
+    expect(motionMoves(stillMotion)).toBe(false);
+  });
+
+  it('keeps every motion readable at a 42 point seat avatar', () => {
+    for (const motion of motions) {
+      expect(hasSeatReadableMotion(motion), `${motion.id} seat movement`).toBe(true);
     }
   });
 });
@@ -119,6 +203,14 @@ describe('how long a motion lasts', () => {
     for (const motion of motions) {
       expect(palMotionDuration(motion), `${motion.id}`).toBeLessThanOrEqual(2600);
       expect(palMotionDuration(motion), `${motion.id}`).toBeGreaterThan(400);
+    }
+  });
+
+  it('keeps each added motion in a readable preview rhythm', () => {
+    for (const motionId of ADDED_MOTION_IDS) {
+      const motion = palMotionByMotionId(motionId)!;
+      expect(palMotionDuration(motion), motionId).toBeGreaterThanOrEqual(700);
+      expect(palMotionDuration(motion), motionId).toBeLessThanOrEqual(1600);
     }
   });
 });
@@ -174,11 +266,18 @@ describe('which motions a player can send', () => {
   });
 });
 
-describe('looking a motion up', () => {  it('finds one by the id that travels on the wire', () => {
+describe('looking a motion up', () => {
+  it('finds one by the id that travels on the wire', () => {
     expect(palMotionByMotionId('wave')?.id).toBe('pal-motion-wave');
     expect(palMotionByMotionId('nonsense')).toBeNull();
     expect(palMotionByMotionId(undefined)).toBeNull();
     expect(palMotionByMotionId('')).toBeNull();
+  });
+
+  it('finds every added motion by the id that travels on the wire', () => {
+    for (const motionId of ADDED_MOTION_IDS) {
+      expect(palMotionByMotionId(motionId)?.id, motionId).toBe(palMotionCosmeticId(motionId));
+    }
   });
 
   it('finds one by the id the store sells', () => {
