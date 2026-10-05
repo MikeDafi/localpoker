@@ -283,8 +283,8 @@
           "runVotes": {
             "$playerId": {
               ".write": "auth != null && ((auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()) || (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()))",
-              ".validate": "!newData.exists() || (newData.hasChildren(['choice','ts']) && newData.child('choice').isNumber() && newData.child('choice').val() >= 1 && newData.child('choice').val() <= 3 && newData.child('ts').isNumber())",
-              "choice": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 3" },
+              ".validate": "!newData.exists() || (newData.hasChildren(['choice','ts']) && newData.child('choice').isNumber() && newData.child('choice').val() >= 1 && newData.child('choice').val() <= 4 && newData.child('ts').isNumber())",
+              "choice": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 4" },
               "ts": { ".validate": "newData.isNumber()" },
               "$other": { ".validate": false }
             }

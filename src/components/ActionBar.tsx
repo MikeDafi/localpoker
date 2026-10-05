@@ -38,7 +38,16 @@ export function ActionBar({ legal, potSize, step, onAction }: ActionBarProps) {
 
   // Approximate sizing tiers, always clamped to the legal [min, max] range.
   const quick = [
-    { label: 'Min', value: clamp(min) },
+    /*
+     * Min is gone.
+     *
+     * It was the first button and nobody used it: a minimum raise is rarely
+     * the bet you want, and it was already the amount the stepper opens on,
+     * so the button spent a slot of the only sizing row to repeat the value
+     * that was on screen anyway. A third of the pot is a real sizing and the
+     * one the row was missing at the small end.
+     */
+    { label: '⅓ Pot', value: clamp(min + Math.floor(potSize / 3)) },
     { label: '½ Pot', value: clamp(min + Math.floor(potSize * 0.5)) },
     { label: 'Pot', value: clamp(min + potSize) },
     { label: 'Max', value: max },

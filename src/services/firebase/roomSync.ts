@@ -136,7 +136,7 @@ const toDbRebuyRequest = (playerId: string): RoomRebuyRequest => ({
   ts: Date.now(),
 });
 
-const toDbRunVote = (choice: 1 | 2 | 3): RoomRunVote => ({
+const toDbRunVote = (choice: 1 | 2 | 3 | 4): RoomRunVote => ({
   choice,
   ts: Date.now(),
 });
@@ -1626,7 +1626,7 @@ export const subscribeExposedCards = (
 };
 
 /** Vote for how many boards to run after everyone is all in. */
-export const voteRunItTwice = async (code: string, choice: 1 | 2 | 3): Promise<RunVoteResult> => {
+export const voteRunItTwice = async (code: string, choice: 1 | 2 | 3 | 4): Promise<RunVoteResult> => {
   const db = getConfiguredDb();
   const roomCode = cleanKey(code);
   if (!db || !roomCode) return unavailableResult();

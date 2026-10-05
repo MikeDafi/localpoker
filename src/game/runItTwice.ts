@@ -12,9 +12,9 @@
  */
 
 /** Nobody is allowed to ask for more than this many boards. */
-export const MAX_RUNS = 3;
+export const MAX_RUNS = 4;
 
-export type RunCount = 1 | 2 | 3;
+export type RunCount = 1 | 2 | 3 | 4;
 
 export interface RunVote {
   playerId: string;

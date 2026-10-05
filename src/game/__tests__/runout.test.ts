@@ -247,6 +247,30 @@ describe('the felt during a run-out', () => {
     }
   });
 
+  /*
+   * Four is the most the wheel offers, and four boards off a preflop all-in
+   * is twenty cards out of a deck that has already dealt everybody in. If the
+   * deck ran dry the engine would quietly hand back a short board, so this
+   * pins that it does not.
+   */
+  it('can deal four whole boards without running the deck out', () => {
+    const settled = rerunShowdownFromSettled(shovedPreflop(), 4, 0);
+    const runs = settled.runResults!;
+    expect(runs).toHaveLength(4);
+
+    const seen = new Set<string>();
+    for (const run of runs) {
+      expect(run.board).toHaveLength(5);
+      for (const card of run.board) seen.add(`${card.rank}${card.suit}`);
+    }
+    // No board may reuse a card from another, which is the failure a deck
+    // running short would actually produce.
+    expect(seen.size).toBe(20);
+
+    const paid = runs.flatMap((r) => r.winners).reduce((sum, w) => sum + w.amount, 0);
+    expect(paid).toBe(settled.winners.reduce((sum, w) => sum + w.amount, 0));
+  });
+
   it('hands back the real result once the river is out', () => {
     const settled = shovedPreflop();
     const felt = runoutFelt(settled, 5);

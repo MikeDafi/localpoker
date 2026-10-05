@@ -31,6 +31,7 @@ import { TurnTimer } from '../components/TurnTimer';
 import { LiveStatsPanel } from '../components/LiveStatsPanel';
 import { EmoteBar, type Emote } from '../components/EmoteBar';
 import { FlyingChipStack } from '../components/FlyingChipStack';
+import { RunCountWheel } from '../components/RunCountWheel';
 import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
@@ -83,7 +84,6 @@ import {
 import {
   agreedRuns,
   canRunItTwice,
-  MAX_RUNS,
   votingComplete,
   type RunCount,
   type RunVote,
@@ -2825,17 +2825,11 @@ export function TableScreen({ navigation, route }: Props) {
               Highest vote wins. No answer means 1.
             </Text>
             <View style={styles.runVoteRow}>
-              {Array.from({ length: MAX_RUNS }, (_, i) => (i + 1) as RunCount).map((choice) => (
-                <WiiButton
-                  key={choice}
-                  label={`${choice}`}
-                  variant={humanRunVote?.choice === choice ? 'gold' : 'blue'}
-                  size="md"
-                  style={styles.runVoteBtn}
-                  disabled={!runVoteCanAnswer}
-                  onPress={() => chooseRunCount(choice)}
-                />
-              ))}
+              <RunCountWheel
+                value={humanRunVote?.choice ?? 1}
+                enabled={runVoteCanAnswer}
+                onChange={chooseRunCount}
+              />
             </View>
             {!runVoteCanAnswer && (
               <Text style={styles.foldedNote}>Waiting for the other all-in players…</Text>
@@ -3474,8 +3468,7 @@ const styles = StyleSheet.create({
   // button is now a circle with no words to widen it.
   showChoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   showChoiceLabel: { fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkSoft },
-  runVoteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.sm },
-  runVoteBtn: { flex: 1 },
+  runVoteRow: { alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm },
   notSeated: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   notSeatedTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, textAlign: 'center' },
   notSeatedBody: { fontFamily: fonts.regular, fontSize: 14, color: colors.onDarkSoft, textAlign: 'center', marginBottom: spacing.md },

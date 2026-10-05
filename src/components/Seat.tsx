@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, withSequence, cancelAnimation, Easing, ZoomIn, FadeOut, FadeInDown } from 'react-native-reanimated';
 import { AnimatedPal } from './AnimatedPal';
 import { PalMotion } from './PalMotion';
+import { ChipStack } from './ChipStack';
 import { PlayingCard } from './PlayingCard';
 import { DealtCard } from './DealtCard';
 import { colors, fonts, radii, shadows, spacing, numeric, motion, easings } from '../theme/theme';
@@ -77,6 +78,16 @@ export interface SeatProps {
  * from, so anything that can resize it moves the whole table.
  */
 const BET_SLOT_H = 28;
+
+/**
+ * How wide one chip in front of a seat is.
+ *
+ * Chosen so that the tallest stack the compact look will draw, six chips,
+ * still fits the reserved slot: a chip is `0.52w` of face plus `0.24w` of
+ * wall, and each one below the top adds `0.173w`. At 16 that is 26 points
+ * against a 28 point slot. Larger and a big bet would climb over the name.
+ */
+const BET_CHIP_W = 16;
 
 /** How big an opponent's hole card is while it is still face down. */
 const SEAT_CARD = 26;
@@ -268,7 +279,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
           */}
         <View style={styles.betSlot}>
           {showBet && player.currentBet > 0 && !player.sittingOut && (
-            <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
+            <BetChips amount={player.currentBet} />
           )}
         </View>
       </View>
@@ -338,9 +349,36 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
           changes height mid hand. See the note on the compact seat above. */}
       <View style={styles.betSlot}>
         {showBet && player.currentBet > 0 && !player.sittingOut && (
-          <View style={styles.bet}><Text style={styles.betText}>{player.currentBet.toLocaleString()}</Text></View>
+          <BetChips amount={player.currentBet} />
         )}
       </View>
+    </View>
+  );
+}
+
+/**
+ * The chips somebody has actually pushed out, next to what they are worth.
+ *
+ * The bet used to be a number in a pill with no chips anywhere near it: the
+ * only chips on the felt were the ones in flight, so between animations the
+ * table had money on it that was drawn as text. A stack in front of the seat
+ * is what the amount means.
+ *
+ * The box around the stack is a fixed height on purpose. The pod's height is
+ * what the lane and the board are measured from, so a stack that grew the
+ * slot would move the whole table every time somebody bet, which is the
+ * thing the reserved slot above exists to prevent. The stack is pinned to the
+ * bottom of that box and allowed to grow up past it, which is also how real
+ * chips behave, and it has the rest of the slot to grow into before it could
+ * reach the name.
+ */
+function BetChips({ amount }: { amount: number }) {
+  return (
+    <View style={styles.betRow}>
+      <View style={styles.betChips} pointerEvents="none">
+        <ChipStack amount={amount} size={BET_CHIP_W} showLabel={false} compact />
+      </View>
+      <View style={styles.bet}><Text style={styles.betText}>{amount.toLocaleString()}</Text></View>
     </View>
   );
 }
@@ -447,7 +485,12 @@ const styles = StyleSheet.create({
   /** Lifted clear so the enlarged card is not clipped by its neighbour. */
   liftedCard: { zIndex: 3 },
   betSlot: { height: BET_SLOT_H, justifyContent: 'flex-start', alignItems: 'center' },
-  bet: { marginTop: spacing.xs, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  // The margin that used to sit on the pill, moved out so the chips beside it
+  // share it and the two line up.
+  betRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: spacing.xs },
+  // Fixed height, so however tall the stack is the pod stays the same size.
+  betChips: { height: BET_SLOT_H - spacing.xs, justifyContent: 'flex-end', marginRight: 3 },
+  bet: { backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   betText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, ...numeric },
 
   // Compact vertical opponent pod

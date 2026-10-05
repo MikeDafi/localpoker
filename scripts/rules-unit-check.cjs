@@ -661,10 +661,15 @@ function logOk(message) {
     }));
     logOk('and someone not at the table cannot vote on run count');
 
-    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
       choice: 4, ts: 72,
     }));
-    logOk('run-count votes are capped at three');
+    logOk('four boards is allowed, which is the most the wheel offers');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
+      choice: 5, ts: 72,
+    }));
+    logOk('run-count votes are capped at four');
 
     await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/runVotes/player'), {
       choice: 2, ts: 73, playerId: 'host',
