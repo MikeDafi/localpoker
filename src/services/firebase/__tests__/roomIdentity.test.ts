@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createGame, startHand } from '../../../engine/holdem';
 
 /**
  * Regression guard for the bug that made online play impossible.
@@ -96,6 +97,20 @@ const mergedRootUpdates = (): Record<string, unknown> =>
       ...merged,
       ...(write.value as Record<string, unknown>),
     }), {});
+
+
+/** A real dealt hand, so the publish path sees the shape the engine makes. */
+function baseGameState() {
+  const game = createGame(
+    { smallBlind: 10, bigBlind: 20, startingStack: 1000, maxPlayers: 6, turnTimerSec: 30 },
+    [
+      { id: AUTH_UID, name: 'Host', chips: 1000, seatIndex: 0 },
+      { id: 'other', name: 'Other', chips: 1000, seatIndex: 1 },
+    ],
+    11,
+  );
+  return startHand(game);
+}
 
 describe('room writes are keyed by auth.uid', () => {
   beforeEach(() => {
@@ -342,6 +357,49 @@ describe('room writes are keyed by auth.uid', () => {
       connected: true,
       isHost: true,
     });
+  });
+
+  /*
+   * Showing a card asks the host to publish again, and one caller was handing
+   * over a cached state that could be a hand behind. That pushed the whole
+   * table back to the previous hand and dealt the cards everybody had just
+   * been shown a second time. The caller is fixed; this pins the backstop.
+   */
+  it('refuses to publish a hand older than the table already has', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 3,
+      players: { [AUTH_UID]: { id: AUTH_UID, name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true } },
+      publicState: { handNumber: 7 },
+    });
+    const { publishHostGameState } = await import('../roomSync');
+
+    const stale = { ...baseGameState(), handNumber: 6 };
+    const result = await publishHostGameState('ROOM12', stale as never);
+
+    expect(result.ok).toBe(false);
+    expect(mergedRootUpdates()['localpoker/rooms/ROOM12/publicState']).toBeUndefined();
+  });
+
+  it('still publishes the hand the table is already on', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 3,
+      players: { [AUTH_UID]: { id: AUTH_UID, name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true } },
+      publicState: { handNumber: 7 },
+    });
+    const { publishHostGameState } = await import('../roomSync');
+
+    const current = { ...baseGameState(), handNumber: 7 };
+    const result = await publishHostGameState('ROOM12', current as never);
+
+    expect(result.ok).toBe(true);
   });
 
   it('stamps actions with the auth uid even if the caller supplies another id', async () => {

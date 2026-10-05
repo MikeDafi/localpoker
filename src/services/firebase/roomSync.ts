@@ -1210,7 +1210,23 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       return { ok: false, reason: 'Room has ended.' };
     }
 
-    const isNewPublishedHand = room.publicState?.handNumber !== state.handNumber;
+    /*
+     * A table never goes backwards.
+     *
+     * Publishing is triggered from several places, including somebody showing
+     * a card, and one of those callers was handing over a cached state that
+     * could be a hand behind. The result was the whole table being pushed
+     * back to the previous hand and the cards everybody had just seen being
+     * dealt out again. The caller is fixed, and this is the backstop: an
+     * earlier hand is never a legitimate thing to publish, so it is refused
+     * here rather than trusted not to arrive.
+     */
+    const publishedHand = room.publicState?.handNumber;
+    if (typeof publishedHand === 'number' && state.handNumber < publishedHand) {
+      return { ok: false, reason: 'Refusing to publish a hand older than the table already has.' };
+    }
+
+    const isNewPublishedHand = publishedHand !== state.handNumber;
     const { publicState, privateViews } = redactGameState(state, {
       code: roomCode,
       playerMeta: playerMetaFromRoom(room),

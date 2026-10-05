@@ -872,6 +872,24 @@ export function isFreeOrOwnedCosmetic(id: string, owned?: readonly string[]): bo
   return FREE_REACTION_COSMETIC_IDS.includes(id) || (owned ?? []).includes(id);
 }
 
+/**
+ * Everything you can actually send, before everything you cannot.
+ *
+ * A picker that interleaves owned and locked items makes the player hunt for
+ * the ones that work, and the locked ones are the loudest because they carry
+ * a badge. Partitioned, the top of the list is always usable and the Store
+ * items read as a tail rather than as landmines.
+ *
+ * A stable partition rather than a sort on a key: within each group the
+ * catalogue's own order is deliberate, and this must not disturb it.
+ */
+export function unlockedFirst<T extends { locked: boolean }>(items: readonly T[]): T[] {
+  const open: T[] = [];
+  const shut: T[] = [];
+  for (const item of items) (item.locked ? shut : open).push(item);
+  return [...open, ...shut];
+}
+
 export function resolveGifEmoteOptions(input: {
   owned?: readonly string[];
 }): (GifCosmetic & { locked: boolean })[] {
@@ -894,37 +912,37 @@ export function resolveEmojiEmotes(input: {
 export function resolveEmojiEmoteOptions(input: {
   owned?: readonly string[];
 }): (EmojiCosmetic & { locked: boolean })[] {
-  return Object.values(EMOJI_EMOTES).map((emoji) => ({
+  return unlockedFirst(Object.values(EMOJI_EMOTES).map((emoji) => ({
     ...emoji,
     locked: !isFreeOrOwnedCosmetic(emoji.id, input.owned),
-  }));
+  })));
 }
 
 export function resolveStickerEmoteOptions(input: {
   owned?: readonly string[];
 }): (StickerEmoteCosmetic & { locked: boolean })[] {
-  return Object.values(STICKER_EMOTES).map((sticker) => ({
+  return unlockedFirst(Object.values(STICKER_EMOTES).map((sticker) => ({
     ...sticker,
     locked: !isFreeOrOwnedCosmetic(sticker.id, input.owned),
-  }));
+  })));
 }
 
 export function resolveTextEmoteOptions(input: {
   owned?: readonly string[];
 }): (TextEmoteCosmetic & { locked: boolean })[] {
-  return Object.values(TEXT_EMOTES).map((text) => ({
+  return unlockedFirst(Object.values(TEXT_EMOTES).map((text) => ({
     ...text,
     locked: !isFreeOrOwnedCosmetic(text.id, input.owned),
-  }));
+  })));
 }
 
 export function resolvePalMotionOptions(input: {
   owned?: readonly string[];
 }) {
-  return Object.values(PAL_MOTION_CATALOG).map((motion) => ({
+  return unlockedFirst(Object.values(PAL_MOTION_CATALOG).map((motion) => ({
     ...motion,
     locked: !isFreeOrOwnedCosmetic(motion.id, input.owned),
-  }));
+  })));
 }
 
 export function emoteCosmeticIdForPayload(emote: CosmeticEmotePayload): string | null {

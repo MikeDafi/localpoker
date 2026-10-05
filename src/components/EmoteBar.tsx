@@ -14,6 +14,7 @@ import {
   resolveStickerEmoteOptions,
   resolveTextEmoteOptions,
   STICKER_EMOTES,
+  unlockedFirst,
   TEXT_EMOTES,
 } from '../game/cosmetics';
 import { DEFAULT_PAL, type PalConfig } from '../avatar/palConfig';
@@ -74,7 +75,9 @@ export function EmoteBar({
   // easy reach are not the same six forever, while the tray still holds still
   // for as long as anyone is playing.
   const gifs = useMemo(
-    () => shuffleForDay(resolveGifEmoteOptions({ owned: ownedCosmeticIds }))
+    // Partitioned AFTER the daily shuffle, or the shuffle puts the locked
+    // ones straight back among the ones you can send.
+    () => unlockedFirst(shuffleForDay(resolveGifEmoteOptions({ owned: ownedCosmeticIds })))
       .map((g) => ({
         id: g.id,
         send: gifUrl(g.gifId),

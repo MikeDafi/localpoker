@@ -24,22 +24,23 @@ import {
   STARTER_CARD_BACKS,
   STICKER_EMOTES,
   TEXT_EMOTES,
-  gifCosmeticId,
   canSendEmotePayload,
   emoteCosmeticIdForPayload,
+  gifCosmeticId,
   isFreeOrOwnedCosmetic,
   migrateCosmetics,
+  pinCosmetics,
   resolveCardBack,
   resolveChips,
-  resolveEmojiEmotes,
   resolveEmojiEmoteOptions,
+  resolveEmojiEmotes,
   resolveFelt,
   resolveGifEmoteOptions,
   resolveGifEmotes,
   resolvePalMotionOptions,
   resolveStickerEmoteOptions,
   resolveTextEmoteOptions,
-  pinCosmetics,
+  unlockedFirst,
 } from '../cosmetics';
 import { GIF_LIBRARY, gifUrl } from '../../services/gifs';
 
@@ -502,5 +503,56 @@ describe('reaction emote ownership', () => {
     expect(canSendEmotePayload({ type: 'gif', value: gifUrl(GIF_EMOTES[FREE_GIF_COSMETIC_IDS[0]!]!.gifId) }, [])).toBe(true);
     expect(canSendEmotePayload({ type: 'palMotion', value: 'wave' }, [])).toBe(true);
     expect(canSendEmotePayload({ type: 'text', value: 'Good luck everyone' }, [])).toBe(true);
+  });
+});
+
+/*
+ * A picker that interleaves owned and locked items makes the player hunt for
+ * the ones that actually work, and the locked ones draw the eye because they
+ * carry a badge. Everything sendable goes first.
+ */
+describe('unlockedFirst', () => {
+  it('puts everything unlocked before everything locked', () => {
+    const items = [
+      { id: 'a', locked: true },
+      { id: 'b', locked: false },
+      { id: 'c', locked: true },
+      { id: 'd', locked: false },
+    ];
+    expect(unlockedFirst(items).map((i) => i.id)).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  it('keeps the catalogue order inside each group', () => {
+    const items = [
+      { id: 'x1', locked: false },
+      { id: 'y1', locked: true },
+      { id: 'x2', locked: false },
+      { id: 'y2', locked: true },
+      { id: 'x3', locked: false },
+    ];
+    const out = unlockedFirst(items).map((i) => i.id);
+    expect(out).toEqual(['x1', 'x2', 'x3', 'y1', 'y2']);
+  });
+
+  it('is a no-op when nothing is locked, and when everything is', () => {
+    const open = [{ id: 'a', locked: false }, { id: 'b', locked: false }];
+    const shut = [{ id: 'a', locked: true }, { id: 'b', locked: true }];
+    expect(unlockedFirst(open)).toEqual(open);
+    expect(unlockedFirst(shut)).toEqual(shut);
+    expect(unlockedFirst([])).toEqual([]);
+  });
+
+  it('is what every emote picker actually returns', () => {
+    for (const options of [
+      resolveEmojiEmoteOptions({ owned: [] }),
+      resolveStickerEmoteOptions({ owned: [] }),
+      resolveTextEmoteOptions({ owned: [] }),
+      resolvePalMotionOptions({ owned: [] }),
+    ]) {
+      const firstLocked = options.findIndex((o) => o.locked);
+      if (firstLocked === -1) continue;
+      // Nothing unlocked may appear after the first locked entry.
+      expect(options.slice(firstLocked).every((o) => o.locked)).toBe(true);
+    }
   });
 });

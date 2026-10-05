@@ -1306,6 +1306,27 @@ export function TableScreen({ navigation, route }: Props) {
   }, [room?.status, room?.endedReason, roomCode, isOnlineHost]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
+   * Which state a reveal is allowed to republish.
+   *
+   * Showing a card asks the host to publish again, because only the host may
+   * put a real card into public state. It used to republish
+   * `getCachedHostGame()`, and that cache is written when the host publishes,
+   * so it can sit a hand behind the one being played. Republishing it pushed
+   * the entire table back to the previous hand: the cards everybody had just
+   * been shown were dealt out again, which from a seat looks exactly like the
+   * reveal button redealing the same hand.
+   *
+   * The live state is never behind, because the ref is updated every render,
+   * so the cache is only used when it is demonstrably the same hand.
+   */
+  const stateToRepublish = useCallback((): GameState | null => {
+    const live = stateRef.current;
+    if (!live) return null;
+    const cached = roomCode ? getCachedHostGame(roomCode) : null;
+    return cached && cached.handNumber === live.handNumber ? cached : live;
+  }, [roomCode]);
+
+  /*
    * Republish when somebody tables their hand.
    *
    * The reveal flag lives on the room, but the hole cards only reach anyone
@@ -1321,7 +1342,7 @@ export function TableScreen({ navigation, route }: Props) {
        * reveal arrived and the table moved on anyway.
        */
       setShowdownHold(SHOWDOWN_REVEAL_EXTRA_SEC);
-      const current = getCachedHostGame(roomCode) ?? stateRef.current;
+      const current = stateToRepublish();
       if (!current || current.street !== 'showdown') return;
       publishHostGameState(roomCode, current)
         .then((r) => noteSync(r.ok))
@@ -1330,7 +1351,7 @@ export function TableScreen({ navigation, route }: Props) {
           captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-reveal' } });
         });
     });
-  }, [roomCode, firebaseOnline, isOnlineHost, noteSync]);
+  }, [roomCode, firebaseOnline, isOnlineHost, noteSync, stateToRepublish]);
 
   /*
    * Republish when somebody exposes one card during the hand.
@@ -1341,7 +1362,7 @@ export function TableScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!roomCode || !firebaseOnline || !isOnlineHost) return undefined;
     return subscribeExposedCards(roomCode, () => {
-      const current = getCachedHostGame(roomCode) ?? stateRef.current;
+      const current = stateToRepublish();
       if (!current) return;
       publishHostGameState(roomCode, current)
         .then((r) => noteSync(r.ok))
@@ -1350,7 +1371,7 @@ export function TableScreen({ navigation, route }: Props) {
           captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-card-exposure' } });
         });
     });
-  }, [roomCode, firebaseOnline, isOnlineHost, noteSync]);
+  }, [roomCode, firebaseOnline, isOnlineHost, noteSync, stateToRepublish]);
 
   const onTimerExpire = useCallback(() => {
     if (handOver) return;
