@@ -1198,8 +1198,17 @@ export function TableScreen({ navigation, route }: Props) {
     if (!firebaseOnline) return `Room ${roomCode} · practice vs bots, live friend play needs Firebase setup`;
     if (room?.status === 'ended') return `Room ${roomCode} ended, host disconnected or left`;
     if (!onlineSyncActive) return 'Connecting to the live table…';
+    /*
+     * The host's phone is the dealer, so while they are away nothing is going
+     * to happen. Said out loud, because the alternative is a table that looks
+     * broken: the hand simply stops between hands and nobody is told why.
+     * Not shown to the host, who is plainly here if they are reading it.
+     */
+    if (!isOnlineHost && typeof room?.hostAwayAt === 'number') {
+      return 'Waiting for the host to come back. They deal, so the next hand starts when they do.';
+    }
     return null;
-  }, [firebaseOnline, onlineSyncActive, room?.status, roomCode, syncFailed]);
+  }, [firebaseOnline, isOnlineHost, onlineSyncActive, room?.hostAwayAt, room?.status, roomCode, syncFailed]);
 
   /*
    * Leave the felt when the table is genuinely over.

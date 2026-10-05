@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, createGame, startHand } from '../../engine/holdem';
+import { applyAction, createGame, rerunShowdownFromSettled, startHand } from '../../engine/holdem';
 import type { Card } from '../../engine/cards';
-import type { GameState } from '../../engine/types';
+import type { BoardRunResult, GameState } from '../../engine/types';
 import {
   isRunningOut,
   nextRunoutStep,
@@ -42,6 +42,17 @@ function shovedPreflop(): GameState {
   const afterShove = ok(applyAction(dealt, shover.id, 'allin'));
   const caller = afterShove.players[afterShove.currentPlayerIndex]!;
   return ok(applyAction(afterShove, caller.id, 'call'));
+}
+
+/** What one player has been paid by the end of run `through`. */
+function earnedThrough(runs: readonly BoardRunResult[], through: number, playerId: string): number {
+  let total = 0;
+  for (let run = 0; run <= through; run += 1) {
+    for (const winner of runs[run]?.winners ?? []) {
+      if (winner.playerId === playerId) total += winner.amount;
+    }
+  }
+  return total;
 }
 
 describe('run-out pacing', () => {
@@ -179,6 +190,61 @@ describe('the felt during a run-out', () => {
     const before = JSON.stringify(settled);
     runoutFelt(settled, 3);
     expect(JSON.stringify(settled)).toBe(before);
+  });
+
+  /*
+   * Running it three ways used to look like three results and one payment:
+   * the pot flew to a seat at the end of every run, and the number beside
+   * that seat did not move until the last one. A stack that grows a third at
+   * a time is the thing that makes a run readable, and it is the only reason
+   * to show the runs one at a time rather than settle at the end.
+   */
+  it('grows the winner stack one run at a time', () => {
+    const settled = rerunShowdownFromSettled(shovedPreflop(), 3, 0);
+    const runs = settled.runResults!;
+    expect(runs).toHaveLength(3);
+
+    const before = new Map(settled.players.map((p) => {
+      const won = settled.winners.find((w) => w.playerId === p.id)?.amount ?? 0;
+      return [p.id, p.chips - won];
+    }));
+
+    let paidSoFar = 0;
+    for (let run = 0; run < runs.length; run += 1) {
+      const boardLength = runs[run]!.board.length;
+
+      // Mid run, before this board has finished, nothing new has been paid.
+      const during = runoutFelt(settled, boardLength - 1, run);
+      for (const player of during.players) {
+        const earned = earnedThrough(runs, run - 1, player.id);
+        expect(player.chips).toBe(before.get(player.id)! + earned);
+      }
+
+      // The run's board completes, and its share lands in the stack.
+      const after = runoutFelt(settled, boardLength, run);
+      for (const player of after.players) {
+        const earned = earnedThrough(runs, run, player.id);
+        expect(player.chips).toBe(before.get(player.id)! + earned);
+      }
+      paidSoFar += runs[run]!.winners.reduce((sum, w) => sum + w.amount, 0);
+    }
+
+    // The last run leaves every stack exactly where the settled hand says.
+    const final = runoutFelt(settled, runs[2]!.board.length, 2);
+    for (const player of final.players) {
+      expect(player.chips).toBe(settled.players.find((p) => p.id === player.id)!.chips);
+    }
+    expect(paidSoFar).toBe(settled.winners.reduce((sum, w) => sum + w.amount, 0));
+  });
+
+  it('shows each run its own winners, so every board says who took it', () => {
+    const settled = rerunShowdownFromSettled(shovedPreflop(), 2, 0);
+    const runs = settled.runResults!;
+    for (let run = 0; run < runs.length; run += 1) {
+      const felt = runoutFelt(settled, runs[run]!.board.length, run);
+      expect(felt.street).toBe('showdown');
+      expect(felt.winners).toEqual(runs[run]!.winners);
+    }
   });
 
   it('hands back the real result once the river is out', () => {

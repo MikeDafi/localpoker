@@ -79,6 +79,14 @@ export type RoomState = {
   runVotes?: Record<string, RoomRunVote>;
   endedReason?: string;
   endedAt?: number;
+  /**
+   * When the host's connection dropped, written by `onDisconnect` and cleared
+   * the moment they come back.
+   *
+   * The host's phone is the dealer, so while this is set nothing advances. It
+   * is what lets the table say so rather than appearing to have frozen.
+   */
+  hostAwayAt?: number;
 };
 
 export type RoomAction = {

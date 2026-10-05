@@ -227,11 +227,33 @@ export function runoutFelt(state: GameState, revealed: number, runIndex = 0): Ga
   const owed = new Map(state.winners.map((winner) => [winner.playerId, winner.amount]));
   const run = state.runResults?.[runIndex];
   const board = run?.board ?? state.board;
+  const settled = revealed >= board.length;
+  /*
+   * What the earlier runs have already paid out.
+   *
+   * Taking the whole hand's payout off every stack for every run put the
+   * chips back where they were before the showdown and left them there: the
+   * pot flew to the winner's seat at the end of each run and the number
+   * beside the seat did not move until the last one, so running it three
+   * ways looked like three results and one payment. A stack that grows a
+   * third at a time is the thing that makes a run readable, and it is the
+   * reason for running them one at a time rather than settling at the end.
+   *
+   * The current run counts only once its own board is complete, so the chips
+   * arrive with the result rather than ahead of it.
+   */
+  const collected = new Map<string, number>();
+  const lastPaid = settled ? runIndex : runIndex - 1;
+  for (let i = 0; i <= lastPaid; i += 1) {
+    for (const winner of state.runResults?.[i]?.winners ?? []) {
+      collected.set(winner.playerId, (collected.get(winner.playerId) ?? 0) + winner.amount);
+    }
+  }
   return {
     ...state,
     players: state.players.map((player) => {
-      const payout = owed.get(player.id) ?? 0;
-      return payout > 0 ? { ...player, chips: player.chips - payout } : player;
+      const delta = (collected.get(player.id) ?? 0) - (owed.get(player.id) ?? 0);
+      return delta !== 0 ? { ...player, chips: player.chips + delta } : player;
     }),
     board: board.slice(0, Math.max(0, revealed)),
     /*
@@ -248,8 +270,8 @@ export function runoutFelt(state: GameState, revealed: number, runIndex = 0): Ga
      * street and the result have to appear together or the layout asks for
      * winners that are not there yet.
      */
-    street: revealed >= board.length ? 'showdown' : runoutStreet(revealed),
+    street: settled ? 'showdown' : runoutStreet(revealed),
     currentPlayerIndex: -1,
-    winners: revealed >= board.length ? run?.winners ?? [] : [],
+    winners: settled ? run?.winners ?? [] : [],
   };
 }
