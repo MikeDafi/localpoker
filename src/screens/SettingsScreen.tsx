@@ -12,6 +12,7 @@ import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SettingNumberChooser } from '../components/SettingNumberChooser';
 import { WiiButton } from '../components/WiiButton';
 import { WiiPanel } from '../components/WiiPanel';
 import {
@@ -275,41 +276,14 @@ function FieldControl({
   }
 
   const numberValue = typeof value === 'number' ? value : 0;
-  const nextDown = clampToStep(numberValue - (field.step ?? 1), field);
-  const nextUp = clampToStep(numberValue + (field.step ?? 1), field);
-  const atMin = typeof field.min === 'number' && numberValue <= field.min;
-  const atMax = typeof field.max === 'number' && numberValue >= field.max;
-  const progress = getRangeProgress(numberValue, field);
 
   return (
-    <View style={styles.stepperWrap}>
-      <View style={styles.stepperTopRow}>
-        <Pressable
-          disabled={atMin}
-          onPress={() => onSetField(field.key, nextDown as GameSettings[typeof field.key])}
-          style={[styles.stepButton, atMin && styles.stepButtonDisabled]}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.stepButtonText, atMin && styles.stepButtonTextDisabled]}>−</Text>
-        </Pressable>
-        <View style={styles.numberReadout}>
-          <Text style={styles.numberValue}>{formatSettingValue(field, numberValue)}</Text>
-        </View>
-        <Pressable
-          disabled={atMax}
-          onPress={() => onSetField(field.key, nextUp as GameSettings[typeof field.key])}
-          style={[styles.stepButton, atMax && styles.stepButtonDisabled]}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.stepButtonText, atMax && styles.stepButtonTextDisabled]}>+</Text>
-        </Pressable>
-      </View>
-      {progress !== null ? (
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-      ) : null}
-    </View>
+    <SettingNumberChooser
+      field={field}
+      value={numberValue}
+      onChange={(next) => onSetField(field.key, next as GameSettings[typeof field.key])}
+      formatValue={formatSettingValue}
+    />
   );
 }
 
@@ -398,31 +372,6 @@ function AccountFact({ label, value }: { label: string; value: string }) {
       </Text>
     </View>
   );
-}
-
-function clampToStep(value: number, field: SettingField): number {
-  const step = field.step ?? 1;
-  const min = field.min ?? Number.MIN_SAFE_INTEGER;
-  const max = field.max ?? Number.MAX_SAFE_INTEGER;
-  const base = Number.isFinite(min) ? min : 0;
-  const stepped = base + Math.round((value - base) / step) * step;
-  const clamped = Math.max(min, Math.min(max, stepped));
-  return Number(clamped.toFixed(decimalPlaces(step)));
-}
-
-function getRangeProgress(value: number, field: SettingField): number | null {
-  if (typeof field.min !== 'number' || typeof field.max !== 'number' || field.max <= field.min) return null;
-  return Math.max(0, Math.min(100, Math.round(((value - field.min) / (field.max - field.min)) * 100)));
-}
-
-function decimalPlaces(step: number): number {
-  const [, decimals = ''] = String(step).split('.');
-  return decimals.length;
-}
-
-function formatRange(field: SettingField): string {
-  if (typeof field.min !== 'number' || typeof field.max !== 'number') return `step ${field.step ?? 1}`;
-  return `${field.min}–${field.max} · step ${field.step ?? 1}`;
 }
 
 function formatSettingValue(field: SettingField, value: number): string {
@@ -679,73 +628,6 @@ const styles = StyleSheet.create({
   },
   optionTextActive: {
     color: colors.onBlue,
-  },
-  stepperWrap: {
-    alignSelf: 'stretch',
-    gap: spacing.sm,
-  },
-  stepperTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-  },
-  stepButton: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.blue,
-    backgroundColor: colors.panel,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.soft,
-  },
-  stepButtonDisabled: {
-    borderColor: colors.border,
-    backgroundColor: colors.panelAlt,
-    opacity: 0.55,
-  },
-  stepButtonText: {
-    fontFamily: fonts.bold,
-    fontSize: 24,
-    lineHeight: 28,
-    color: colors.blueDeep,
-  },
-  stepButtonTextDisabled: {
-    color: colors.inkMuted,
-  },
-  numberReadout: {
-    minWidth: 112,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panelAlt,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  numberValue: {
-    fontFamily: fonts.bold,
-    fontSize: 17,
-    color: colors.ink,
-  },
-  numberMeta: {
-    marginTop: 1,
-    fontFamily: fonts.medium,
-    fontSize: 10,
-    color: colors.inkMuted,
-  },
-  progressTrack: {
-    height: 5,
-    borderRadius: radii.pill,
-    backgroundColor: colors.panelAlt,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: radii.pill,
-    backgroundColor: colors.accentAlt,
   },
   accountBody: {
     padding: spacing.lg,

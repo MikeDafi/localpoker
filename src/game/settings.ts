@@ -1,5 +1,5 @@
 import type { Difficulty } from '../engine/bot';
-import { GAME_MODE_OPTIONS, isGameMode, settingsForMode as settingsForKnownMode, type GameMode } from './gameMode';
+import { GAME_MODE_OPTIONS, isGameMode, settingsForMode as settingsForKnownMode, BLIND_LEVEL_LENGTH_HANDS_BY_MODE as BLIND_LEVEL_LENGTH_HANDS_BY_MODE_SOURCE, type GameMode } from './gameMode';
 import {
   CARD_BACK_PALETTES,
   CHIP_PALETTES,
@@ -20,6 +20,28 @@ import {
 
 export type FieldType = 'toggle' | 'select' | 'number' | 'slider';
 
+/**
+ * The three ways a bet can sound.
+ *
+ * One cue was not enough. Every call and every raise sounded identical, so a
+ * busy table turned into the same sample forty times a hand, which is how a
+ * good sound becomes an irritating one. These are three different handfuls of
+ * chips hitting cloth, and the player picks the one they like.
+ */
+export const CHIP_SOUND_STYLES = ['toss', 'splash', 'riffle'] as const;
+
+export type ChipSoundStyle = (typeof CHIP_SOUND_STYLES)[number];
+
+export const CHIP_SOUND_OPTIONS: { value: ChipSoundStyle; label: string }[] = [
+  { value: 'toss', label: 'Toss' },
+  { value: 'splash', label: 'Splash' },
+  { value: 'riffle', label: 'Riffle' },
+];
+
+export function isChipSoundStyle(value: unknown): value is ChipSoundStyle {
+  return (CHIP_SOUND_STYLES as readonly unknown[]).includes(value);
+}
+
 export interface SettingField {
   key: keyof GameSettings;
   label: string;
@@ -31,6 +53,27 @@ export interface SettingField {
   options?: { value: string | number; label: string }[];
   premium?: boolean;
   modes?: readonly GameMode[];
+  /**
+   * The values a number field offers, instead of a plus and minus pair.
+   *
+   * Stepping was the wrong control for every one of these. Going from a 2000
+   * stack to 25000 was more than twenty taps, and the range exists because
+   * somebody might want 25000, not because anyone wants 2100. A row of the
+   * values people actually pick is one tap for all of them.
+   *
+   * `min`, `max` and `step` stay, because `normalizeSettings` still clamps
+   * with them and a value saved by an older build has to land somewhere
+   * legal. The presets are what is offered, not what is allowed.
+   */
+  presets?: readonly number[];
+  /**
+   * Hidden on the Game Setup screen, shown in the table's own menu.
+   *
+   * For rules that only mean something once a game is running. Setting a
+   * blind level length before the first hand is asking a question nobody can
+   * answer yet, and every mode already carries a sensible one.
+   */
+  setupHidden?: boolean;
 }
 
 export interface SettingsSection {
@@ -88,6 +131,14 @@ export interface GameSettings {
   soundVolume: number;
   hapticsEnabled: boolean;
   winFanfare: boolean;
+  /**
+   * Which splash a bet sounds like.
+   *
+   * Device local rather than a property of the table: it is how chips sound
+   * in your ear, not a rule anyone agreed to, so two people at the same table
+   * can disagree about it without either being wrong.
+   */
+  chipSound: ChipSoundStyle;
 
   // Animations
   animationSpeed: 'slow' | 'normal' | 'fast' | 'off';
@@ -141,6 +192,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   soundVolume: 80,
   hapticsEnabled: true,
   winFanfare: true,
+  chipSound: 'toss',
 
   animationSpeed: 'normal',
   avatarIdleMotion: true,
@@ -157,11 +209,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
 
 };
 
-export const BLIND_LEVEL_LENGTH_HANDS_BY_MODE: Record<GameMode, number> = {
-  cash: 0,
-  tournament: 10,
-  turbo: 4,
-};
+export const BLIND_LEVEL_LENGTH_HANDS_BY_MODE = BLIND_LEVEL_LENGTH_HANDS_BY_MODE_SOURCE;
 
 export function defaultBlindLevelLengthHands(mode: GameMode): number {
   return BLIND_LEVEL_LENGTH_HANDS_BY_MODE[mode];
@@ -179,11 +227,22 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     id: 'table', title: 'Table', icon: '🎲',
     fields: [
       { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash has a buy-in and fixed blinds. Tournament modes publish a hand-based blind schedule and busted players are out.', options: GAME_MODE_OPTIONS },
-      { key: 'smallBlind', label: 'Small Blind', type: 'number', min: 1, max: 100000, step: 1, help: 'Cash uses this as the fixed small blind. Tournament modes use it as level one.' },
-      { key: 'bigBlind', label: 'Big Blind', type: 'number', min: 2, max: 200000, step: 1, help: 'Cash uses this as the fixed big blind. Tournament modes use it as level one.' },
-      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, modes: ['tournament', 'turbo'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
-      { key: 'blindLevelLengthHands', label: 'Level Length', type: 'number', min: 1, max: 100, step: 1, modes: ['tournament', 'turbo'], help: 'Hands per blind level. All clients derive the same level from the shared hand number.' },
-      { key: 'startingStack', label: 'Buy-In / Stack', type: 'number', min: 100, max: 1000000, step: 100 },
+      { key: 'smallBlind', label: 'Small Blind', type: 'number', min: 1, max: 100000, step: 1, presets: [1, 2, 5, 10, 25, 50, 100, 250, 500], help: 'Cash uses this as the fixed small blind. Tournament modes use it as level one.' },
+      { key: 'bigBlind', label: 'Big Blind', type: 'number', min: 2, max: 200000, step: 1, presets: [2, 4, 10, 20, 50, 100, 200, 500, 1000], help: 'Cash uses this as the fixed big blind. Tournament modes use it as level one.' },
+      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, presets: [0, 1, 2, 5, 10, 25, 50], modes: ['tournament', 'turbo'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
+      {
+        key: 'blindLevelLengthHands',
+        label: 'Level Length',
+        type: 'number',
+        min: 1,
+        max: 100,
+        step: 1,
+        presets: [3, 5, 8, 10, 15, 20, 30],
+        modes: ['tournament', 'turbo'],
+        setupHidden: true,
+        help: 'Hands per blind level. All clients derive the same level from the shared hand number.',
+      },
+      { key: 'startingStack', label: 'Buy-In / Stack', type: 'number', min: 100, max: 1000000, step: 100, presets: [500, 1000, 2000, 5000, 10000, 25000, 50000] },
       { key: 'turnTimerSec', label: 'Turn Timer (s)', type: 'slider', min: 5, max: 60, step: 1 },
       { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public tables are listed for anyone to join. Private tables are only shown to your friends. Whoever opens a table deals its cards, so open public tables only if you are happy for strangers to sit down.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
     ],
@@ -216,6 +275,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     fields: [
       { key: 'soundEnabled', label: 'Sound Effects', type: 'toggle' },
       { key: 'soundVolume', label: 'Volume', type: 'slider', min: 0, max: 100, step: 5 },
+      { key: 'chipSound', label: 'Chip Sound', type: 'select', options: CHIP_SOUND_OPTIONS, help: 'Which handful of chips a call or a raise sounds like.' },
       { key: 'hapticsEnabled', label: 'Haptics', type: 'toggle' },
       { key: 'winFanfare', label: 'Win Fanfare', type: 'toggle' },
     ],
@@ -249,6 +309,7 @@ export function shouldShowGameSetupField(field: SettingField, input: {
   isFriends: boolean;
 }): boolean {
   if ((DEVICE_ONLY_SETTINGS as readonly string[]).includes(String(field.key))) return false;
+  if (field.setupHidden) return false;
   if (field.modes && !field.modes.includes(input.gameMode)) return false;
   if (field.key === 'roomVisibility') return input.isFriends;
   return !(input.isFriends && field.key === 'numOpponents');
@@ -270,6 +331,32 @@ export function gameSetupSectionsForMode(gameMode: GameMode, isFriends = false):
 
 const APPEARANCE_SETTING_KEYS = ['cardBack', 'feltStyle', 'chipStyle'] as const;
 
+/**
+ * The rules the table's own menu offers while a game is running.
+ *
+ * Deliberately not `gameSetupSectionsForMode`, which is what it used to be.
+ * That function answers "what does Game Setup ask before the first hand", and
+ * two of its answers are wrong here. It drops anything marked `setupHidden`,
+ * which is exactly the set that only makes sense once a game exists, and it
+ * keeps the felt, the card back and the chips, which the menu already shows
+ * as their own rows and which would otherwise appear twice, the second time
+ * cycling through cosmetics the player does not own.
+ *
+ * Mid-game safety is still the caller's gate, because it is also the gate on
+ * the patch itself and it should only be stated once.
+ */
+export function tableMenuRuleFields(gameMode: GameMode, isFriends = false): SettingField[] {
+  const mode = isGameMode(gameMode) ? gameMode : DEFAULT_GAME_SETTINGS.gameMode;
+  return SETTINGS_SCHEMA
+    .filter((section) => !['sound', 'animations', 'a11y', 'appearance'].includes(section.id))
+    .filter((section) => !(isFriends && section.id === 'bots'))
+    .flatMap((section) => section.fields)
+    .filter((field) => !(DEVICE_ONLY_SETTINGS as readonly string[]).includes(String(field.key)))
+    .filter((field) => !field.modes || field.modes.includes(mode))
+    .filter((field) => (field.key === 'roomVisibility' ? false : true))
+    .filter((field) => !(isFriends && field.key === 'numOpponents'));
+}
+
 function isKnownSettingOption(key: keyof GameSettings, value: unknown): boolean {
   const field = SETTINGS_SCHEMA
     .flatMap((section) => section.fields)
@@ -281,6 +368,7 @@ export function normalizeSettings(s?: Partial<GameSettings> | null): GameSetting
   const merged = { ...DEFAULT_GAME_SETTINGS, ...(s ?? {}) } as GameSettings & Record<string, unknown>;
   delete merged.showAvatarNames;
   if (!isGameMode(merged.gameMode)) merged.gameMode = DEFAULT_GAME_SETTINGS.gameMode;
+  if (!isChipSoundStyle(merged.chipSound)) merged.chipSound = DEFAULT_GAME_SETTINGS.chipSound;
   const rawLevelLength = Number((s as Partial<GameSettings> | null | undefined)?.blindLevelLengthHands);
   merged.blindLevelLengthHands = merged.gameMode === 'cash'
     ? 0
@@ -359,6 +447,7 @@ export const DEVICE_ONLY_SETTINGS = [
   'pushNotifications',
   'soundEnabled',
   'soundVolume',
+  'chipSound',
   'hapticsEnabled',
   'winFanfare',
   'animationSpeed',

@@ -8,12 +8,13 @@ import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
-import { seatRingSlot } from '../game/seatRing';
+import { seatRingLane, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
-import { isMidGameSafe, pickMidGameSafe } from '../game/hostControls';
+import { offeredNumberValues } from '../components/settingNumberOptions';
+import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import {
-  SETTINGS_SCHEMA, availableSettingOptions, gameSetupSectionsForMode,
+  CHIP_SOUND_OPTIONS, SETTINGS_SCHEMA, availableSettingOptions, tableMenuRuleFields,
   type GameSettings, type SettingField,
 } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
@@ -2349,49 +2350,63 @@ export function TableScreen({ navigation, route }: Props) {
     return current?.id === pid ? 'think' : undefined;
   };
 
-  // Opponents sit high on the felt's top arc, hugging the rail, so their pods
-  // (name + bet chip) always clear the community-card lane below them. The felt
-  // is narrower than 5 board cards + two side pods, so the side seats can never
-  // sit *beside* the board; they must sit *above* it, which this arc ensures.
+  /*
+   * Opponents sit around the oval: across the top rail, and down the left and
+   * right rails once there are more of them than the top will hold. The
+   * placement, and the proof that no two pods can touch at any seat count on
+   * any screen, is in `src/game/seatRing.ts`.
+   */
   /**
    * Avatar size scales with how crowded the table is: heads-up there is plenty
    * of felt, so faces can be large and readable; at a full ring they must shrink
    * or the pods overlap along the seat arc.
    */
   const avatarSize = Math.round(Math.max(40, Math.min(66, 74 - opponents.length * 5)));
-  const SEAT_W = Math.max(76, avatarSize + 34);
   /*
-   * Packed rather than placed on a fixed arc. The arithmetic, and the proof
-   * that no two pods can touch at any seat count on any screen, is in
-   * `src/game/seatRing.ts`.
+   * The pod is narrower than it was, by 10pt at every seat count.
+   *
+   * That 10pt is what buys the extra seat across the top rail, and the top
+   * rail is the part that reads as a table. At a full ring the old width fit
+   * three pods across an iPhone SE and five had to go somewhere else; this
+   * fits four, which is the difference between two seats down each rail and
+   * three. The avatar itself is unchanged, so faces are no smaller, the pod
+   * simply stops reserving margin it was not using.
    */
+  const SEAT_W = Math.max(66, avatarSize + 26);
+  const seatRingInput = {
+    count: opponents.length,
+    width: area.w,
+    height: stageH,
+    podWidth: SEAT_W,
+    podHeight: podH,
+    // Keep the deepest rail seat off the hero's own pod, which is not on the
+    // ring and so is invisible to the ring's own overlap guarantee.
+    bottomReserve: heroPodH + 6,
+  };
   const seatPos = (idx: number, n: number) =>
-    seatRingSlot({
-      index: idx,
-      count: n,
-      width: area.w,
-      height: stageH,
-      podWidth: SEAT_W,
-      podHeight: podH,
-    });
+    seatRingSlot({ ...seatRingInput, index: idx, count: n });
 
   /**
-   * The community-card lane: the band of felt between the lowest seat pod and
-   * the hero's pod. Pod heights are tracked as high-water marks (see `setPodH`)
+   * The community-card lane: the band of felt between the seats and the
+   * hero's pod. Pod heights are tracked as high-water marks (see `setPodH`)
    * so the lane never jumps when a bet chip or "Folded" tag comes and goes,
    * the table has to stay put between "your turn" and "hand over".
    *
-   * The top is taken from where the pods *actually* sit rather than from the
-   * arc formula, because `seatPos` clamps pods to the top of the felt. Heads-up
-   * the clamp bites hard, and deriving the lane from the unclamped arc threw
-   * away ~25pt of felt, enough that the board and pot overflowed the lane and
-   * slid underneath the hero, which is how the pot ended up unreadable.
+   * Only the seats across the TOP are measured down from. A seat on a rail
+   * sits beside the board rather than above it, so counting it would push the
+   * five cards off the bottom of the felt to clear something that was never
+   * in their way. Those seats cost the board width instead, which is what
+   * they actually cost, and `laneInset` is that width.
    */
-  const lowestSeatTop = opponents.length
-    ? Math.max(...opponents.map((_, i) => seatPos(i, opponents.length).top))
-    : 0;
-  const measuredLaneTop = lowestSeatTop + podH + 6;
+  const seatLane = seatRingLane(seatRingInput);
+  const measuredLaneTop = (opponents.length ? seatLane.top : 0) + 6;
   const measuredLaneBottom = heroPodH + 6;
+  /*
+   * Symmetric, even though the two rails can in principle differ, because the
+   * board is centred and an asymmetric inset would only move it off centre
+   * without giving it a point more room.
+   */
+  const laneInset = Math.max(seatLane.leftInset, seatLane.rightInset);
 
   /*
    * The lane is latched the first time both pods have really been measured,
@@ -2438,7 +2453,15 @@ export function TableScreen({ navigation, route }: Props) {
     height: Math.max(0, stageH - 2 * (FELT_INSET + FELT_RAIL)),
     centreY: stageH / 2,
   };
-  const cloth = (y: number) => feltWidthAt(y, clothOval);
+  /*
+   * The cloth, less whatever the rail seats are standing on.
+   *
+   * The oval says how wide the felt is at a given height. It does not know
+   * that two pods are parked on it, and the board is sized from this, so
+   * without the inset the five cards are laid straight through the players
+   * sitting beside them.
+   */
+  const cloth = (y: number) => Math.max(0, feltWidthAt(y, clothOval) - 2 * laneInset);
 
   // --- Dealing the hole cards -------------------------------------------------
   // Cards are thrown one at a time from the middle of the table, going around
@@ -2834,7 +2857,15 @@ export function TableScreen({ navigation, route }: Props) {
         <View
           style={[
             styles.centerZone,
-            { top: laneTop, bottom: laneBottom },
+            /*
+             * Padded rather than inset, so the board stays between the rail
+             * seats while `boardBox` keeps measuring in table coordinates.
+             * Moving the zone itself would have been the obvious way to make
+             * room, and it would have silently shifted every flight path that
+             * reads `boardBox.x`, which is the pot chips and every tabled
+             * hand at a showdown.
+             */
+            { top: laneTop, bottom: laneBottom, paddingHorizontal: laneInset },
             layingOut && styles.centerZoneTop,
           ]}
           pointerEvents="box-none"
@@ -2961,6 +2992,10 @@ export function TableScreen({ navigation, route }: Props) {
                 shownCards={shownCards}
                 displayCards={displayHoleCards(p.holeCards, exposedCardsForPlayer(p.id))}
                 back={cardBack}
+                /* Cards tuck toward the middle of the table, which for a seat
+                   on the right rail means to its left. Always drawing them on
+                   the right put the rightmost pod's pair off screen. */
+                cardsLeft={pos.left + SEAT_W / 2 > area.w / 2}
                 handOff={showdownHands.some((h) => h.playerId === p.id)}
                 avatarSize={avatarSize}
                 won={isShowdown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
@@ -3412,7 +3447,7 @@ export function TableScreen({ navigation, route }: Props) {
         isHost={!roomCode || isOnlineHost}
         settings={settings}
         ownedCosmeticIds={cosmetics.ownedCosmeticIds}
-        onChange={(patch) => updateSettings(pickMidGameSafe(patch))}
+        onChange={(patch) => updateSettings({ ...pickMidGameSafe(patch), ...pickDeviceOnly(patch) })}
       />
     </ScreenBackground>
   );
@@ -3448,15 +3483,14 @@ function TableMenu({
   onChange: (patch: Partial<GameSettings>) => void;
 }) {
   /*
-   * Only the fields this mode uses, and only the ones a live table can
-   * honour. `gameSetupSectionsForMode` already drops what the mode does not
-   * use and anything device local; `isMidGameSafe` drops the handful that
-   * cannot change with seats already dealt in, which is the table size, the
-   * bot count and the game mode itself.
+   * Only the rules this mode uses, and only the ones a live table can
+   * honour. `tableMenuRuleFields` already drops what the mode does not use,
+   * anything device local and the cosmetics, which have their own rows;
+   * `isMidGameSafe` drops the handful that cannot change with seats already
+   * dealt in, which is the table size, the bot count and the game mode.
    */
   const midGameFields = useMemo(
-    () => gameSetupSectionsForMode(settings.gameMode, !!roomCode)
-      .flatMap((section) => section.fields)
+    () => tableMenuRuleFields(settings.gameMode, !!roomCode)
       .filter((field) => isMidGameSafe(String(field.key))),
     [settings.gameMode, roomCode],
   );
@@ -3523,7 +3557,22 @@ function TableMenu({
                   </Text>
                 </Pressable>
               ) : null}
+            </>
+          ) : null}
 
+          {/*
+            * The look of the table, first, and available in every game mode
+            * at any point in a hand.
+            *
+            * Changing the felt or the chips has never affected a single card
+            * or chip in the game, so there was never a reason to make
+            * somebody close the table to do it. It used to sit below the
+            * rules, which buried the one thing in this sheet people open it
+            * for.
+            */}
+          {isHost ? (
+            <>
+              <Text style={styles.menuSectionTitle}>Look</Text>
               {(['feltStyle', 'cardBack', 'chipStyle'] as const).map((key) => (
                 <Pressable
                   key={key}
@@ -3537,22 +3586,35 @@ function TableMenu({
                   <Text style={styles.menuRowValue}>{labelFor(key)}</Text>
                 </Pressable>
               ))}
-
-              {/* Said plainly, because the absence of the blinds and the
-                  stack from this list is a deliberate promise to everyone
-                  else at the table, not an oversight. */}
-              <Text style={styles.menuNote}>
-                Stakes, stacks and the clock were agreed when everyone sat down, so they stay put.
-              </Text>
             </>
           ) : null}
+
+          {/*
+            * How a bet sounds, for everyone rather than only the host.
+            *
+            * It never leaves this phone, so it is not the host's to grant,
+            * and `pickDeviceOnly` on the way out is what makes that true
+            * rather than something this sheet has to remember.
+            */}
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChange({ chipSound: nextChipSound(settings.chipSound) })}
+            accessibilityRole="button"
+            accessibilityLabel={`Chip sound, currently ${chipSoundLabel(settings.chipSound)}`}
+            accessibilityHint="Changes to the next chip sound"
+          >
+            <Text style={styles.menuRowLabel}>Chip sound</Text>
+            <Text style={styles.menuRowValue}>{chipSoundLabel(settings.chipSound)}</Text>
+          </Pressable>
 
           {isHost ? (
             <>
               {/*
-                * The rules of the game, the same list Game Setup shows for
-                * this mode, because what matters differs per mode: a cash
-                * table has no ante or level length and a tournament does.
+                * The rules of the game, the list that matters for this mode,
+                * because what matters differs per mode: a cash table has no
+                * ante or level length and a tournament does. Level length is
+                * only ever asked for here, since before the first hand of a
+                * tournament nobody can say how long a level should be.
                 *
                 * Sound, haptics and animation speed used to live here and do
                 * not any more. They are about a phone rather than a table,
@@ -3651,40 +3713,48 @@ function MenuSettingRow({
   }
 
   /*
-   * Numbers step by the field's own step, clamped to its own range, so the
-   * menu cannot produce a value Game Setup would have refused.
+   * Numbers are picked from a short list, never stepped.
+   *
+   * The plus and minus pair was wrong in the one place it had to be right.
+   * Changing a 2000 stack to 25000 was more than twenty taps on a sheet that
+   * is open over a live hand, and nobody has ever wanted 2100. These are the
+   * values people actually choose, one tap each, and the field's own range
+   * still clamps anything a saved game brings with it.
    */
   const step = field.step ?? 1;
   const min = field.min ?? 0;
   const max = field.max ?? Number.MAX_SAFE_INTEGER;
   const current = typeof value === 'number' ? value : min;
-  const nudge = (direction: 1 | -1) => {
-    set(Math.max(min, Math.min(max, current + direction * step)));
-  };
+  const choices = offeredNumberValues({ min, max, step, presets: field.presets }, current);
   return (
-    <View style={styles.menuRow}>
+    <View style={styles.menuNumberRow}>
       <Text style={styles.menuRowLabel}>{field.label}</Text>
-      <View style={styles.menuStepper}>
-        <Pressable
-          onPress={() => nudge(-1)}
-          disabled={current <= min}
-          style={[styles.menuStepBtn, current <= min && styles.menuStepBtnOff]}
-          accessibilityRole="button"
-          accessibilityLabel={`Decrease ${field.label}`}
-        >
-          <Text style={styles.menuStepText}>-</Text>
-        </Pressable>
-        <Text style={styles.menuStepValue}>{current.toLocaleString()}</Text>
-        <Pressable
-          onPress={() => nudge(1)}
-          disabled={current >= max}
-          style={[styles.menuStepBtn, current >= max && styles.menuStepBtnOff]}
-          accessibilityRole="button"
-          accessibilityLabel={`Increase ${field.label}`}
-        >
-          <Text style={styles.menuStepText}>+</Text>
-        </Pressable>
-      </View>
+      <ScrollView
+        horizontal
+        directionalLockEnabled
+        nestedScrollEnabled
+        alwaysBounceVertical={false}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.menuChoices}
+      >
+        {choices.map((choice) => {
+          const on = choice === current;
+          return (
+            <Pressable
+              key={choice}
+              onPress={() => set(choice)}
+              style={[styles.menuChoice, on && styles.menuChoiceOn]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${field.label}: ${choice.toLocaleString()}`}
+            >
+              <Text style={[styles.menuChoiceText, on && styles.menuChoiceTextOn]}>
+                {choice.toLocaleString()}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
@@ -3694,6 +3764,15 @@ const MENU_COSMETIC_LABELS = {
   cardBack: 'Card back',
   chipStyle: 'Chips',
 } as const;
+
+function nextChipSound(current: GameSettings['chipSound']): GameSettings['chipSound'] {
+  const at = CHIP_SOUND_OPTIONS.findIndex((option) => option.value === current);
+  return CHIP_SOUND_OPTIONS[(at + 1) % CHIP_SOUND_OPTIONS.length].value;
+}
+
+function chipSoundLabel(current: GameSettings['chipSound']): string {
+  return CHIP_SOUND_OPTIONS.find((option) => option.value === current)?.label ?? String(current);
+}
 
 const ANIMATION_SPEED_ORDER = ['slow', 'normal', 'fast', 'off'] as const;
 
@@ -3819,14 +3898,22 @@ const styles = StyleSheet.create({
   // Capped so a long rule list cannot push the Close button off a short
   // phone, which is the same mistake the result card made.
   menuScroll: { maxHeight: 420 },
-  menuStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  menuStepBtn: {
-    width: 28, height: 28, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt,
-    borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center',
+  /*
+   * The label sits above the values rather than beside them. A row of value
+   * pills needs the whole width of the sheet, and sharing it with a label
+   * squeezed the pills until the three digit ones broke mid number.
+   */
+  menuNumberRow: { paddingVertical: spacing.xs, gap: 4 },
+  menuChoices: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
+  menuChoice: {
+    minHeight: 34, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt,
+    borderWidth: 1, borderColor: colors.surfaceBorder,
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+    alignItems: 'center', justifyContent: 'center',
   },
-  menuStepBtnOff: { opacity: 0.35 },
-  menuStepText: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark },
-  menuStepValue: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark, minWidth: 64, textAlign: 'center' },
+  menuChoiceOn: { backgroundColor: colors.green, borderColor: colors.green },
+  menuChoiceText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onDarkSoft },
+  menuChoiceTextOn: { color: colors.onDark },
   menuSectionTitle: {
     fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkMuted,
     marginTop: spacing.md, marginBottom: spacing.xs, letterSpacing: 0.4,

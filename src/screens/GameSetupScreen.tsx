@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SettingNumberChooser } from '../components/SettingNumberChooser';
 import { WiiButton } from '../components/WiiButton';
 import { WiiPanel } from '../components/WiiPanel';
 import {
@@ -21,7 +22,6 @@ import {
 import { isGameMode } from '../game/gameMode';
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
-import { useHoldRepeat } from '../components/useHoldRepeat';
 import { useApp } from '../state/AppContext';
 import { colors, fonts, radii, shadows, spacing, type, numeric } from '../theme/theme';
 
@@ -337,124 +337,13 @@ function FieldControl({
   }
 
   return (
-    <NumberStepper
+    <SettingNumberChooser
       field={field}
       value={typeof value === 'number' ? value : 0}
-      onNumberChange={onNumberChange}
+      onChange={(next) => onNumberChange(field, next)}
+      formatValue={formatSettingValue}
     />
   );
-}
-
-/**
- * A number setting, adjustable by tapping or by holding.
- *
- * Starting stack runs to five figures in steps of 100, so tap-only would mean
- * well over a hundred taps to cross it. Holding ramps instead. It lives in its
- * own component because `FieldControl` returns early for the other field
- * types, and hooks cannot sit behind those returns.
- */
-function NumberStepper({
-  field,
-  value,
-  onNumberChange,
-}: {
-  field: SettingField;
-  value: number;
-  onNumberChange: (field: SettingField, value: number) => void;
-}) {
-  const step = field.step ?? 1;
-  const min = field.min ?? Number.MIN_SAFE_INTEGER;
-  const max = field.max ?? Number.MAX_SAFE_INTEGER;
-  const atMin = value <= min;
-  const atMax = value >= max;
-  const progress = getRangeProgress(value, field);
-
-  // Repeats at full speed outrun React's re-render, so each tick advances from
-  // the value the previous tick produced rather than from the rendered prop,
-  // which would otherwise make the ramp stall and repeat the same step.
-  const live = useRef(value);
-
-  const nudge = useCallback(
-    (direction: 1 | -1) => (multiplier: number) => {
-      const next = clampToStep(live.current + direction * step * multiplier, field);
-      live.current = next;
-      if (next !== value) onNumberChange(field, next);
-    },
-    [field, onNumberChange, step, value],
-  );
-
-  const down = useHoldRepeat(nudge(-1));
-  const up = useHoldRepeat(nudge(1));
-  // Seed from what is on screen, so a hold always starts where the user sees it.
-  const seed = useCallback(() => {
-    live.current = value;
-  }, [value]);
-
-  return (
-    <View style={styles.stepperWrap}>
-      <View style={styles.stepperTopRow}>
-        <Pressable
-          disabled={atMin}
-          onPressIn={() => {
-            seed();
-            down.onPressIn();
-          }}
-          onPressOut={down.onPressOut}
-          accessibilityRole="button"
-          accessibilityLabel={`Decrease ${field.label}`}
-          style={[styles.stepButton, atMin && styles.stepButtonDisabled]}
-        >
-          <Text style={[styles.stepButtonText, atMin && styles.stepButtonTextDisabled]}>−</Text>
-        </Pressable>
-        <View style={styles.numberReadout}>
-          <Text style={styles.numberValue}>{formatSettingValue(field, value)}</Text>
-        </View>
-        <Pressable
-          disabled={atMax}
-          onPressIn={() => {
-            seed();
-            up.onPressIn();
-          }}
-          onPressOut={up.onPressOut}
-          accessibilityRole="button"
-          accessibilityLabel={`Increase ${field.label}`}
-          style={[styles.stepButton, atMax && styles.stepButtonDisabled]}
-        >
-          <Text style={[styles.stepButtonText, atMax && styles.stepButtonTextDisabled]}>+</Text>
-        </Pressable>
-      </View>
-      {progress !== null ? (
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function clampToStep(value: number, field: SettingField): number {
-  const step = field.step ?? 1;
-  const min = field.min ?? Number.MIN_SAFE_INTEGER;
-  const max = field.max ?? Number.MAX_SAFE_INTEGER;
-  const base = Number.isFinite(min) ? min : 0;
-  const stepped = base + Math.round((value - base) / step) * step;
-  const clamped = Math.max(min, Math.min(max, stepped));
-  return Number(clamped.toFixed(decimalPlaces(step)));
-}
-
-function getRangeProgress(value: number, field: SettingField): number | null {
-  if (typeof field.min !== 'number' || typeof field.max !== 'number' || field.max <= field.min) return null;
-  return Math.max(0, Math.min(100, Math.round(((value - field.min) / (field.max - field.min)) * 100)));
-}
-
-function decimalPlaces(step: number): number {
-  const [, decimals = ''] = String(step).split('.');
-  return decimals.length;
-}
-
-function formatRange(field: SettingField): string {
-  if (typeof field.min !== 'number' || typeof field.max !== 'number') return `step ${field.step ?? 1}`;
-  return `${field.min}–${field.max} · step ${field.step ?? 1}`;
 }
 
 function formatSettingValue(field: SettingField, value: number): string {
@@ -463,7 +352,7 @@ function formatSettingValue(field: SettingField, value: number): string {
   if (key.includes('sec')) return `${value}s`;
   if (key.includes('min')) return `${value}m`;
   if (key.includes('hands')) return `${value} hands`;
-  return formatChips(value);
+  return value.toLocaleString();
 }
 
 function formatChips(value: number): string {
@@ -852,73 +741,6 @@ const styles = StyleSheet.create({
   },
   optionTextActive: {
     color: colors.onBlue,
-  },
-  stepperWrap: {
-    alignSelf: 'stretch',
-    gap: spacing.sm,
-  },
-  stepperTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-  },
-  stepButton: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.blue,
-    backgroundColor: colors.panel,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.soft,
-  },
-  stepButtonDisabled: {
-    borderColor: colors.border,
-    backgroundColor: colors.panelAlt,
-    opacity: 0.58,
-  },
-  stepButtonText: {
-    fontFamily: fonts.bold,
-    fontSize: 24,
-    lineHeight: 28,
-    color: colors.blueDeep,
-  },
-  stepButtonTextDisabled: {
-    color: colors.inkMuted,
-  },
-  numberReadout: {
-    minWidth: 108,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panelAlt,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  numberValue: {
-    fontFamily: fonts.bold,
-    fontSize: 17,
-    color: colors.ink,
-  },
-  numberMeta: {
-    marginTop: 1,
-    fontFamily: fonts.medium,
-    fontSize: 10,
-    color: colors.inkMuted,
-  },
-  progressTrack: {
-    height: 5,
-    borderRadius: radii.pill,
-    backgroundColor: colors.panelAlt,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: radii.pill,
-    backgroundColor: colors.accentAlt,
   },
   adWrap: {
     paddingTop: spacing.sm,

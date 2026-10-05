@@ -356,8 +356,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    sound.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume / 100 });
-  }, [settings.soundEnabled, settings.soundVolume]);
+    sound.configure({
+      enabled: settings.soundEnabled,
+      volume: settings.soundVolume / 100,
+      chipSound: settings.chipSound,
+    });
+  }, [settings.soundEnabled, settings.soundVolume, settings.chipSound]);
 
   /**
    * Large Text is a global scale rather than a prop, so nothing re-renders on

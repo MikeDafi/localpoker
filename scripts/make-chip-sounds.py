@@ -13,7 +13,7 @@ click. That is why they read as a user interface tick rather than as money.
 
 Real chips are not one click. They are several, overlapping, each slightly
 different in pitch and loudness, with the body of the sound well below the
-attack. This rebuilds both cues to be exactly that:
+attack. This rebuilds the betting cues to be exactly that:
 
   1. several copies of the source hit, not one,
   2. each resampled to a different pitch, so no two hits are identical, which
@@ -121,15 +121,9 @@ def build(hits: list[tuple[int, float, float]], cutoff: float, peak: float) -> l
     return [s * (peak / loudest) for s in mixed]
 
 
-"""
-A call is one small push of chips forward: three hits, close together.
-
-A raise is a bigger handful, so it gets more hits over a longer window and
-reaches lower in pitch, because more chips means more mass. Both stay short:
-these play on every betting action and a long cue would be in the way.
-"""
-CALL_HITS = [(0, 1.00, 0.95), (23, 1.18, 0.55), (58, 0.92, 0.42)]
-RAISE_HITS = [
+# Toss is the existing liked cue: one small handful, then a larger handful for a raise.
+TOSS_CALL_HITS = [(0, 1.00, 0.95), (23, 1.18, 0.55), (58, 0.92, 0.42)]
+TOSS_RAISE_HITS = [
     (0, 0.94, 0.95),
     (19, 1.14, 0.62),
     (47, 1.02, 0.78),
@@ -138,16 +132,52 @@ RAISE_HITS = [
     (162, 0.97, 0.55),
 ]
 
-# Clay chips sit far lower than the 6kHz the raw transient measured at. These
-# cutoffs were chosen by measuring the result, not by ear alone.
-CALL_CUTOFF = 2100
-RAISE_CUTOFF = 1850
+# Splash has more chips and a longer scatter, with lower filtering so it reads as cloth.
+SPLASH_CALL_HITS = [
+    (0, 0.86, 0.88),
+    (17, 1.28, 0.46),
+    (45, 0.98, 0.68),
+    (83, 1.36, 0.32),
+    (139, 0.78, 0.46),
+    (214, 1.12, 0.28),
+]
+SPLASH_RAISE_HITS = [
+    (0, 0.80, 0.95),
+    (15, 1.31, 0.52),
+    (39, 0.91, 0.68),
+    (70, 1.20, 0.45),
+    (108, 0.84, 0.58),
+    (153, 1.39, 0.31),
+    (205, 0.97, 0.46),
+    (267, 0.73, 0.36),
+    (329, 1.14, 0.25),
+]
 
-# Everything else in the app peaks between 0.16 and 0.39, so the betting cues
-# were roughly three times louder than the table around them.
-CALL_PEAK = 0.42
-RAISE_PEAK = 0.46
+# Riffle is a compact stack landing: tighter timing, less pitch spread and a crisp attack.
+RIFFLE_CALL_HITS = [(0, 1.04, 0.90), (18, 0.99, 0.64), (36, 1.07, 0.56), (55, 0.96, 0.42)]
+RIFFLE_RAISE_HITS = [
+    (0, 0.98, 0.92),
+    (16, 1.05, 0.72),
+    (32, 1.00, 0.66),
+    (49, 1.08, 0.58),
+    (67, 0.95, 0.46),
+    (88, 1.03, 0.38),
+]
 
+STYLE_SPECS = {
+    "toss": {
+        "call": (TOSS_CALL_HITS, 2100, 0.42),
+        "raise": (TOSS_RAISE_HITS, 1850, 0.46),
+    },
+    "splash": {
+        "call": (SPLASH_CALL_HITS, 1700, 0.38),
+        "raise": (SPLASH_RAISE_HITS, 1550, 0.39),
+    },
+    "riffle": {
+        "call": (RIFFLE_CALL_HITS, 2550, 0.34),
+        "raise": (RIFFLE_RAISE_HITS, 2450, 0.37),
+    },
+}
 
 # The knock is the right recording and the right sound, it was just the
 # loudest thing on the table by a wide margin, which reads as harshness rather
@@ -161,12 +191,24 @@ def level_check() -> None:
     write_wav(SOUNDS / "check.wav", [s * (CHECK_PEAK / loudest) for s in samples])
 
 
+def chip_path(action: str, style: str) -> Path:
+    stem = "chipCall" if action == "call" else "chipRaise"
+    return SOUNDS / f"{stem}-{style}.wav"
+
+
 def main() -> None:
-    write_wav(SOUNDS / "chipCall.wav", build(CALL_HITS, CALL_CUTOFF, CALL_PEAK))
-    write_wav(SOUNDS / "chipRaise.wav", build(RAISE_HITS, RAISE_CUTOFF, RAISE_PEAK))
+    generated = {}
+    for style, actions in STYLE_SPECS.items():
+        for action, (hits, cutoff, peak) in actions.items():
+            samples = build(hits, cutoff, peak)
+            generated[(style, action)] = samples
+            write_wav(chip_path(action, style), samples)
+
+    write_wav(SOUNDS / "chipCall.wav", generated[("toss", "call")])
+    write_wav(SOUNDS / "chipRaise.wav", generated[("toss", "raise")])
     # Normalising to an absolute peak, so running this twice is a no-op.
     level_check()
-    print("wrote chipCall.wav, chipRaise.wav and levelled check.wav")
+    print("wrote chipCall variants, chipRaise variants and levelled check.wav")
 
 
 if __name__ == "__main__":

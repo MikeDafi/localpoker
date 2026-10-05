@@ -12,6 +12,24 @@ import {
 
 export type GameMode = 'cash' | 'tournament' | 'turbo';
 
+/**
+ * How many hands a blind level lasts, per mode.
+ *
+ * Kept here beside the mode rather than in `settings`, because the status
+ * line below has to be able to fall back to it and `settings` imports this
+ * file rather than the other way round. `settings` re-exports it, so nothing
+ * that already reads it from there has to change.
+ */
+export const BLIND_LEVEL_LENGTH_HANDS_BY_MODE: Record<GameMode, number> = {
+  cash: 0,
+  tournament: 10,
+  turbo: 4,
+};
+
+export function defaultBlindLevelLengthHands(mode: GameMode): number {
+  return BLIND_LEVEL_LENGTH_HANDS_BY_MODE[mode];
+}
+
 /*
  * "Turbo" means nothing on its own.
  *
@@ -145,22 +163,27 @@ export function tournamentTableStatus(input: {
   const level = tournamentLevelForMode(input);
   if (!level) return null;
   /*
-   * When the ladder is counted in hands, the thing to report is hands.
+   * A tournament ALWAYS counts in hands, never on a clock.
    *
-   * The header was showing a wall clock countdown while the levels were
-   * advancing on hand numbers, so it was counting something that had no
-   * bearing on when the blinds would actually go up. Two players could sit
-   * on the same table watching different numbers tick towards a change that
-   * neither of them triggered.
+   * The clock was not simply redundant, it was lying: levels advance on the
+   * shared hand number, so a wall clock counted down to a change it had no
+   * part in, and two people at the same table watched different numbers.
+   * Falling back to it when the level length was missing put that lie back
+   * for exactly the tables most likely to hit it, so the mode's own default
+   * is used instead. The clock survives only for a structure that really is
+   * timed, which no mode currently is.
    */
-  const byHand = typeof input.levelLengthHands === 'number' && input.levelLengthHands > 0;
+  const lengthHands = typeof input.levelLengthHands === 'number' && input.levelLengthHands > 0
+    ? input.levelLengthHands
+    : defaultBlindLevelLengthHands(input.mode);
+  const byHand = lengthHands > 0;
   return {
     mode: input.mode,
     levelNumber: level.index + 1,
     level: level.level,
     msUntilNextLevel: byHand ? null : level.msUntilNextLevel,
     handsUntilNextLevel: byHand && level.nextLevel
-      ? handsUntilNextLevel(input.handNumber ?? 1, input.levelLengthHands!)
+      ? handsUntilNextLevel(input.handNumber ?? 1, lengthHands)
       : null,
     nextLevel: level.nextLevel,
     pendingForNextHand: blindsDue(input.currentBlinds, level.level),

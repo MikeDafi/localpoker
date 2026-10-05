@@ -57,6 +57,42 @@ describe('tournament table status', () => {
     expect(formatTournamentStatus(status!)).toContain('next hand');
   });
 
+  /*
+   * The owner asked for no time remaining on a tournament, and the clock was
+   * not merely redundant: levels advance on the shared hand number, so a wall
+   * clock counted down to something it had no part in. The fallback was the
+   * last way one could still appear, on a table whose level length never got
+   * written, which is now the table most likely to be made since the setting
+   * only exists in the table's own menu.
+   */
+  it('never shows a clock on a tournament, even with no level length set', () => {
+    for (const mode of ['tournament', 'turbo'] as const) {
+      const status = tournamentTableStatus({
+        mode,
+        startedAt: 1_000,
+        now: 1_000 + STANDARD_STRUCTURE.levelMs * 3,
+        currentBlinds: STANDARD_STRUCTURE.levels[0],
+        handNumber: 4,
+      });
+      expect(status?.msUntilNextLevel, `${mode} must not count on a clock`).toBeNull();
+      expect(status?.handsUntilNextLevel).toBeGreaterThan(0);
+      expect(formatTournamentStatus(status!)).toContain('hand');
+      expect(formatTournamentStatus(status!)).not.toMatch(/\d:\d\d/);
+    }
+  });
+
+  it('counts the hands it was told about rather than the mode default', () => {
+    const status = tournamentTableStatus({
+      mode: 'tournament',
+      startedAt: 0,
+      now: 0,
+      currentBlinds: STANDARD_STRUCTURE.levels[0],
+      handNumber: 1,
+      levelLengthHands: 3,
+    });
+    expect(status?.handsUntilNextLevel).toBe(3);
+  });
+
   it('formats clocks without going negative', () => {
     expect(formatLevelClock(61_000)).toBe('1:01');
     expect(formatLevelClock(-50)).toBe('0:00');

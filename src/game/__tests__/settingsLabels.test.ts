@@ -8,6 +8,7 @@ import {
   normalizeSettings,
   resolveSettingSelection,
   settingsForModeDefaults,
+  tableMenuRuleFields,
 } from '../settings';
 
 /**
@@ -160,11 +161,42 @@ describe('what Game Setup is allowed to show', () => {
     expect(keys).not.toContain('blindLevelLengthHands');
   });
 
+  /*
+   * Level length deliberately left out of setup, see `setupHidden`. It is
+   * asked for in the table's own menu instead, which is the only place the
+   * question means anything: before the first hand nobody knows how long a
+   * level should be, and after a few they do. Every mode still carries a
+   * sensible default, which is what the schedule test below pins.
+   */
   it('adds blind schedule controls for tournament modes', () => {
     for (const mode of ['tournament', 'turbo'] as const) {
       const keys = setupKeys(mode);
-      expect(keys).toContain('blindLevelLengthHands');
+      expect(keys).not.toContain('blindLevelLengthHands');
       expect(keys).toContain('ante');
+      expect(tableMenuRuleFields(mode).map((f) => String(f.key))).toContain('blindLevelLengthHands');
+    }
+  });
+
+  it('never offers a blind schedule for a cash table, in setup or at the table', () => {
+    expect(setupKeys('cash')).not.toContain('blindLevelLengthHands');
+    expect(tableMenuRuleFields('cash').map((f) => String(f.key))).not.toContain('blindLevelLengthHands');
+  });
+
+  /*
+   * The table menu draws the felt, the card back and the chips as their own
+   * rows, listing only what the player owns. Leaving them in the rule list
+   * too drew each of them twice, and the second copy cycled every cosmetic
+   * in the game rather than the owned ones.
+   */
+  it('leaves the cosmetics out of the table menu rule list', () => {
+    for (const mode of ['cash', 'tournament', 'turbo'] as const) {
+      const keys = tableMenuRuleFields(mode).map((f) => String(f.key));
+      for (const cosmetic of ['feltStyle', 'cardBack', 'chipStyle']) {
+        expect(keys, `${cosmetic} is drawn by its own row`).not.toContain(cosmetic);
+      }
+      for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
+        expect(keys).not.toContain(deviceOnly);
+      }
     }
   });
 

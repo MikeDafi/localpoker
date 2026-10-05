@@ -63,6 +63,14 @@ export interface SeatProps {
   handOff?: boolean;
   /** Which card back design to print, from Settings. */
   back?: CardBackVariant;
+  /**
+   * Draw the hole cards on the pod's left instead of its right.
+   *
+   * For a seat pinned to the right rail. The cards hang outside the pod by
+   * design, so they can look tucked beside the head rather than under it, and
+   * on the rightmost seat that put them off the edge of the screen.
+   */
+  cardsLeft?: boolean;
 }
 
 /** A player pod around the felt: animated Pal, name, stack, status, and cards. */
@@ -109,7 +117,7 @@ const SEAT_CARD = 26;
  */
 const EXPOSED_CARD_SCALE = 2.5;
 
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, avatarSize = 42 }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, cardsLeft = false, avatarSize = 42 }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -199,6 +207,16 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
             key={dealKey}
             style={[
               styles.cCards,
+              /*
+               * The side offset is applied here rather than in the stylesheet
+               * because it has to be able to switch sides. Setting both edges
+               * and relying on one being overridden does not work: whichever
+               * loses is still applied, and the group stretches across the
+               * pod instead of sitting beside the head.
+               */
+              cardsLeft
+                ? { left: anyCardShown ? -8 : -15 }
+                : { right: anyCardShown ? -8 : -15 },
               anyCardShown && styles.cCardsShown,
               // A card turned over on purpose is drawn large, so the group it
               // sits in has to move clear of the avatar rather than tuck
@@ -505,10 +523,10 @@ const styles = StyleSheet.create({
   // as goggles/ears rather than as playing cards.
   // Rendered at full size and scaled down (see HOLE_SIZE), so the box is sized
   // for the big cards; the offsets keep the shrunken pair tucked beside the head.
-  cCards: { position: 'absolute', right: -15, top: 16, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
+  cCards: { position: 'absolute', top: 16, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
   // Seats sit close together on the arc, so shown cards are only lifted a
   // little and tucked down-right: any bigger and neighbouring pods collide.
-  cCardsShown: { right: -8, top: 28, zIndex: 6 },
+  cCardsShown: { top: 28, zIndex: 6 },
   /*
    * Where a deliberately shown card goes, which is a different problem.
    *
