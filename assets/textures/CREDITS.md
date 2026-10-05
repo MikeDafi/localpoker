@@ -239,44 +239,24 @@ and no two real chips land on the same note. Deterministic, the offsets and
 gains are a fixed table rather than a random number generator, so regenerating
 produces identical bytes.
 
-### `check.wav`: knuckles rapping on a wooden table
+### `check.wav`: synthesised knuckles rapping on a wooden table
 
-| | |
-|---|---|
-| **Source** | Wikimedia Commons, "Knocking on wood or door" |
-| **URL** | https://commons.wikimedia.org/wiki/File:Knocking_on_wood_or_door.ogg |
-| **Author** | stephan (recorded for pdsounds.org; transferred to Commons by user Fæ) |
-| **License** | **Public domain**, via the `PD-pdsounds.org` tag, https://commons.wikimedia.org/wiki/Template:PD-pdsounds.org |
+No third-party sound recording is shipped for this cue. The previous public
+domain wood-knock recording was replaced after measurement showed a persistent
+low partial instead of a dry table rap.
 
-Commons' own structured license metadata for the file reads `License: pd`,
-`UsageTerms: Public domain`. The permission template quotes pdsounds.org's own
-release terms:
+**Processing** (`scripts/make-chip-sounds.py`): the cue is now two deterministic
+filtered-noise impacts at fixed offsets. The synthesis deliberately avoids
+modal resonators because even short sine modes reintroduced the exact pitched
+ring the cue is meant to remove. Each impact has a broadband attack, a short
+mid-frequency wood-body noise burst, and no reverb tail. The result is written
+as mono, 44.1kHz, 16-bit PCM, 225ms, with a 0.40 peak.
 
-> "This audio file come from pdsounds.org and has been released into the public
-> domain by its author... If you record for pdsounds, you must agree to release
-> the audio files you make into the public domain... use them for education, use
-> them to create art, use them for commercial purposes too, there are no
-> copyrights, no strings attached to the files."
-
-Public domain imposes no attribution requirement and no redistribution
-restriction, which is why this is ranked above the two CC BY and CC BY-SA
-alternatives found on Commons (`Door knocker audio.ogg`, CC0 but a metal door
-knocker rather than a knuckle rap, and `Shave and a Haircut Door Knock.ogg`,
-CC BY-SA 4.0 and so ShareAlike encumbered). Credited here as a courtesy.
-
-**Processing**: the source file is a 6.2 second recording titled "Knock Knock
-Knock on Wood / Door, 3 versions", three separate takes of a few raps each,
-separated by gaps of about two seconds. Each take's rap onsets were located by
-scanning the envelope in 4ms bins for peaks at least 80ms apart. The middle take
-(two raps at 2468ms and 2668ms, a third rap starting at 2876ms) had the tightest,
-most table-like spacing of the three. It was isolated with
-`ffmpeg -i knock_on_wood_or_door.ogg -af "atrim=start=2.464:end=2.844,asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.002,afade=t=out:st=0.360:d=0.018" -ar 44100 -ac 1 -c:a pcm_s16le check.wav`,
-cutting 4ms before the first rap's attack (so the hit is immediate) and ending
-before the third rap begins, leaving exactly two raps. Final file is mono,
-44.1kHz, 16-bit PCM, 390ms, 34KB. Levelled to a 0.55 peak by
-`scripts/make-chip-sounds.py`: the recording and its character are untouched,
-it was simply the loudest thing on the table by a wide margin, which reads as
-harshness rather than as wood.
+| File | Peak | Spectral centroid | Final-rap decay |
+|---|---:|---:|---:|
+| original ringing `check.wav` | 0.550 | 483Hz | 165ms |
+| first generated `check.wav` | 0.380 | 6937Hz | 75ms |
+| final generated `check.wav` | 0.400 | 2156Hz | 65ms |
 
 ---
 
@@ -297,9 +277,7 @@ and means a new back is a palette rather than an asset.
 
 ### A note on levels
 
-`check.wav` is normalised to a 0.55 peak by `scripts/make-chip-sounds.py`.
-The source take was recorded quietly, and next to the raw chip transient at
-0.925 it was around eight decibels down, so checking would have sounded like a
-much smaller event than betting when at a real table it is not. The gain is
-flat with no limiting, and nothing clips. Normalising is not a change anyone
-needs permission for here: both files are public domain or CC0.
+`check.wav` is normalised to a 0.40 peak by `scripts/make-chip-sounds.py`,
+putting it in the same range as the other action cues. The lower, less bright
+spectrum lets it sit at that peak without reading louder than the chip cues.
+The gain is flat with no limiting, and nothing clips.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build the call and raise chip cues from the one real chip recording.
+Build the table action cues from deterministic ingredients.
 
 Why this exists
 ---------------
@@ -29,7 +29,8 @@ identical bytes, so the jitter comes from a fixed table rather than from a
 random number generator.
 
 Source audio and its licence are recorded in assets/textures/CREDITS.md. This
-script only re-edits the already vendored CC0 recording; it downloads nothing.
+script only re-edits the already vendored CC0 chip recording and synthesises the
+check knock locally; it downloads nothing.
 """
 
 import struct
@@ -179,16 +180,81 @@ STYLE_SPECS = {
     },
 }
 
-# The knock is the right recording and the right sound, it was just the
-# loudest thing on the table by a wide margin, which reads as harshness rather
-# than as wood. Level only: the character is left exactly as recorded.
-CHECK_PEAK = 0.55
+# The old check recording had a persistent low partial, so do not use a short
+# resonator here. A filtered noise burst gives a hard rap without giving the
+# ear a note to follow.
+CHECK_PEAK = 0.40
+CHECK_RAPS = [(0, 1.0, 17), (126, 0.86, 41)]
 
 
-def level_check() -> None:
-    samples = read_wav(SOUNDS / "check.wav")
-    loudest = max(abs(s) for s in samples) or 1.0
-    write_wav(SOUNDS / "check.wav", [s * (CHECK_PEAK / loudest) for s in samples])
+def high_pass(samples: list[float], cutoff_hz: float) -> list[float]:
+    import math
+
+    dt = 1.0 / RATE
+    rc = 1.0 / (2 * math.pi * cutoff_hz)
+    alpha = rc / (rc + dt)
+    out = []
+    prev_y = 0.0
+    prev_x = 0.0
+    for s in samples:
+        y = alpha * (prev_y + s - prev_x)
+        out.append(y)
+        prev_y = y
+        prev_x = s
+    return out
+
+
+def stable_noise(index: int, salt: int) -> float:
+    n = (index * 1103515245 + 12345 + salt * 2654435761) & 0xFFFFFFFF
+    n ^= n >> 16
+    n = (n * 2246822519) & 0xFFFFFFFF
+    n ^= n >> 13
+    return (n / 2147483647.5) - 1.0
+
+
+def knock_hit(duration_ms: int, salt: int) -> list[float]:
+    import math
+
+    length = int(RATE * duration_ms / 1000)
+    raw_attack = [stable_noise(i, salt) for i in range(length)]
+    raw_body = [stable_noise(i, salt + 101) for i in range(length)]
+    attack = low_pass(high_pass(raw_attack, 260), 3200)
+    body = low_pass(high_pass(raw_body, 180), 1800)
+    attack_peak = max(abs(s) for s in attack) or 1.0
+    body_peak = max(abs(s) for s in body) or 1.0
+    attack = [s / attack_peak for s in attack]
+    body = [s / body_peak for s in body]
+
+    out = []
+    for i in range(length):
+        t = i / RATE
+        ramp = min(1.0, i / max(1, int(RATE * 0.00045)))
+        fast = math.exp(-t / 0.003)
+        wood = math.exp(-t / 0.018)
+        pulse = 0.0
+        if i < 16:
+            pulse_shape = [0.90, -0.72, 0.48, -0.31, 0.19, -0.11, 0.07, -0.04]
+            pulse = pulse_shape[i] if i < len(pulse_shape) else 0.0
+        sample = 0.22 * attack[i] * fast + 1.0 * body[i] * wood + pulse * fast
+        out.append(ramp * sample)
+    return low_pass(low_pass(out, 2600), 2600)
+
+
+def build_check() -> list[float]:
+    length = int(RATE * 0.225)
+    mixed = [0.0] * length
+    for onset_ms, gain, salt in CHECK_RAPS:
+        hit = knock_hit(66, salt)
+        start = int(onset_ms * RATE / 1000)
+        for i, s in enumerate(hit):
+            if start + i < len(mixed):
+                mixed[start + i] += s * gain
+
+    fade = int(RATE * 0.006)
+    for i in range(1, fade + 1):
+        mixed[-i] *= i / fade
+    loudest = max(abs(s) for s in mixed) or 1.0
+    return [s * (CHECK_PEAK / loudest) for s in mixed]
 
 
 def chip_path(action: str, style: str) -> Path:
@@ -206,9 +272,8 @@ def main() -> None:
 
     write_wav(SOUNDS / "chipCall.wav", generated[("toss", "call")])
     write_wav(SOUNDS / "chipRaise.wav", generated[("toss", "raise")])
-    # Normalising to an absolute peak, so running this twice is a no-op.
-    level_check()
-    print("wrote chipCall variants, chipRaise variants and levelled check.wav")
+    write_wav(SOUNDS / "check.wav", build_check())
+    print("wrote chipCall variants, chipRaise variants and check.wav")
 
 
 if __name__ == "__main__":
