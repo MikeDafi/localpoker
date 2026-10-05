@@ -10,7 +10,7 @@ import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
-import { pickMidGameSafe } from '../game/hostControls';
+import { pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import { SETTINGS_SCHEMA, availableSettingOptions, type GameSettings } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
@@ -896,7 +896,7 @@ export function TableScreen({ navigation, route }: Props) {
   const answerShowChoice = (show: boolean) => {
     sound.play('tap');
     setRevealProgress((prev) => advanceReveal(revealOrder, prev, show));
-    if (show && roomCode && firebaseOnline) void revealOwnHand(roomCode);
+    if (show) tableBothCards();
   };
 
   const promptExposeCard = useCallback(() => {
@@ -921,6 +921,28 @@ export function TableScreen({ navigation, route }: Props) {
         { text: 'OK', style: 'cancel' },
       ]);
     });
+  }, [roomCode, firebaseOnline]);
+
+  /*
+   * Turn your whole hand face up at the end of a hand.
+   *
+   * This used to set `shown`, and only `shown`, which is a showdown decision:
+   * it tells the host which contested hands to publish and the host clears it
+   * the moment the street is not a showdown. A pot won on a fold never reaches
+   * a showdown, so the one case the button exists for - showing a bluff nobody
+   * paid to see - cleared itself before anybody could look at it.
+   *
+   * Exposing both cards is the mechanism that already works. It is the same
+   * one behind Show left card, it survives to the end of the hand, and the
+   * viewer already draws an exposed card enlarged over the pod, so both cards
+   * arrive the size the table can actually read.
+   */
+  const tableBothCards = useCallback(() => {
+    setLocalCardExposure([true, true]);
+    if (!roomCode || !firebaseOnline) return;
+    void revealOwnHand(roomCode);
+    void exposeOwnCard(roomCode, 0);
+    void exposeOwnCard(roomCode, 1);
   }, [roomCode, firebaseOnline]);
 
   const applyRunDecision = useCallback((runs: RunCount) => {
@@ -2996,9 +3018,7 @@ export function TableScreen({ navigation, route }: Props) {
                   onPress={() => {
                     sound.play('tap');
                     setReveal('show');
-                    // Showing is only meaningful if the others see it. Voided:
-                    // a failed publish must not block the local reveal.
-                    if (roomCode && firebaseOnline) void revealOwnHand(roomCode);
+                    tableBothCards();
                   }}
                   style={styles.muckBtn}
                   accessibilityRole="button"
@@ -3067,6 +3087,7 @@ export function TableScreen({ navigation, route }: Props) {
         settings={settings}
         ownedCosmeticIds={cosmetics.ownedCosmeticIds}
         onChange={(patch) => updateSettings(pickMidGameSafe(patch))}
+        onChangeOwn={(patch) => updateSettings(pickDeviceOnly(patch))}
       />
     </ScreenBackground>
   );
@@ -3092,6 +3113,7 @@ function TableMenu({
   settings,
   ownedCosmeticIds,
   onChange,
+  onChangeOwn,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -3100,6 +3122,7 @@ function TableMenu({
   settings: GameSettings;
   ownedCosmeticIds: readonly string[];
   onChange: (patch: Partial<GameSettings>) => void;
+  onChangeOwn: (patch: Partial<GameSettings>) => void;
 }) {
   if (!visible) return null;
 
@@ -3187,6 +3210,81 @@ function TableMenu({
           ) : null}
 
           {/*
+            * Your own device, whoever you are at this table.
+            *
+            * These are above the host's section in importance and below it on
+            * screen only because the host's rows describe the table everyone
+            * is looking at. Nothing here reaches anybody else, which is why
+            * it is not behind `isHost`: a guest who cannot mute the game
+            * until the session ends has to put the phone down instead, and
+            * that was the only way to change any of these mid game.
+            */}
+          <Text style={styles.menuSectionTitle}>Just for you</Text>
+
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChangeOwn({ soundEnabled: !settings.soundEnabled })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.soundEnabled }}
+            accessibilityLabel="Sound effects"
+          >
+            <Text style={styles.menuRowLabel}>Sound</Text>
+            <Text style={[styles.menuRowValue, settings.soundEnabled && styles.menuRowValueOn]}>
+              {settings.soundEnabled ? 'On' : 'Off'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChangeOwn({ hapticsEnabled: !settings.hapticsEnabled })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.hapticsEnabled }}
+            accessibilityLabel="Haptics"
+          >
+            <Text style={styles.menuRowLabel}>Haptics</Text>
+            <Text style={[styles.menuRowValue, settings.hapticsEnabled && styles.menuRowValueOn]}>
+              {settings.hapticsEnabled ? 'On' : 'Off'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChangeOwn({ animationSpeed: nextAnimationSpeed(settings.animationSpeed) })}
+            accessibilityRole="button"
+            accessibilityLabel={`Animation speed, currently ${settings.animationSpeed}`}
+            accessibilityHint="Changes to the next speed"
+          >
+            <Text style={styles.menuRowLabel}>Animations</Text>
+            <Text style={styles.menuRowValue}>{ANIMATION_SPEED_LABELS[settings.animationSpeed] ?? settings.animationSpeed}</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChangeOwn({ autoMuck: !settings.autoMuck })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.autoMuck }}
+            accessibilityLabel="Auto muck losing hands"
+          >
+            <Text style={styles.menuRowLabel}>Auto muck</Text>
+            <Text style={[styles.menuRowValue, settings.autoMuck && styles.menuRowValueOn]}>
+              {settings.autoMuck ? 'On' : 'Off'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChangeOwn({ showLiveStats: !settings.showLiveStats })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.showLiveStats }}
+            accessibilityLabel="Live stats overlay"
+          >
+            <Text style={styles.menuRowLabel}>Live stats</Text>
+            <Text style={[styles.menuRowValue, settings.showLiveStats && styles.menuRowValueOn]}>
+              {settings.showLiveStats ? 'On' : 'Off'}
+            </Text>
+          </Pressable>
+
+          {/*
             * No Leave game button here any more.
             *
             * Leaving now lives on the back arrow, which is where people were
@@ -3209,6 +3307,17 @@ const MENU_COSMETIC_LABELS = {
   cardBack: 'Card back',
   chipStyle: 'Chips',
 } as const;
+
+const ANIMATION_SPEED_ORDER = ['slow', 'normal', 'fast', 'off'] as const;
+
+const ANIMATION_SPEED_LABELS: Record<string, string> = {
+  slow: 'Slow', normal: 'Normal', fast: 'Fast', off: 'Off',
+};
+
+function nextAnimationSpeed(current: GameSettings['animationSpeed']): GameSettings['animationSpeed'] {
+  const at = ANIMATION_SPEED_ORDER.indexOf(current as typeof ANIMATION_SPEED_ORDER[number]);
+  return ANIMATION_SPEED_ORDER[(at + 1) % ANIMATION_SPEED_ORDER.length];
+}
 
 /** The schema is grouped, so a key has to be hunted for. */
 function findSettingField(key: keyof GameSettings) {
@@ -3301,6 +3410,10 @@ const styles = StyleSheet.create({
   menuRowValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark },
   menuRowValueOn: { color: colors.green },
   menuNote: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.onDarkMuted, marginTop: spacing.xs },
+  menuSectionTitle: {
+    fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkMuted,
+    marginTop: spacing.md, marginBottom: spacing.xs, letterSpacing: 0.4,
+  },
   menuActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.md },
   exposeFab: { marginBottom: spacing.sm, alignSelf: 'flex-end', paddingHorizontal: spacing.md, height: 30, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.goldDeep, backgroundColor: 'rgba(214,180,92,0.22)', alignItems: 'center', justifyContent: 'center' },
   exposeFabText: { fontFamily: fonts.bold, fontSize: 12, color: colors.gold },

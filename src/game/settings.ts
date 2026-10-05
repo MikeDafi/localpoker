@@ -348,14 +348,47 @@ export function resolveSettingSelection(
  * published to a room, so anything in it is readable by everyone at the table.
  * These keys have no bearing on how a hand plays, so they are stripped before
  * the settings travel.
+ *
+ * The list used to hold only `pushNotifications`, which meant a guest joining
+ * a table adopted the host's sound, haptics, animation speed and text size
+ * along with the blinds: a host who plays muted muted everybody, and a guest
+ * who had turned animations off got them back the moment they sat down. None
+ * of those is a term of the game, so none of them travels.
  */
-export const DEVICE_ONLY_SETTINGS = ['pushNotifications'] as const;
+export const DEVICE_ONLY_SETTINGS = [
+  'pushNotifications',
+  'soundEnabled',
+  'soundVolume',
+  'hapticsEnabled',
+  'winFanfare',
+  'animationSpeed',
+  'avatarIdleMotion',
+  'reduceMotion',
+  'largeText',
+  'showLiveStats',
+  'autoMuck',
+  'confirmFoldWhenCheckAvailable',
+] as const satisfies readonly (keyof GameSettings)[];
 
 /** The settings payload a room publishes, minus anything device-local. */
 export function roomSettingsJson(settings: GameSettings): string {
   const shared: Partial<GameSettings> = { ...settings };
   for (const key of DEVICE_ONLY_SETTINGS) delete shared[key];
   return JSON.stringify(shared);
+}
+
+/**
+ * The table's terms, played with your own device preferences.
+ *
+ * A room carries the agreement (blinds, stack, clock, felt) and this device
+ * carries how you like to be played at. Stripping the device keys on the way
+ * out is only half of it: without this the stripped keys come back as the
+ * built-in defaults rather than as the choices the player actually made.
+ */
+export function withOwnDevicePreferences(table: GameSettings, own: GameSettings): GameSettings {
+  const merged = { ...table } as unknown as Record<string, unknown>;
+  for (const key of DEVICE_ONLY_SETTINGS) merged[key] = own[key];
+  return merged as unknown as GameSettings;
 }
 
 export function countSettings(): number {

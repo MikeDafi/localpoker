@@ -1184,9 +1184,12 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       [`${roomPath(roomCode)}/status`]: 'playing',
     };
     // A new hand forgets what was tabled in the last one, or cards stay face
-    // up across hands.
-    if (state.street !== 'showdown') table[`${roomPath(roomCode)}/shown`] = null;
+    // up across hands. Keyed on the hand number rather than on the street:
+    // tying it to "not a showdown" wiped a hand tabled after a pot won on a
+    // fold, which never reaches a showdown and is the one case the Show
+    // button exists for.
     if (isNewPublishedHand) {
+      table[`${roomPath(roomCode)}/shown`] = null;
       table[`${roomPath(roomCode)}/exposed`] = null;
       table[`${roomPath(roomCode)}/runVotes`] = null;
     }

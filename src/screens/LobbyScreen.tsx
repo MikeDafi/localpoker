@@ -20,7 +20,7 @@ import {
   type RoomState, type RoomPlayer,
 } from '../services/firebase';
 import { captureError } from '../services/telemetry';
-import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson } from '../game/settings';
+import { DEFAULT_GAME_SETTINGS, normalizeSettings, roomSettingsJson, withOwnDevicePreferences } from '../game/settings';
 import { GAME_MODE_LABELS } from '../game/gameMode';
 import { pinCosmetics } from '../game/cosmetics';
 import { shouldLeaveRoomOnLobbyUnmount } from '../game/lobbyRoom';
@@ -88,7 +88,13 @@ export function LobbyScreen({ navigation, route }: Props) {
     let tableSettings = hostSettings ?? DEFAULT_GAME_SETTINGS;
     if (current?.settingsJson) {
       try {
-        tableSettings = normalizeSettings(JSON.parse(current.settingsJson) as Partial<typeof tableSettings>);
+        const published = normalizeSettings(JSON.parse(current.settingsJson) as Partial<typeof tableSettings>);
+        /*
+         * The room's terms, but this phone's preferences. Taking the payload
+         * wholesale handed the host's sound, animation speed and text size to
+         * everyone who sat down, so a host playing muted muted the table.
+         */
+        tableSettings = withOwnDevicePreferences(published, hostSettings ?? DEFAULT_GAME_SETTINGS);
       } catch {
         // A corrupt room falls back to whatever this device already had.
       }

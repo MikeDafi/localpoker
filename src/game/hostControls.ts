@@ -17,6 +17,7 @@
  * that someone will one day append `bigBlind` to.
  */
 import type { GameSettings } from './settings';
+import { DEVICE_ONLY_SETTINGS } from './settings';
 
 /**
  * Cosmetic: changes the picture, never the game.
@@ -80,6 +81,25 @@ export function pickMidGameSafe(patch: Partial<GameSettings>): Partial<GameSetti
       // Narrowed by `isMidGameSafe`, but the index write still needs the cast.
       (out as Record<string, unknown>)[key] = patch[key];
     }
+  }
+  return out;
+}
+
+const DEVICE = new Set<string>(DEVICE_ONLY_SETTINGS);
+
+/**
+ * Only the keys that stay on this phone.
+ *
+ * The counterpart to `pickMidGameSafe`, and the reason the table menu can
+ * offer sound, haptics and animation speed to everybody rather than only to
+ * the host: none of them reaches the room, so none of them is the host's to
+ * grant. Filtered rather than trusted, so a future row in that sheet cannot
+ * quietly push an agreed term through the personal door.
+ */
+export function pickDeviceOnly(patch: Partial<GameSettings>): Partial<GameSettings> {
+  const out: Partial<GameSettings> = {};
+  for (const key of Object.keys(patch) as (keyof GameSettings)[]) {
+    if (DEVICE.has(key)) (out as Record<string, unknown>)[key] = patch[key];
   }
   return out;
 }

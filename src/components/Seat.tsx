@@ -149,6 +149,30 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
     deliberatelyShown(index) ? Math.round(HOLE_SIZE * HOLE_MIN * EXPOSED_CARD_SCALE) : HOLE_SIZE
   );
 
+  /*
+   * A motion is performed by the Pal already sitting here, not by a second
+   * one drawn above it.
+   *
+   * It used to render a whole `PalMotion` in the emote slot above the head,
+   * which put a 64 point copy of the same character directly over a 42 point
+   * one: the gesture read as a stranger leaning into the seat rather than as
+   * the player waving. Swapping the avatar for the duration is the thing the
+   * gesture is actually describing, and it needs no extra room on the felt.
+   */
+  const motionEmote = emote && emote.type === 'palMotion' ? emote : null;
+  /*
+   * A fresh key per arriving reaction, so the same motion sent twice in a row
+   * plays twice. An `Emote` carries no timestamp by the time it reaches a
+   * seat, so object identity is the only thing that changes.
+   */
+  const motionReplayKey = useMemo(() => Date.now(), [emote]);
+  const palReaction = won ? 'happy' : lost ? 'sad' : reaction;
+  const renderPal = (size: number) => (
+    motionEmote
+      ? <PalMotion config={pal} motionId={motionEmote.value} size={size} replayKey={motionReplayKey} />
+      : <AnimatedPal config={pal} size={size} alive={idleMotion && !dimmed} reaction={palReaction} />
+  );
+
   // The ring is the avatar plus a fixed border allowance.
   const ringSize = avatarSize + 10;
 
@@ -222,8 +246,9 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
             lost && styles.cRingLost,
             { opacity: dimmed ? 0.34 : 1 },
           ]}>
-            <AnimatedPal config={pal} size={avatarSize} alive={idleMotion && !dimmed} reaction={won ? 'happy' : lost ? 'sad' : reaction} />
+            {renderPal(avatarSize)}
           </View>
+
           {isDealer && <View style={styles.cDealer}><Text style={styles.dealerText}>D</Text></View>}
         </View>
         <View style={[styles.cTag, won && styles.cTagWon, lost && styles.cTagLost, { opacity: dimmed ? 0.45 : 1 }]}>
@@ -290,7 +315,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
         {isCurrent && <Animated.View style={[styles.glow, glowStyle]} pointerEvents="none" />}
         <View style={[styles.pod, shadows.soft, isCurrent && styles.podActive, won && styles.podWon, lost && styles.podLost, { opacity: dimmed ? 0.5 : 1 }]}>
           <View style={styles.avatarWrap}>
-            <AnimatedPal config={pal} size={40} alive={idleMotion && !dimmed} reaction={won ? 'happy' : lost ? 'sad' : reaction} />
+            {renderPal(40)}
           </View>
           <View style={styles.info}>
             <View style={styles.nameRow}>
@@ -346,7 +371,6 @@ function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
 
   const isText = emote.type === 'text';
   const isGif = emote.type === 'gif';
-  const isMotion = emote.type === 'palMotion';
   // Text/GIF slide in gently; emoji & stickers keep a lively pop.
   // Fast, small, eased, no springy overshoot.
   const entering = isText || isGif
@@ -355,26 +379,14 @@ function EmoteBubble({ emote, pal }: { emote: Emote; pal: PalConfig }) {
   const textStyle = isText ? styles.emoteText : emote.type === 'sticker' ? styles.emoteSticker : styles.emoteEmoji;
 
   /*
-   * A motion is the player's own Pal performing the gesture, so it is drawn
-   * rather than put in a bubble. The bubble chrome would read as a second
-   * head next to the one at the seat.
+   * A motion has nothing to put up here.
+   *
+   * The seat performs it with the Pal already drawn at the pod, which is the
+   * whole point of a gesture: it belongs to the character, not to a bubble
+   * floating over their head. This used to draw a second, larger Pal in the
+   * emote slot, so a wave appeared as another copy of you leaning in.
    */
-  /*
-   * A fresh key each time a reaction arrives, so sending the same motion
-   * twice in a row plays it twice. `Emote` carries no timestamp once it
-   * reaches the seat, and the object identity is the only thing that changes.
-   */
-  const replayKey = useMemo(() => Date.now(), [emote]);
-
-  if (isMotion) {
-    return (
-      <View style={styles.emoteAnchor} pointerEvents="none">
-        <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)}>
-          <PalMotion config={pal} motionId={emote.value} size={64} replayKey={replayKey} />
-        </Animated.View>
-      </View>
-    );
-  }
+  if (emote.type === 'palMotion') return null;
 
   return (
     <View style={styles.emoteAnchor} pointerEvents="none">
