@@ -128,14 +128,29 @@ describe('seatRingSlot', () => {
     }
   });
 
-  it('stacks rows by exactly a pod height, which is what guarantees clearance', () => {
-    const count = 8;
-    const screen = SCREENS[0];
-    const slots = slotsFor(count, screen.width, screen.height);
-    if (seatRowCount(count, screen.width, podWidth(count)) > 1) {
-      const tops = [...new Set(slots.map((s) => Math.round(s.top * 100) / 100))].sort((a, b) => a - b);
-      for (let i = 1; i < tops.length; i += 1) {
-        expect(tops[i] - tops[i - 1]).toBeCloseTo(POD_H, 5);
+  /*
+   * Rows used to be exactly a pod height apart and this asserted that number.
+   * They are a pod height plus the curve depth now, because the rows are
+   * curved and two pods in neighbouring rows sit at different points on the
+   * arc. The number was never the point though: the point is that two pods in
+   * different rows cannot touch. So this asserts the clearance itself, which
+   * stays true whatever the arc does, rather than the arithmetic that used to
+   * deliver it.
+   */
+  it('keeps neighbouring rows at least a pod height apart, however the arc runs', () => {
+    for (const screen of SCREENS) {
+      for (let count = 2; count <= 8; count += 1) {
+        const slots = slotsFor(count, screen.width, screen.height);
+        if (seatRowCount(count, screen.width, podWidth(count)) < 2) continue;
+        for (const a of slots) {
+          for (const b of slots) {
+            if (a.row >= b.row) continue;
+            expect(
+              b.top - a.top,
+              `${screen.name}, ${count} seats: row ${a.row} at ${a.top} is too close to row ${b.row} at ${b.top}`,
+            ).toBeGreaterThanOrEqual(POD_H - 0.001);
+          }
+        }
       }
     }
   });

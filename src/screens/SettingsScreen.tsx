@@ -294,7 +294,6 @@ function FieldControl({
         </Pressable>
         <View style={styles.numberReadout}>
           <Text style={styles.numberValue}>{formatSettingValue(field, numberValue)}</Text>
-          <Text style={styles.numberMeta}>{formatRange(field)}</Text>
         </View>
         <Pressable
           disabled={atMax}

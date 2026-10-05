@@ -111,21 +111,49 @@ export function seatRingSlot(input: SeatRingInput): SeatRingSlot {
   const left = EDGE_INSET + (inRow > 1 ? place * slot : usable / 2);
 
   /*
-   * A single row keeps the old curved rail, because with a handful of players
-   * the curve is what makes it look like a table rather than a toolbar. More
-   * than one row drops the curve: rows are exactly a pod height apart, and a
-   * curve would eat into that separation and put the overlap straight back.
+   * Every row is curved, not just a single one.
    *
-   * The crown of the arc used to be held down to clear the room code pill in
-   * the header. The code has moved into the table's gear menu, so the arc can
-   * now ride right to the top of the stage, which is where the extra room for
-   * a busier ring comes from.
+   * Dropping the curve the moment a second row was needed is what turned a
+   * busy table into a grid of flat lines with the end pods sitting out on the
+   * surround, well off the felt. The crescent is the thing that makes it read
+   * as a table seen from above, and it is wanted at eight seats more than at
+   * three.
+   *
+   * The drop is a function of the pod's absolute horizontal position rather
+   * than of its place within its row. That is what keeps the rows exactly a
+   * pod height apart: two pods at the same x get the identical drop, so the
+   * curve cancels between rows instead of eating the clearance that stops
+   * them touching. Deriving it from place-in-row would not, because rows hold
+   * different numbers of seats and the same place means a different x.
+   *
+   * The depth is capped against the pod height for the same reason: the
+   * guarantee this module exists to provide is that no two pods overlap, and
+   * a curve deep enough to swallow a row would quietly take it away.
    */
   const baseTop = height * 0.012;
-  const along = inRow > 1 ? place / (inRow - 1) : 0.5;
-  const top = rows > 1
-    ? baseTop + row * podHeight
-    : baseTop + (1 - Math.sin(Math.PI * along)) * height * 0.14;
+  const centreX = left + podWidth / 2;
+  const alongX = width > 0 ? Math.max(0, Math.min(1, centreX / width)) : 0.5;
+  /*
+   * A shallower curve once there is more than one row, because every point of
+   * curve has to be paid for in row spacing below, and a deep arc on a busy
+   * table would push the back row into the header.
+   */
+  const curveDepth = rows > 1
+    ? Math.min(height * 0.05, podHeight * 0.22)
+    : Math.min(height * 0.14, podHeight * 0.55);
+  /*
+   * Rows are a pod height apart PLUS the depth of the curve.
+   *
+   * This is the part that is easy to get wrong, and I did: curving the rows
+   * without widening the gap between them broke the one guarantee this module
+   * exists to provide. Two pods in neighbouring rows sit at different points
+   * on the arc, so the lower one can be lifted by up to the full curve depth
+   * while the upper one is not lifted at all, and the clearance between them
+   * shrinks by exactly that much. Paying for the curve up front means the
+   * worst case is still a clean pod height, whatever the arc does.
+   */
+  const rowStep = podHeight + curveDepth;
+  const top = baseTop + row * rowStep + (1 - Math.sin(Math.PI * alongX)) * curveDepth;
 
   return {
     left: Math.max(EDGE_INSET, Math.min(width - podWidth - EDGE_INSET, left)),

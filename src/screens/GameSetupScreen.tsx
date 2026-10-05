@@ -144,13 +144,6 @@ export function GameSetupScreen({ navigation, route }: Props) {
               stakes is context, while opening the table is the decision. */}
           <View style={styles.heroActions}>
             <WiiButton
-              label="Reset defaults"
-              variant="white"
-              size="md"
-              onPress={handleReset}
-              style={styles.resetButton}
-            />
-            <WiiButton
               label={isFriends ? 'Open Lobby' : 'Start Game'}
               variant="green"
               size="lg"
@@ -197,7 +190,6 @@ export function GameSetupScreen({ navigation, route }: Props) {
                   </View>
                   <View>
                     <Text style={styles.sectionTitle}>{activeSection.title}</Text>
-                    <Text style={styles.sectionSubtitle}>{visibleFields.length} setting{visibleFields.length === 1 ? '' : 's'} in this section</Text>
                   </View>
                 </View>
               </View>
@@ -416,7 +408,6 @@ function NumberStepper({
         </Pressable>
         <View style={styles.numberReadout}>
           <Text style={styles.numberValue}>{formatSettingValue(field, value)}</Text>
-          <Text style={styles.numberMeta}>{formatRange(field)}</Text>
         </View>
         <Pressable
           disabled={atMax}

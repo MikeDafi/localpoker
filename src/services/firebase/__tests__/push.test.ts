@@ -33,13 +33,38 @@ vi.mock('firebase/database', () => ({
 }));
 
 const TOKEN = 'ExponentPushToken[abcdef123456]';
+const MODERN_TOKEN = 'ExpoPushToken[abcdef123456]';
 
 beforeEach(() => {
   vi.resetModules();
   configured.value = true;
   for (const k of Object.keys(stored)) delete stored[k];
-  fetchMock.mockReset().mockResolvedValue({ ok: true });
+  fetchMock.mockReset().mockResolvedValue({
+    ok: true,
+    json: async () => ({ data: { status: 'ok', id: 'ticket-1' } }),
+  });
   vi.stubGlobal('fetch', fetchMock);
+});
+
+describe('push token and Expo ticket parsing', () => {
+  it('accepts both Expo token prefixes', async () => {
+    const { isExpoPushToken } = await import('../push');
+    expect(isExpoPushToken(TOKEN)).toBe(true);
+    expect(isExpoPushToken(MODERN_TOKEN)).toBe(true);
+    expect(isExpoPushToken('FCM[abcdef123456]')).toBe(false);
+  });
+
+  it('treats ticket errors as failed sends', async () => {
+    const { interpretExpoPushTickets } = await import('../push');
+    expect(interpretExpoPushTickets({ data: { status: 'ok', id: 'ticket-1' } })).toEqual({ ok: true });
+    expect(interpretExpoPushTickets({
+      data: {
+        status: 'error',
+        message: 'The APNs credentials are invalid.',
+        details: { error: 'InvalidCredentials' },
+      },
+    })).toEqual({ ok: false, reason: 'InvalidCredentials' });
+  });
 });
 
 describe('publishPushToken', () => {
@@ -47,6 +72,12 @@ describe('publishPushToken', () => {
     const { publishPushToken } = await import('../push');
     expect(await publishPushToken(TOKEN)).toBe(true);
     expect(stored['localpoker/pushTokens/me']).toMatchObject({ token: TOKEN });
+  });
+
+  it('stores the token prefix returned by newer Expo SDKs', async () => {
+    const { publishPushToken } = await import('../push');
+    expect(await publishPushToken(MODERN_TOKEN)).toBe(true);
+    expect(stored['localpoker/pushTokens/me']).toMatchObject({ token: MODERN_TOKEN });
   });
 
   it('refuses anything that is not an Expo token', async () => {
@@ -88,6 +119,32 @@ describe('sendPush', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.body).toContain('AB24');
     expect(body.data).toMatchObject({ kind: 'room-invite', code: 'AB24' });
+  });
+
+  it('posts newer Expo token prefixes too', async () => {
+    const { sendPush } = await import('../push');
+    stored['localpoker/pushTokens/alice'] = { token: MODERN_TOKEN, updatedAt: 1 };
+
+    expect(await sendPush('alice', 'friend-request', 'bob')).toBe(true);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.to).toBe(MODERN_TOKEN);
+  });
+
+  it('reports Expo ticket errors even when the HTTP request succeeded', async () => {
+    const { sendPush } = await import('../push');
+    stored['localpoker/pushTokens/alice'] = { token: TOKEN, updatedAt: 1 };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          status: 'error',
+          message: 'The APNs credentials are invalid.',
+          details: { error: 'InvalidCredentials' },
+        },
+      }),
+    });
+
+    expect(await sendPush('alice', 'friend-request', 'bob')).toBe(false);
   });
 
   it('does nothing when the recipient never enabled notifications', async () => {

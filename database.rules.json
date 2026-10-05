@@ -362,7 +362,7 @@
           ".read": "auth != null && (auth.uid === $uid || root.child('localpoker').child('friends').child($uid).child(auth.uid).exists() || root.child('localpoker').child('friendRequests').child($uid).child(auth.uid).child('status').val() === 'pending')",
           ".write": "auth != null && auth.uid === $uid",
           ".validate": "!newData.exists() || newData.hasChildren(['token','updatedAt'])",
-          "token": { ".validate": "newData.isString() && newData.val().length <= 200 && newData.val().beginsWith('ExponentPushToken[')" },
+          "token": { ".validate": "newData.isString() && newData.val().length <= 200 && (newData.val().beginsWith('ExponentPushToken[') || newData.val().beginsWith('ExpoPushToken['))" },
           "updatedAt": { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
         }

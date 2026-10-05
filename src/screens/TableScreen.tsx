@@ -128,6 +128,12 @@ const HUMAN_ID = 'me';
 const FELT_INSET = 4;
 const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
+
+/** How long the table sits on a finished hand before dealing the next one. */
+const SHOWDOWN_HOLD_SEC = 10;
+
+/** Added to that whenever somebody turns their hand over, so it can be seen. */
+const SHOWDOWN_REVEAL_EXTRA_SEC = 3;
 const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 
 const BOT_FOLD_EMOTES: Emote[] = [{ type: 'emoji', value: '😤' }, { type: 'text', value: 'Fold.' }, { type: 'emoji', value: '🙄' }];
@@ -488,6 +494,19 @@ export function TableScreen({ navigation, route }: Props) {
     setObserved((t) => observeTransition(t, prev, state));
   }, [state]);
   const [reveal, setReveal] = useState<'auto' | 'show' | 'muck'>('auto');
+  /**
+   * Extra seconds added to the end-of-hand countdown when somebody shows.
+   *
+   * The countdown was a flat ten seconds keyed on the hand number alone, so
+   * it never restarted. Turning your cards over on the ninth second meant the
+   * next hand began a second later and the reveal was gone before anyone
+   * could look at it, which read as the flip itself resetting the hand.
+   *
+   * Showing restarts the clock with this added, rather than adding to what is
+   * left, because the point is a window long enough to be seen and what was
+   * left is exactly the part that was too short.
+   */
+  const [showdownHold, setShowdownHold] = useState(0);
   const [localCardExposure, setLocalCardExposure] = useState<HoleCardExposure>([false, false]);
   const [area, setArea] = useState({ w: width, h: 0 });
   // Pod heights are measured, but kept as *high-water marks*: a pod grows and
@@ -733,6 +752,20 @@ export function TableScreen({ navigation, route }: Props) {
    * claim their cards lost when nobody ever saw them.
    */
   const contestedShowdown = isShowdown && remainingAtEnd > 1 && felt.board.length === 5;
+
+  /*
+   * A finished run-out board is a showdown too.
+   *
+   * `isShowdown` means the result panel is up, and during a multi board
+   * run-out that is deliberately false until the last board has been dealt.
+   * So for runs one and two the hands were never laid under the board: the
+   * boards came and went, the chips moved to whoever took each one, and
+   * nothing on screen said whose hand had actually won it. Reading the felt
+   * instead of the panel is what makes each run show its own result, which
+   * is the entire reason for dealing them one at a time.
+   */
+  const runShowdown = showingRunout && felt.street === 'showdown' && felt.winners.length > 0;
+
   const seatLost = (p: { id: string; folded?: boolean; sittingOut?: boolean; holeCards: unknown[] }) =>
     lostAtShowdown(p, felt.winners, { contested: contestedShowdown });
 
@@ -766,15 +799,17 @@ export function TableScreen({ navigation, route }: Props) {
     }
   }, [human.holeCards, human.folded, felt.board]);
 
-  // The exact 5 cards that make up the winning hand(s), to highlight at showdown.
+  // The exact 5 cards that make up the winning hand(s), to highlight at
+  // showdown. Also during a run-out, so each board rings its own winner
+  // rather than staying plain until the last one.
   const winningCardKeys = useMemo(() => {
     const keys = new Set<string>();
-    if (!isShowdown) return keys;
+    if (!isShowdown && !runShowdown) return keys;
     for (const w of felt.winners) {
       w.hand?.cards?.forEach((c) => keys.add(`${c.rank}${c.suit}`));
     }
     return keys;
-  }, [isShowdown, felt.winners]);
+  }, [isShowdown, runShowdown, felt.winners]);
 
   /*
    * The showdown, walked in order rather than flipped all at once.
@@ -835,16 +870,20 @@ export function TableScreen({ navigation, route }: Props) {
    * no hand to lay out, and the winner is entitled to keep it hidden.
    */
   const showdownHands = useMemo(() => {
-    if (!isShowdown) return [];
     return selectShowdownHands(felt.winners, felt.players, {
       localPlayerId: human.id,
-      localCardsShown: humanCardsShown,
+      /*
+       * Everything is face up for a run-out. Nobody folds once the chips are
+       * in, so there is no decision left to respect and no reveal order to
+       * walk: every hand still in the pot is laid out for every board.
+       */
+      localCardsShown: runShowdown ? true : humanCardsShown,
       label: (w) => handName(w.hand!.category),
-      contested: contestedShowdown,
-      shownIds: revealShown,
+      contested: runShowdown ? true : contestedShowdown,
+      shownIds: runShowdown ? undefined : revealShown,
       cardExposure: cardExposureForPlayer,
     });
-  }, [isShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
+  }, [isShowdown, runShowdown, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -854,6 +893,7 @@ export function TableScreen({ navigation, route }: Props) {
    */
   useEffect(() => {
     setRevealProgress(startReveal());
+    setShowdownHold(0);
     setLocalCardExposure([false, false]);
     setRunoutRunIndex(0);
     setRunVotes({});
@@ -939,6 +979,8 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const tableBothCards = useCallback(() => {
     setLocalCardExposure([true, true]);
+    // Showing is pointless if the hand ends before anybody looks.
+    setShowdownHold(SHOWDOWN_REVEAL_EXTRA_SEC);
     if (!roomCode || !firebaseOnline) return;
     void revealOwnHand(roomCode);
     void exposeOwnCard(roomCode, 0);
@@ -1238,6 +1280,12 @@ export function TableScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!roomCode || !firebaseOnline || !isOnlineHost) return undefined;
     return subscribeShownHands(roomCode, () => {
+      /*
+       * A guest tabling their hand has to hold the host's clock too, because
+       * the host is the only one who deals the next hand. Without this the
+       * reveal arrived and the table moved on anyway.
+       */
+      setShowdownHold(SHOWDOWN_REVEAL_EXTRA_SEC);
       const current = getCachedHostGame(roomCode) ?? stateRef.current;
       if (!current || current.street !== 'showdown') return;
       publishHostGameState(roomCode, current)
@@ -2925,9 +2973,9 @@ export function TableScreen({ navigation, route }: Props) {
             {!animsOff && !rebuyMessage && (!roomCode || !firebaseOnline || isOnlineHost) && (
               <View style={{ marginTop: spacing.xs }}>
                 <TurnTimer
-                  seconds={10}
+                  seconds={SHOWDOWN_HOLD_SEC + showdownHold}
                   active
-                  resetKey={`showdown-${state.handNumber}`}
+                  resetKey={`showdown-${state.handNumber}-${showdownHold}`}
                   onExpire={() => { setReveal((r) => (r === 'auto' ? 'muck' : r)); nextHand(); }}
                   label="Next hand in"
                 />
@@ -3432,7 +3480,10 @@ const styles = StyleSheet.create({
    * a deadline on it was the thing being covered. The stack is anchored high
    * enough now that the timer always has the row to itself.
    */
-  emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 46 },
+  // Right aligned, not centred. The gear, Show and chat are different
+  // widths, so centring them on a single anchor staggered their edges
+  // and the column read as three unrelated buttons.
+  emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 46, alignItems: 'flex-end' },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },
   rebuyNotice: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, textAlign: 'center', marginTop: spacing.xs },

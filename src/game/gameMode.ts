@@ -11,16 +11,24 @@ import {
 
 export type GameMode = 'cash' | 'tournament' | 'turbo';
 
+/*
+ * "Turbo" means nothing on its own.
+ *
+ * It is jargon from live poker, and the hint under it, "Fast levels", only
+ * makes sense to somebody who already knows a tournament has levels. Both
+ * tournament modes now say they are tournaments and say what the difference
+ * between them is, which is how quickly the blinds climb.
+ */
 export const GAME_MODE_OPTIONS = [
-  { value: 'cash', label: 'Cash', hint: 'Rebuy allowed' },
-  { value: 'tournament', label: 'Tournament', hint: 'No rebuy' },
-  { value: 'turbo', label: 'Turbo', hint: 'Fast levels' },
+  { value: 'cash', label: 'Cash', hint: 'Fixed blinds, rebuy any time' },
+  { value: 'tournament', label: 'Tournament', hint: 'Blinds climb, bust and you are out' },
+  { value: 'turbo', label: 'Turbo Tournament', hint: 'Same, blinds climb twice as fast' },
 ] satisfies { value: GameMode; label: string; hint: string }[];
 
 export const GAME_MODE_LABELS: Record<GameMode, string> = {
   cash: 'Cash',
   tournament: 'Tournament',
-  turbo: 'Turbo',
+  turbo: 'Turbo Tournament',
 };
 
 export function isGameMode(value: unknown): value is GameMode {
@@ -156,7 +164,7 @@ export function formatLevelClock(ms: number | null): string {
 }
 
 export function formatTournamentStatus(status: TournamentTableStatus): string {
-  const level = `L${status.levelNumber} ${formatBlindLevel(status.level)}`;
+  const level = `Level ${status.levelNumber} ${formatBlindLevel(status.level)}`;
   const suffix = status.msUntilNextLevel === null
     ? 'final level'
     : `up in ${formatLevelClock(status.msUntilNextLevel)}`;

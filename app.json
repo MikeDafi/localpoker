@@ -14,6 +14,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.mike0264.localpoker",
       "buildNumber": "1",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleDisplayName": "LocalPoker"

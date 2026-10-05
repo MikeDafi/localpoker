@@ -36,7 +36,7 @@ export type PushKind = 'friend-request' | 'room-invite';
  * Kept here rather than at the call sites so the wording, and the decision
  * about what is worth interrupting someone for, lives in one place.
  */
-const MESSAGES: Record<PushKind, (from: string, extra?: string) => { title: string; body: string }> = {
+export const MESSAGES: Record<PushKind, (from: string, extra?: string) => { title: string; body: string }> = {
   'friend-request': (from) => ({
     title: 'New friend request',
     body: `@${from} wants to play poker with you.`,
@@ -47,9 +47,71 @@ const MESSAGES: Record<PushKind, (from: string, extra?: string) => { title: stri
   }),
 };
 
-/** Expo issues tokens in this shape; anything else is not worth posting. */
-const isExpoPushToken = (value: unknown): value is string =>
-  typeof value === 'string' && /^ExponentPushToken\[[^\]]+\]$/.test(value);
+/** Expo has used both prefixes for the same push-token service. */
+export const isExpoPushToken = (value: unknown): value is string =>
+  typeof value === 'string' && /^Expo(?:nent)?PushToken\[[^\]]+\]$/.test(value);
+
+type ExpoPushMessage = {
+  to: string;
+  title: string;
+  body: string;
+  sound: 'default';
+  data: {
+    kind: PushKind;
+    code: string | null;
+  };
+};
+
+export const buildExpoPushMessage = (
+  token: string,
+  kind: PushKind,
+  fromName: string,
+  extra?: string,
+): ExpoPushMessage => {
+  const { title, body } = MESSAGES[kind](fromName, extra);
+  return {
+    to: token,
+    title,
+    body,
+    sound: 'default',
+    // Lets a tap open the right screen instead of just the app.
+    data: { kind, code: extra ?? null },
+  };
+};
+
+type ExpoPushTicketResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const stringValue = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+/**
+ * Expo returns a ticket inside a successful HTTP response.
+ *
+ * Invalid APNs credentials, dead tokens and malformed messages are reported
+ * there, so response.ok alone is not enough to know a push was accepted.
+ */
+export const interpretExpoPushTickets = (payload: unknown): ExpoPushTicketResult => {
+  if (!isRecord(payload)) return { ok: false, reason: 'malformed-response' };
+  const data = payload.data;
+  const tickets = Array.isArray(data) ? data : [data];
+  if (tickets.length === 0 || tickets.some((ticket) => !isRecord(ticket))) {
+    return { ok: false, reason: 'malformed-ticket' };
+  }
+
+  const failed = tickets.find((ticket) => isRecord(ticket) && ticket.status !== 'ok');
+  if (!failed || !isRecord(failed)) return { ok: true };
+
+  const details = isRecord(failed.details) ? stringValue(failed.details.error) : undefined;
+  return {
+    ok: false,
+    reason: details ?? stringValue(failed.message) ?? stringValue(failed.status) ?? 'ticket-error',
+  };
+};
 
 /**
  * Store this device's push token so friends can reach us.
@@ -133,20 +195,20 @@ export const sendPush = async (
     const token = (snapshot.val() as { token?: unknown } | null)?.token;
     if (!isExpoPushToken(token)) return false;
 
-    const { title, body } = MESSAGES[kind](fromName, extra);
     const response = await fetch(EXPO_PUSH_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        to: token,
-        title,
-        body,
-        sound: 'default',
-        // Lets a tap open the right screen instead of just the app.
-        data: { kind, code: extra ?? null },
-      }),
+      body: JSON.stringify(buildExpoPushMessage(token, kind, fromName, extra)),
     });
-    return response.ok;
+    if (!response.ok) return false;
+    const ticket = interpretExpoPushTickets(await response.json());
+    if (!ticket.ok) {
+      captureError(new Error(`Expo push rejected: ${ticket.reason}`), {
+        tags: { area: 'push', operation: `send-${kind}`, reason: ticket.reason },
+      });
+      return false;
+    }
+    return true;
   } catch (error) {
     // A push that cannot be read or sent is not an error the user should ever
     // see, because the thing they actually did already worked.

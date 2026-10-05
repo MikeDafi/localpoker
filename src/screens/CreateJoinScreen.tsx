@@ -112,7 +112,6 @@ export function CreateJoinScreen({ navigation }: Props) {
             <TextInput value={joinCode} onChangeText={(t) => setJoinCode(filterToCodeAlphabet(t))} autoCapitalize="characters" maxLength={CODE_LENGTH} placeholder="AB24" placeholderTextColor={colors.inkMuted} style={styles.codeInput} />
             <View style={{ height: spacing.md }} />
             <WiiButton label="Join Table" variant="blue" size="lg" fullWidth onPress={startJoin} />
-            <Text style={styles.note}>Ask a friend for their room code.</Text>
           </WiiPanel>
 
             {/* Browsing sits under the code box: a code is the certain way in,

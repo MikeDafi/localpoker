@@ -15,8 +15,15 @@
 
 import { MAX_RUNS, type RunCount } from './runItTwice';
 
-/** Height of one row on the wheel, in points. */
-export const RUN_WHEEL_ITEM_H = 46;
+/**
+ * Height of one row on the wheel, in points.
+ *
+ * Small, because this sits inside the result card and the card has to clear
+ * the hole cards above it. At 46 the wheel alone was three rows of 46 under
+ * a title, a subtitle and a countdown, and the card ran off the bottom of the
+ * screen with the countdown it was timing out on cut off.
+ */
+export const RUN_WHEEL_ITEM_H = 34;
 
 /** Every count the wheel offers, lowest first. */
 export function runWheelOptions(max: number = MAX_RUNS): RunCount[] {

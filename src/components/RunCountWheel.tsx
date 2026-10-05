@@ -129,7 +129,6 @@ export function RunCountWheel({ value, enabled, onChange }: RunCountWheelProps) 
           </Pressable>
         ))}
       </ScrollView>
-      <Text style={styles.caption}>{shown === 1 ? 'board' : 'boards'}</Text>
     </View>
   );
 }
@@ -139,9 +138,10 @@ const styles = StyleSheet.create({
   /*
    * Exactly three rows tall: the value, and one either side of it. Two would
    * not say which way the wheel moves, and four makes the card taller than
-   * the felt it has to sit on.
+   * the felt it has to sit on. The card is tight enough that the title sits
+   * beside this rather than above it.
    */
-  scroll: { height: RUN_WHEEL_ITEM_H * 3, width: 92 },
+  scroll: { height: RUN_WHEEL_ITEM_H * 3, width: 64 },
   // One row of padding top and bottom, so the first and last values can reach
   // a window that is not at the top of the list.
   content: { paddingVertical: RUN_WHEEL_ITEM_H },
@@ -157,11 +157,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gold,
   },
-  number: { fontFamily: fonts.bold, fontSize: 28 },
+  number: { fontFamily: fonts.bold, fontSize: 22 },
   numberActive: { color: colors.gold },
   // Still legible, so you can see what you are scrolling towards.
   numberIdle: { color: colors.onDarkMuted, opacity: 0.55 },
-  caption: {
-    fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkMuted, marginTop: spacing.xs,
-  },
 });

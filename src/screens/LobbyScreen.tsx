@@ -238,7 +238,7 @@ export function LobbyScreen({ navigation, route }: Props) {
       .sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name));
   }, [friends, room?.players]);
 
-  const inviteFriend = async (id: string, name: string) => {
+  const inviteFriend = async (id: string) => {
     setInvited((prev) => ({ ...prev, [id]: true }));
     const res = await inviteFriendToRoom(roomCode, id);
     if (!res.ok) {
@@ -250,7 +250,6 @@ export function LobbyScreen({ navigation, route }: Props) {
       showAlert('Could not invite', res.reason || 'Try again in a moment.');
       return;
     }
-    showAlert('Invite sent', `${name} will see it in LocalPoker.`);
   };
 
   /**
@@ -329,7 +328,7 @@ export function LobbyScreen({ navigation, route }: Props) {
                   variant={invited[f.id] ? 'white' : 'blue'}
                   size="sm"
                   disabled={invited[f.id]}
-                  onPress={() => inviteFriend(f.uid ?? f.id, f.name)}
+                  onPress={() => inviteFriend(f.uid ?? f.id)}
                 />
               </View>
             ))
