@@ -11,11 +11,11 @@ import {
   serverTimestamp,
   set,
   startAt,
-  update,
   type Database,
 } from 'firebase/database';
 
 import { getDb, isFirebaseConfigured } from './config';
+import { updateRoot } from './rootUpdate';
 import { deleteCurrentAuthUser, ensureSignedIn } from './auth';
 import { sendPush } from './push';
 import { captureError } from '../telemetry';
@@ -214,7 +214,7 @@ export const publishUserDirectory = async (
     // Only include it when there is one, since the rules reject an empty or
     // oversized value and an absent Pal is a legitimate state.
     if (palJson && palJson.length <= MAX_PAL_JSON) record.palJson = palJson;
-    await update(ref(db), { [usersPath(uid)]: record });
+    await updateRoot(db, { [usersPath(uid)]: record });
 
     // Release the old name last, so a failure part way through leaves the
     // account reachable under one of the two rather than neither.
@@ -411,7 +411,7 @@ export const sendFriendRequest = async (
       }
     }
 
-    await update(ref(db), {
+    await updateRoot(db, {
       [requestPath(target.uid, fromUid)]: {
         fromUid,
         fromHandle: ownHandle,
@@ -471,7 +471,7 @@ export const acceptFriendRequest = async (fromUid: string): Promise<FirebaseFrie
     }
 
     const updatedAt = Date.now();
-    await update(ref(db), {
+    await updateRoot(db, {
       [requestPath(toUid, fromUid)]: { ...request, status: 'accepted' },
       [friendPath(toUid, fromUid)]: {
         uid: fromUid,
@@ -515,7 +515,7 @@ export const declineFriendRequest = async (fromUid: string): Promise<FirebaseFri
     }
 
     const request = snapshot.val() as FriendRequestRecord;
-    await update(ref(db), {
+    await updateRoot(db, {
       [requestPath(toUid, fromUid)]: { ...request, status: 'declined' },
     });
     return { ok: true };
@@ -538,7 +538,7 @@ export const removeFriendship = async (friendUid: string): Promise<FirebaseFrien
   }
 
   try {
-    await update(ref(db), {
+    await updateRoot(db, {
       [friendPath(uid, friendUid)]: null,
       [friendPath(friendUid, uid)]: null,
     });
@@ -571,7 +571,7 @@ export const blockUser = async (
   try {
     const displayName = maskedPublicName(cleanDisplayName(displayNameInput) || 'Blocked player');
     const handle = normalizeHandle(handleInput ?? '');
-    await update(ref(db), {
+    await updateRoot(db, {
       [blockPath(uid, blockedUid)]: {
         uid: blockedUid,
         ...(handle ? { handle } : {}),
@@ -615,7 +615,7 @@ export const reportUser = async (
     if (!reportRef.key) {
       return { ok: false, reason: 'Could not create a report.' };
     }
-    await update(ref(db), {
+    await updateRoot(db, {
       [`${reportsPath()}/${reportRef.key}`]: {
         reporterUid: uid,
         reportedUid,
@@ -708,11 +708,11 @@ export const deleteOnlineAccount = async (
           cleanup[userRoomPath(playerId, code)] = null;
         }
         if (Object.keys(cleanup).length > 0) {
-          await update(ref(db), cleanup);
+          await updateRoot(db, cleanup);
         }
-        await update(ref(db), { [roomPath(code)]: null });
+        await updateRoot(db, { [roomPath(code)]: null });
       } else if (room?.players?.[uid]) {
-        await update(ref(db), {
+        await updateRoot(db, {
           [roomPlayerPath(code, uid)]: null,
           [viewPath(code, uid)]: null,
           [userRoomPath(uid, code)]: null,
@@ -742,7 +742,7 @@ export const deleteOnlineAccount = async (
       updates[requestPath(toUid, uid)] = null;
     }
 
-    await update(ref(db), updates);
+    await updateRoot(db, updates);
     const authDeleted = await deleteCurrentAuthUser();
     return {
       ok: true,

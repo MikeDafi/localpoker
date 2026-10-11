@@ -6,11 +6,11 @@ import {
   ref,
   serverTimestamp,
   set,
-  update,
   type Database,
 } from 'firebase/database';
 
 import { getDb, isFirebaseConfigured } from './config';
+import { updateRoot } from './rootUpdate';
 import { ensureSignedIn } from './auth';
 import { sendPush } from './push';
 import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRunVote, RoomState, RoomStatus, RoomSummary, RoomVisibility } from './types';
@@ -444,7 +444,7 @@ const publishDiscovery = async (
   if (visibility === 'public') discovery[publicRoomPath(roomCode)] = summary;
   if (Object.keys(discovery).length === 0) return;
   try {
-    await update(ref(db), discovery);
+    await updateRoot(db, discovery);
 
     /*
      * Deliberately no onDisconnect teardown of these entries.
@@ -503,7 +503,7 @@ const refreshRoomInviteSummaries = async (
   }
   if (Object.keys(updates).length === 0) return;
   try {
-    await update(ref(db), updates);
+    await updateRoot(db, updates);
   } catch (error) {
     /*
      * Existing invites are hints. A failed refresh must not turn a settings
@@ -561,7 +561,7 @@ export const inviteFriendToRoom = async (
       visibility,
     );
 
-    await update(ref(db), {
+    await updateRoot(db, {
       [roomInvitePath(invitee, roomCode)]: summary,
       [`${roomPath(roomCode)}/invited/${invitee}`]: true,
     });
@@ -688,7 +688,7 @@ export const createRoom = async (
         } else {
           updates[playerPath(roomCode, hostId)] = hostPlayer;
         }
-        await update(ref(db), updates);
+        await updateRoot(db, updates);
         for (const uid of staleInviteUids) {
           try {
             await set(ref(db, roomInvitePath(uid, roomCode)), null);
@@ -780,7 +780,7 @@ export const createRoom = async (
     // steps lets the existing strict rule stand. Losing atomicity is benign:
     // discovery entries are hints, and a room without them is merely harder to
     // find, not broken.
-    await update(ref(db), {
+    await updateRoot(db, {
       [roomPath(roomCode)]: room,
       [userRoomPath(hostId, roomCode)]: { code: roomCode, role: 'host', updatedAt: Date.now() },
     });
@@ -1008,7 +1008,7 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
       connected: true,
       ...(seated ? { seatIndex: seated.seatIndex, chips: seated.chips, isHost: seated.isHost } : {}),
     });
-    await update(ref(db), {
+    await updateRoot(db, {
       [playerPath(roomCode, playerId)]: playerValue,
       [userRoomPath(playerId, roomCode)]: { code: roomCode, role: 'player', updatedAt: Date.now() },
     });
@@ -1036,7 +1036,7 @@ export const removePlayerFromRoom = async (code: string, playerId: string): Prom
   const target = cleanKey(playerId);
   if (!db || !roomCode || !target) return;
   try {
-    await update(ref(db), {
+    await updateRoot(db, {
       [playerPath(roomCode, target)]: null,
       [viewPath(roomCode, target)]: null,
       [userRoomPath(target, roomCode)]: null,
@@ -1092,12 +1092,12 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
         updates[userRoomPath(id, roomCode)] = null;
       }
 
-      await update(ref(db), updates);
+      await updateRoot(db, updates);
       hostGameCache.delete(roomCode);
       return;
     }
 
-    await update(ref(db), {
+    await updateRoot(db, {
       [playerPath(roomCode, cleanPlayerId)]: null,
       [viewPath(roomCode, cleanPlayerId)]: null,
       [userRoomPath(cleanPlayerId, roomCode)]: null,
@@ -1379,7 +1379,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       table[`${roomPath(roomCode)}/handReady`] = null;
       table[`${roomPath(roomCode)}/runVotes`] = null;
     }
-    await update(ref(db), table);
+    await updateRoot(db, table);
     setCachedHostGame(roomCode, state);
 
     // Clear the view of anyone not holding cards this hand, rather than
@@ -1389,7 +1389,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       views[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
     }
     try {
-      await update(ref(db), views);
+      await updateRoot(db, views);
     } catch (error) {
       // The hand is published and playable; someone may be missing their own
       // cards. Worth reporting, not worth failing the publish over.
@@ -1463,7 +1463,7 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
       updates[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
     }
 
-    await update(ref(db), updates);
+    await updateRoot(db, updates);
     await registerDisconnect(db, roomCode, hostId, true);
     setCachedHostGame(roomCode, state);
     return { ok: true, state, publicState };
@@ -1560,7 +1560,7 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
       updates[userRoomPath(playerId, roomCode)] = null;
     }
 
-    await update(ref(db), updates);
+    await updateRoot(db, updates);
     hostGameCache.delete(roomCode);
     return { ok: true };
   } catch (error) {
@@ -1640,7 +1640,7 @@ export const sweepMyStaleRooms = async (): Promise<number> => {
       const room = snapshot.val() as Partial<RoomState> | null;
 
       if (!snapshot.exists() || !room) {
-        await update(ref(db), { [userRoomPath(uid, code)]: null, [publicRoomPath(code)]: null });
+        await updateRoot(db, { [userRoomPath(uid, code)]: null, [publicRoomPath(code)]: null });
         removed += 1;
         continue;
       }
@@ -1660,7 +1660,7 @@ export const sweepMyStaleRooms = async (): Promise<number> => {
         [userRoomPath(uid, code)]: null,
         ...discoveryTeardown(room, code),
       };
-      await update(ref(db), teardown);
+      await updateRoot(db, teardown);
       removed += 1;
     }
   } catch (error) {
@@ -1997,7 +1997,7 @@ export const pushAction = async (code: string, action: RoomAction): Promise<Push
       }
 
       const actionValue = toDbAction({ ...action, playerId }, sequenced.seq);
-      await update(ref(db), {
+      await updateRoot(db, {
         [`${actionsPath(roomCode)}/${actionRef.key}`]: actionValue,
         [actionSeqPath(roomCode)]: actionValue.seq,
       });

@@ -87,7 +87,38 @@ let chipSound: unknown = 'toss';
 const chipTimers = new Set<ReturnType<typeof setTimeout>>();
 const reportedSoundErrors = new Set<string>();
 
+type AppStateModule = { AppState: { currentState: string | null } };
+let appStateModule: AppStateModule | null = null;
+
+/*
+ * iOS will not activate the audio session for an app that has left the
+ * foreground, because the audio mode asks not to play in the background. A cue
+ * that lands as the phone locks mid-hand fails with "Session activation
+ * failed": it could never have been heard, yet every attempt filed a Sentry
+ * issue. So cues are skipped outside the foreground instead of attempted.
+ *
+ * An unknown state (null, or no react-native in tests) plays, because a muted
+ * table is a worse failure than one stray report.
+ */
+export const canPlayInAppState = (state: string | null | undefined): boolean => (
+  state == null || state === 'active'
+);
+
+const appIsActive = (): boolean => {
+  try {
+    // Lazy, like getAudioModule, so the pure helpers stay testable without loading react-native.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    appStateModule ??= require('react-native') as AppStateModule;
+    return canPlayInAppState(appStateModule.AppState.currentState);
+  } catch {
+    return true;
+  }
+};
+
 const reportSoundError = (operation: string, error: unknown, name?: SoundName): void => {
+  // The app can background between the check in play() and the native call.
+  // Losing that race is the case canPlayInAppState describes, not a fault.
+  if (operation === 'play' && !appIsActive()) return;
   const key = `${operation}:${name ?? 'global'}`;
   if (reportedSoundErrors.has(key)) return;
   reportedSoundErrors.add(key);
@@ -185,6 +216,8 @@ const seekThenFireVoice = (name: SoundName, voice: SoundVoice): void => {
     void voice.player.seekTo(0)
       .then(() => {
         voice.rearming = false;
+        // The seek is async, so the app may have backgrounded while it ran.
+        if (!appIsActive()) return;
         try {
           voice.player.volume = volume;
           voice.player.play();
@@ -251,7 +284,7 @@ export const sound = {
     init();
   },
   play(name: SoundName) {
-    if (!enabled) return;
+    if (!enabled || !appIsActive()) return;
     init();
     const pool = playerPools[name];
     if (!pool?.length) return;

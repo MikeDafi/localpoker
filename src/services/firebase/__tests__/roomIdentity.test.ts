@@ -37,6 +37,7 @@ vi.mock('../auth', () => ({
 
 vi.mock('../../telemetry', () => ({
   captureError: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 vi.mock('../push', () => ({ sendPush }));
