@@ -2241,7 +2241,7 @@ export function TableScreen({ navigation, route }: Props) {
   const tournamentWinnerPlayer = tournamentWinnerId
     ? state.players.find((p) => p.id === tournamentWinnerId)
     : null;
-  const humanEliminated = tournament && isEliminated(human, true) && (handOver || human.holeCards.length === 0);
+  const humanEliminated = tournament && isEliminated(human, true) && (isShowdown || (!handOver && human.holeCards.length === 0));
   const lowChips = !tournament && human.chips < state.config.bigBlind * 5;
 
   /*
@@ -2259,7 +2259,14 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const [rebuyOpenedAt, setRebuyOpenedAt] = useState<number | null>(null);
   const [rebuyTick, setRebuyTick] = useState(0);
-  const tableBlocked = !tournament && handOver && !canDealHand(state.players);
+  /*
+   * Only once the result is on the felt. The engine settles the pot the moment
+   * the last bet goes in, so keying this off `handOver` put "Rebuy to keep
+   * playing" up while the run-out was still being dealt and told the player
+   * they had lost before the river landed.
+   */
+  const resultShown = isShowdown && (!contestedShowdown || revealComplete(revealOrder, revealProgress));
+  const tableBlocked = !tournament && resultShown && !canDealHand(state.players);
 
   useEffect(() => {
     if (!tableBlocked) {
@@ -2277,10 +2284,14 @@ export function TableScreen({ navigation, route }: Props) {
   }, [tableBlocked, rebuyOpenedAt]);
 
   const rebuyState = useMemo(
-    () => rebuyPhase({ players: state.players, openedAt: rebuyOpenedAt, now: Date.now(), tournament }),
+    // An all-in player holds nothing behind but is not busted, so there is no
+    // window to show until the table actually cannot deal.
+    () => (tableBlocked
+      ? rebuyPhase({ players: state.players, openedAt: rebuyOpenedAt, now: Date.now(), tournament })
+      : { phase: 'none' as const }),
     // rebuyTick is the clock: it exists only to re-evaluate this on the second.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.players, rebuyOpenedAt, rebuyTick, tournament],
+    [state.players, rebuyOpenedAt, rebuyTick, tournament, tableBlocked],
   );
   const rebuyMessage = rebuyNotice(rebuyState, human.id);
   const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
@@ -3550,7 +3561,7 @@ export function TableScreen({ navigation, route }: Props) {
             {rebuyMessage && !mustRebuy && (
               <Text style={styles.rebuyNotice}>{rebuyMessage}</Text>
             )}
-            {(lowChips || mustRebuy) && (
+            {((lowChips && resultShown) || mustRebuy) && (
               <View style={{ marginTop: spacing.sm }}>
                 <WiiButton
                   label={mustRebuy && rebuyState.phase === 'waiting'
