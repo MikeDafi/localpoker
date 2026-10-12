@@ -333,3 +333,16 @@ describe('lifting the middle of a crowded arc', () => {
     expect(seatRingBottom({ ...base, lift: 26 })).toBeCloseTo(seatRingBottom(base), 5);
   });
 });
+
+describe('capping how low the seats reach', () => {
+  it('pulls a short table\'s end seats up to the cap', () => {
+    const input = { count: 2, width: 398, height: 404, podWidth: 90, podHeight: 150, lift: 26 };
+    expect(seatRingBottom(input)).toBeGreaterThan(162);
+    expect(seatRingBottom({ ...input, maxBottom: 162 })).toBeLessThanOrEqual(162);
+  });
+
+  it('leaves a full table alone when it already sits above the cap', () => {
+    const input = { count: 8, width: 398, height: 404, podWidth: 44, podHeight: 112, lift: 26 };
+    expect(seatRingBottom({ ...input, maxBottom: 162 })).toBeCloseTo(seatRingBottom(input), 5);
+  });
+});

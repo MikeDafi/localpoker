@@ -70,6 +70,16 @@ export interface SeatRingInput {
    * taller. Zero, the default, leaves the arc as it was.
    */
   lift?: number;
+  /**
+   * Lowest a pod's bottom edge may reach, in points.
+   *
+   * The ends of the arc fall away with the rail, and the board starts below
+   * the lowest pod. With two opponents both seats are at the ends and the
+   * pods are at their tallest, so the drop pushed the board down and the
+   * cards shrank by a fifth. Capping the bottom flattens the ends of a short
+   * table instead, so the board's lane is the same at every table size.
+   */
+  maxBottom?: number;
 }
 
 export interface SeatRingSlot {
@@ -274,9 +284,13 @@ export function seatRingSlot(input: SeatRingInput): SeatRingSlot {
   const lift = row === 0 ? Math.max(0, input.lift ?? 0) : 0;
   const rise = lift * Math.sqrt(Math.max(0, 1 - t * t));
 
+  let top = Math.max(EDGE_INSET - lift, crown + row * rowStep + drop - rise);
+  if (row === 0 && typeof input.maxBottom === 'number') {
+    top = Math.max(EDGE_INSET - lift, Math.min(top, input.maxBottom - podHeight));
+  }
   return {
     left: clampLeft(left, width, podWidth),
-    top: Math.max(EDGE_INSET - lift, crown + row * rowStep + drop - rise),
+    top,
     row,
   };
 }

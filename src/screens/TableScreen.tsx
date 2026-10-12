@@ -141,8 +141,14 @@ const HUMAN_ID = 'me';
  * alone would quietly push the cards over it.
  */
 const FELT_INSET = 4;
-/** Points the middle of a crowded seat arc rises above the felt, into the empty header band. */
-const CROWDED_SEAT_LIFT = 26;
+/** Points the middle of the seat arc rises above the felt, into the empty header band. */
+const SEAT_LIFT = 26;
+/**
+ * Lowest the seats may reach, as a share of the stage height. Measured from a
+ * full table, whose lowest pod already sits above it, so only a short table's
+ * taller end seats are pulled up to it.
+ */
+const SEAT_MAX_BOTTOM = 0.4;
 const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
 
@@ -2602,7 +2608,7 @@ export function TableScreen({ navigation, route }: Props) {
    * of felt, so faces can be large and readable; at a full ring they must shrink
    * or the pods overlap along the seat arc.
    */
-  const avatarSize = Math.round(Math.max(40, Math.min(66, 74 - opponents.length * 5)));
+  const avatarSize = Math.round(Math.max(44, Math.min(72, 80 - opponents.length * 5)));
   /*
    * The pod is as narrow as the avatar inside it allows.
    *
@@ -2628,13 +2634,17 @@ export function TableScreen({ navigation, route }: Props) {
   const SEAT_W = podWidthForOneArc(opponents.length, area.w, preferredSeatW);
   const crowdedRail = SEAT_W < preferredSeatW;
   /*
-   * On a crowded rail the faces nearly touch: the ring may use the gap
-   * between pods, leaving a couple of points, so the faces are as big as the
-   * rail allows rather than floating apart inside their pods.
+   * On a crowded rail the faces touch: the ring may use the gap between pods,
+   * so the faces are as big as the rail allows rather than floating apart
+   * inside their pods.
    */
-  const seatAvatar = crowdedRail ? Math.min(avatarSize, SEAT_W + SEAT_GAP - 12) : avatarSize;
-  // The middle of a crowded rail rises out over the empty space above the felt.
-  const seatLift = crowdedRail ? CROWDED_SEAT_LIFT : 0;
+  const seatAvatar = crowdedRail ? Math.min(avatarSize, SEAT_W + SEAT_GAP - 10) : avatarSize;
+  /*
+   * The middle of the arc rises out over the empty band above the felt at
+   * every table size, so two players and eight sit on the same curve and the
+   * table looks the same shape whoever is seated.
+   */
+  const seatLift = SEAT_LIFT;
   const seatRingInput = {
     count: opponents.length,
     width: area.w,
@@ -2642,6 +2652,7 @@ export function TableScreen({ navigation, route }: Props) {
     podWidth: SEAT_W,
     podHeight: podH,
     lift: seatLift,
+    maxBottom: Math.round(stageH * SEAT_MAX_BOTTOM),
   };
   const seatPos = (idx: number, n: number) =>
     seatRingSlot({ ...seatRingInput, index: idx, count: n });
