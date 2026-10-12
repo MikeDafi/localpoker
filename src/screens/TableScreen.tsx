@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
-import { seatRingBottom, seatRingSlot } from '../game/seatRing';
+import { podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
 import { offeredNumberValues } from '../game/settingNumbers';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
@@ -884,7 +884,20 @@ export function TableScreen({ navigation, route }: Props) {
   /** A verdict is on screen, whether from the result panel or a finished run. */
   const verdictShown = isShowdown || runShowdown;
 
+  /*
+   * The result of a board run more than once is told in words, not on the felt.
+   *
+   * The felt can only hold one board, so the panel's run-by-run list sat under
+   * whichever board happened to be last, with every player who took any run
+   * ringed in gold. Nobody could tell which run they were looking at, or why
+   * everyone had won. Each run already had its own moment on the felt while it
+   * was dealt, so once the panel opens the felt is cleared and the panel says
+   * who won what.
+   */
+  const multiRunVerdict = isShowdown && runCount > 1;
+
   const seatLost = (p: { id: string; folded?: boolean; sittingOut?: boolean; holeCards: unknown[] }) =>
+    !multiRunVerdict &&
     // A finished run-out board has losers too. Keyed on `contestedShowdown`
     // alone, the seats stayed plain until the last board, so the two runs
     // before it announced a winner without saying who they had beaten.
@@ -995,6 +1008,7 @@ export function TableScreen({ navigation, route }: Props) {
    * no hand to lay out, and the winner is entitled to keep it hidden.
    */
   const showdownHands = useMemo(() => {
+    if (multiRunVerdict) return [];
     return selectShowdownHands(felt.winners, felt.players, {
       localPlayerId: human.id,
       /*
@@ -1014,7 +1028,7 @@ export function TableScreen({ navigation, route }: Props) {
       // hands sideways under a board that is still changing.
       seatOrder: handsTabled,
     });
-  }, [isShowdown, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
+  }, [multiRunVerdict, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -2599,7 +2613,17 @@ export function TableScreen({ navigation, route }: Props) {
    * so faces are no smaller, the pod simply stops reserving margin it was not
    * using.
    */
-  const SEAT_W = Math.max(62, avatarSize + 20);
+  /*
+   * Every opponent sits on the one arc along the rim, at every table size.
+   *
+   * A full table used to fold into a second arc nested under the first, which
+   * read as two rows of players stacked on the felt and took the board down to
+   * about two thirds of its heads-up size. The pods narrow to share the rail
+   * instead, and the avatar shrinks to fit inside its pod, so the board keeps
+   * the same lane however many people are seated.
+   */
+  const SEAT_W = podWidthForOneArc(opponents.length, area.w, Math.max(62, avatarSize + 20));
+  const seatAvatar = Math.min(avatarSize, SEAT_W - 14);
   const seatRingInput = {
     count: opponents.length,
     width: area.w,
@@ -3087,7 +3111,7 @@ export function TableScreen({ navigation, route }: Props) {
             </Animated.View>
           )}
           <View style={styles.board} onLayout={(e) => setBoardBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y, w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-            {Array.from({ length: BOARD_CELLS }).map((_, i) => {
+            {!multiRunVerdict && Array.from({ length: BOARD_CELLS }).map((_, i) => {
               const card = shownBoard[i];
               if (!card) {
                 return (
@@ -3201,8 +3225,9 @@ export function TableScreen({ navigation, route }: Props) {
                    the right put the rightmost pod's pair off screen. */
                 cardsLeft={pos.left + SEAT_W / 2 > area.w / 2}
                 handOff={showdownHands.some((h) => h.playerId === p.id)}
-                avatarSize={avatarSize}
-                won={verdictShown && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
+                avatarSize={seatAvatar}
+                podWidth={SEAT_W}
+                won={verdictShown && !multiRunVerdict && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
                 lost={seatLost(p)}
                 reaction={reactionFor(p.id)}
                 idleMotion={settings.avatarIdleMotion && !animsOff}
@@ -3228,7 +3253,7 @@ export function TableScreen({ navigation, route }: Props) {
               isDealer={dealerId === human.id}
               showBet={!isShowdown}
               back={cardBack}
-              won={humanWon}
+              won={humanWon && !multiRunVerdict}
               lost={seatLost(human)}
               reaction={reactionFor(human.id)}
               idleMotion={settings.avatarIdleMotion && !animsOff}

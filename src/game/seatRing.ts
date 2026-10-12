@@ -100,6 +100,29 @@ function fitAcross(span: number, podWidth: number): number {
   return Math.max(1, Math.floor((Math.max(0, span) + SEAT_GAP) / (podWidth + SEAT_GAP)));
 }
 
+/**
+ * The widest pod that still lets every opponent sit on the one arc.
+ *
+ * A second arc nested inside the first looked like two rows of players
+ * stacked on the felt, and every row it added came out of the board: a full
+ * table played on cards about two thirds the size of a heads-up one. The pods
+ * give way instead. They narrow to share the rail, and the board keeps the
+ * same lane at every table size.
+ *
+ * Never wider than `preferred`, so a short table keeps its roomy pods, and
+ * never narrower than `minimum`, below which a name and a stack cannot be read.
+ * Only at that floor does a second arc come back, on a screen too narrow for
+ * the table.
+ */
+export function podWidthForOneArc(count: number, width: number, preferred: number, minimum = MIN_POD_WIDTH): number {
+  const n = Math.max(1, Math.floor(count));
+  const fit = Math.floor((Math.max(0, width - EDGE_INSET * 2) - (n - 1) * SEAT_GAP) / n);
+  return Math.max(minimum, Math.min(preferred, fit));
+}
+
+/** Narrowest pod that still shows a name and a stack. */
+export const MIN_POD_WIDTH = 40;
+
 /** How many pods fit across the full width of the stage. */
 export function seatsPerRow(width: number, podWidth: number): number {
   return fitAcross(width - EDGE_INSET * 2, podWidth);

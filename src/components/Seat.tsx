@@ -57,6 +57,12 @@ export interface SeatProps {
    */
   avatarSize?: number;
   /**
+   * Width the pod has on the rail. A full table narrows every pod so all of
+   * them fit along one arc; the tag, the stack and the cards beside the head
+   * shrink with it rather than spilling onto the next seat.
+   */
+  podWidth?: number;
+  /**
    * The showdown overlay has taken ownership of this player's hole cards and is
    * flying them to the middle, so the pod must stop drawing its own copy.
    */
@@ -117,7 +123,10 @@ const SEAT_CARD = 26;
  */
 const EXPOSED_CARD_SCALE = 2.5;
 
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, cardsLeft = false, avatarSize = 42 }: SeatProps) {
+/** A compact pod's width when the rail has room for it. */
+const COMPACT_POD_W = 84;
+
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, cardsLeft = false, avatarSize = 42, podWidth = COMPACT_POD_W }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -194,12 +203,18 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
 
   // The ring is the avatar plus a fixed border allowance.
   const ringSize = avatarSize + 10;
+  // Narrow pods share the rail with a neighbour a few points away, so the
+  // cards tuck in over the head instead of hanging off its side.
+  const narrow = podWidth < COMPACT_POD_W - 20;
+  const cardTuck = narrow ? -4 : -15;
+  // A roomy table keeps the pod it always had; only a crowded rail narrows it.
+  const wrapW = narrow ? podWidth : COMPACT_POD_W;
 
   // Compact vertical pod for opponents: a round avatar with a small name/stack
   // tag beneath it. Keeps each seat narrow so the felt stays uncluttered.
   if (compact) {
     return (
-      <View style={styles.cWrap}>
+      <View style={[styles.cWrap, { width: wrapW }]}>
         {emote && <EmoteBubble emote={emote} pal={pal} mine={isHuman} />}
         <View style={styles.cAvatarWrap}>
         {hasHoleCardsToDisplay && !dimmed && !handOff && (
@@ -215,8 +230,8 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
                * pod instead of sitting beside the head.
                */
               cardsLeft
-                ? { left: anyCardShown ? -8 : -15 }
-                : { right: anyCardShown ? -8 : -15 },
+                ? { left: anyCardShown ? -8 : cardTuck }
+                : { right: anyCardShown ? -8 : cardTuck },
               anyCardShown && styles.cCardsShown,
               // A card turned over on purpose is drawn large, so the group it
               // sits in has to move clear of the avatar rather than tuck
@@ -280,9 +295,9 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
 
           {isDealer && <View style={styles.cDealer}><Text style={styles.dealerText}>D</Text></View>}
         </View>
-        <View style={[styles.cTag, won && styles.cTagWon, lost && styles.cTagLost, { opacity: dimmed ? 0.45 : 1 }]}>
-          <Text style={styles.cName} numberOfLines={1}>{player.name}</Text>
-          <Text style={styles.cChips}>{player.chips.toLocaleString()}</Text>
+        <View style={[styles.cTag, { maxWidth: wrapW }, narrow && styles.cTagNarrow, won && styles.cTagWon, lost && styles.cTagLost, { opacity: dimmed ? 0.45 : 1 }]}>
+          <Text style={[styles.cName, { maxWidth: wrapW - 8 }, narrow && styles.cNameNarrow]} numberOfLines={1}>{player.name}</Text>
+          <Text style={[styles.cChips, narrow && styles.cChipsNarrow]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{player.chips.toLocaleString()}</Text>
         </View>
         {player.allIn && <View style={styles.allIn}><Text style={styles.allInText}>ALL IN</Text></View>}
         {/*
@@ -518,7 +533,7 @@ const styles = StyleSheet.create({
   betText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, ...numeric },
 
   // Compact vertical opponent pod
-  cWrap: { alignItems: 'center', width: 84 },
+  cWrap: { alignItems: 'center', width: COMPACT_POD_W },
   // Tucked against the avatar's right edge, stacked above the head they read
   // as goggles/ears rather than as playing cards.
   // Rendered at full size and scaled down (see HOLE_SIZE), so the box is sized
@@ -564,4 +579,7 @@ const styles = StyleSheet.create({
   foldedChipText: { fontFamily: fonts.semibold, fontSize: 9, color: colors.onDarkMuted, letterSpacing: 0.3 },
   cName: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDark, maxWidth: 84 },
   cChips: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark, ...numeric },
+  cTagNarrow: { paddingHorizontal: 4 },
+  cNameNarrow: { fontSize: 10 },
+  cChipsNarrow: { fontSize: 12 },
 });

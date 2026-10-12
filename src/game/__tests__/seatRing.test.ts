@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   EDGE_INSET,
+  MIN_POD_WIDTH,
+  podWidthForOneArc,
   SEAT_GAP,
   seatArcCounts,
   seatRingBottom,
@@ -290,5 +292,32 @@ describe('seatRingBottom', () => {
 
   it('is zero with no opponents', () => {
     expect(seatRingBottom({ count: 0, width: 393, height: 380, podWidth: 76, podHeight: POD_H })).toBe(0);
+  });
+});
+
+describe('one arc at every table size', () => {
+  const phones = [375, 393, 402, 430, 440];
+  for (const width of phones) {
+    for (let count = 1; count <= 8; count += 1) {
+      it(`seats ${count} on one arc at ${width}pt without overlap`, () => {
+        const podWidth = podWidthForOneArc(count, width, 86);
+        expect(podWidth).toBeGreaterThanOrEqual(MIN_POD_WIDTH);
+        expect(seatArcCounts(count, width, podWidth)).toEqual([count]);
+        const slots = Array.from({ length: count }, (_, index) =>
+          seatRingSlot({ index, count, width, height: 400, podWidth, podHeight: 96 }));
+        for (let a = 0; a < slots.length; a += 1) {
+          expect(slots[a]!.row).toBe(0);
+          expect(slots[a]!.left).toBeGreaterThanOrEqual(0);
+          expect(slots[a]!.left + podWidth).toBeLessThanOrEqual(width);
+          for (let b = a + 1; b < slots.length; b += 1) {
+            expect(slotsOverlap(slots[a]!, slots[b]!, podWidth, 96)).toBe(false);
+          }
+        }
+      });
+    }
+  }
+
+  it('keeps the roomy pod on a short table', () => {
+    expect(podWidthForOneArc(2, 402, 86)).toBe(86);
   });
 });
