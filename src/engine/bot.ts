@@ -1,8 +1,21 @@
 import { randomFloat, type Card } from './cards';
 import { chenScore, monteCarloEquity } from './equity';
+import { betFraction, bluffFrequency, boardWetness, hasBlocker, minimumDefense, pushFoldAction } from './gto';
+import { NO_READ, readHand, type PlayerRead } from './handReads';
 import { legalActions } from './holdem';
+import { openWidth, preflopPercentile, PUSH_FOLD_MAX_BB, threeBetWidth } from './preflopRanges';
+import {
+  blendWithUniform,
+  boardStrength,
+  buildComboTable,
+  comboWeights,
+  drawStrength,
+  rangeEquity,
+  rankInRange,
+  type ComboTable,
+} from './rangeEquity';
 import { roundWager } from '../game/wager';
-import type { BotDecision, GameState, LegalActions } from './types';
+import type { BotDecision, GameState, LegalActions, Player } from './types';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -276,6 +289,9 @@ export function decideAction(state: GameState, playerId: string, difficulty: Dif
   const legal = legalActions(state, playerId);
   const me = state.players.find((candidate) => candidate.id === playerId);
   if (!me) return ensureLegal(legal, { action: 'check' });
+  // Expert has its own strategy, see `decideExpert`. The branch is taken before
+  // any of the shared work so nothing below can change for the other levels.
+  if (difficulty === 'expert') return ensureLegal(legal, decideExpert(state, me, legal));
 
   const bluffRoll = botRandom(state, playerId, 'bluff');
   const shoveRoll = botRandom(state, playerId, 'shove');
@@ -409,4 +425,267 @@ export function decideAction(state: GameState, playerId: string, difficulty: Dif
   }
 
   return ensureLegal(legal, { action: 'check' });
+}
+
+/**
+ * How much the expert believes its reads, see `blendWithUniform`.
+ *
+ * Measured with `scripts/bot-exploits.mts`: at full trust a player betting 200
+ * every street with any two cards beat it by 0.3bb a hand, and a 60% pot stab
+ * on every street lost only 0.9bb. At 0.75 those lose 2.3bb and 8.9bb, no
+ * scripted strategy does better than folding every hand, and one pair still
+ * folds to a three-barrel river overbet 67% of the time against 40% for
+ * random-hand equity. 0.82 kept more of the overbet folds but gave back
+ * about a bb a hand to every aggressive script.
+ */
+const READ_TRUST = 0.75;
+
+function opponentWeights(table: ComboTable, read: PlayerRead): Float64Array {
+  return blendWithUniform(comboWeights(table, read), READ_TRUST);
+}
+
+/** Monte Carlo trials for the expert, before scaling by table size. */
+const EXPERT_SIMS = PROFILES.expert.sims;
+
+/**
+ * The expert strategy: the same equity-versus-price core as the other levels,
+ * but with the four things that kept it well short of a sound player fixed.
+ *
+ *  1. Equity is computed against opponents' *ranges*, narrowed by what they did
+ *     this hand, instead of against random cards. Raises and overbets now mean
+ *     something, so it stops paying off big bets with medium hands.
+ *  2. Against small bets it defends close to minimum defence frequency, so a
+ *     third-pot stab with any two cards no longer prints money.
+ *  3. Bluffs are sized like value bets and made at the balanced frequency for
+ *     that size, preferring draws on early streets and blockers on the river.
+ *  4. Preflop it plays position-aware ranges, and push/fold when short.
+ *
+ * Kept as one function rather than threaded through the shared path so the
+ * easy, medium and hard decisions stay bit-for-bit what they were; the
+ * fingerprint test pins that.
+ */
+function decideExpert(state: GameState, me: Player, legal: LegalActions): BotDecision {
+  const bb = Math.max(1, state.config.bigBlind);
+  const pot = Math.max(1, potSize(state));
+  const stack = me.chips;
+  const myBet = me.currentBet;
+  const toCall = legal.toCall;
+  const roll = (kind: string): number => botRandom(state, me.id, `x:${kind}`);
+
+  const opponents = state.players.filter((p) => p.id !== me.id && !p.folded && !p.sittingOut && p.holeCards.length === 2);
+  const opponentCount = Math.max(1, opponents.length);
+  const reads = readHand(state);
+  const readOf = (id: string): PlayerRead => reads.get(id) ?? NO_READ;
+
+  // Bluffs stay well short of the stack: a bluff that gets called is meant to
+  // lose a bet, not the session.
+  const bluffCap = Math.min(Math.floor(stack * 0.35), Math.max(0, stack - 1));
+  const seed = `${String(state.seed)}:xeq:${state.handNumber}:${me.id}:${state.street}:${state.log.length}`;
+  const sims = Math.max(40, Math.round((EXPERT_SIMS * 2) / (opponentCount + 1)));
+
+  if (state.board.length === 0) {
+    return expertPreflop(state, me, legal, { bb, pot, stack, myBet, toCall, opponents, readOf, roll, seed, sims });
+  }
+
+  const table = buildComboTable([...me.holeCards, ...state.board], state.board);
+  const weights = opponents.length > 0 ? opponents.map((p) => opponentWeights(table, readOf(p.id))) : [comboWeights(table, NO_READ)];
+  const equity = rangeEquity(me.holeCards, state.board, table, weights, sims, seed);
+  const strength = boardStrength(me.holeCards, state.board, table);
+  const draw = drawStrength(me.holeCards, state.board);
+  const fairShare = 1 / (opponentCount + 1);
+  const ceiling = commitCeiling(equity, stack);
+  const street = state.street === 'flop' || state.street === 'turn' ? state.street : 'river';
+
+  if (toCall > 0) {
+    const potOdds = toCall / (pot + toCall);
+
+    // Value raise: well ahead of the range that bet, which is already a
+    // stronger range than random, so this is a real edge and not a guess.
+    if (equity >= fairShare + 0.24 && legal.actions.includes('raise') && legal.minRaiseTo !== undefined) {
+      const desiredTo = state.currentBet + Math.floor((pot + toCall) * 0.8);
+      const cappedTo = Math.min(Math.max(desiredTo, legal.minRaiseTo), myBet + ceiling, legal.maxRaiseTo ?? desiredTo);
+      if (cappedTo >= legal.minRaiseTo) return { action: 'raise', amount: cappedTo };
+    }
+
+    // Semi-bluff raise with a real draw, never on the river (nothing left to
+    // draw to) and never big enough to be a stack-off.
+    if (street !== 'river' && draw >= 0.6 && legal.actions.includes('raise') && legal.minRaiseTo !== undefined) {
+      if (roll('semibluff') < 0.3 / opponentCount) {
+        const desiredTo = state.currentBet + Math.floor((pot + toCall) * 0.7);
+        const cappedTo = Math.min(Math.max(desiredTo, legal.minRaiseTo), myBet + bluffCap);
+        if (cappedTo >= legal.minRaiseTo && cappedTo < (legal.maxRaiseTo ?? Number.POSITIVE_INFINITY)) {
+          return { action: 'raise', amount: cappedTo };
+        }
+      }
+    }
+
+    const premium = stackRiskPremium(toCall, stack);
+    if (equity >= potOdds + premium) return { action: 'call' };
+
+    // Minimum defence. Equity against a betting range that is modelled as
+    // balanced puts every bluff-catcher right at break-even, so the price test
+    // alone folds nearly all of them on estimate noise, and a bot that does
+    // that can be bet into every street with any two cards. Defend the top
+    // `mdf` of our own range instead, ranked by board strength.
+    //
+    // Two guards keep this from becoming a calling station. It needs some real
+    // equity: half the price against small bets, nearly the full price
+    // against big ones, where a bad call costs the most. And the stack-off
+    // premium is added on top, so a call that puts the stack in still has to
+    // be close to correctly priced. There is deliberately no cap on the share
+    // of stack: one used to stop the bot calling its last 200 chips into a
+    // 1,800 pot at 10% pot odds, and an opponent who bet every river won 68bb
+    // each time it worked.
+    const mdf = minimumDefense(toCall, pot, opponentCount);
+    const myRead = readOf(me.id);
+    const ownWeights = comboWeights(table, myRead);
+    if (myRead.checkedThisStreet) {
+      // Having checked, we mostly do not hold the hands we would have bet for
+      // value, so rank against the capped range that is actually left.
+      for (let k = 0; k < ownWeights.length; k += 1) if (table.strength[k] >= 0.8) ownWeights[k] *= 0.35;
+    }
+    const ownRange = rankInRange(table, ownWeights, strength);
+    const betOfPot = toCall / Math.max(1, pot - toCall);
+    const equityFloor = (betOfPot <= 0.75 ? potOdds * 0.5 : potOdds - 0.07) + premium;
+    if (ownRange >= 1 - mdf && equity >= equityFloor) {
+      return { action: 'call' };
+    }
+    return { action: 'fold' };
+  }
+
+  // Nothing to call. Value bet when ahead of the range that checked to us,
+  // sized by texture, with the nut hands going big on the river.
+  //
+  // First to act on the flop or turn, a strong hand sometimes checks instead.
+  // A checking range with nothing strong in it can be bet into with any two
+  // cards; a few traps are what make a check-raise possible at all.
+  const nutted = equity >= 0.85;
+  const firstToAct = opponents.every((p) => !p.hasActed);
+  const trap = street !== 'river' && firstToAct && equity >= 0.75 && roll('trap') < 0.25;
+  if (!trap && equity >= fairShare + 0.1 && legal.actions.includes('bet')) {
+    const size = betFraction(street, boardWetness(state.board), nutted);
+    const desired = Math.floor(pot * size);
+    const target = Math.min(Math.max(legal.minBet ?? 0, desired), Math.min(legal.maxBet ?? desired, ceiling));
+    if (target >= (legal.minBet ?? 0)) return { action: 'bet', amount: target };
+  }
+
+  // Bluffs come from hands with little showdown value: betting a medium hand
+  // turns it into a bluff that only gets called by better. Draws are the best
+  // early-street bluffs, since they can still win when called; on the river
+  // that becomes blockers.
+  const air = strength < 0.45 || draw > 0;
+  if (air && legal.actions.includes('bet')) {
+    const polar = street === 'river' && roll('polar') < 0.4;
+    const size = betFraction(street, boardWetness(state.board), polar);
+    const preference =
+      street === 'river' ? (hasBlocker(me.holeCards, state.board) ? 1.5 : 0.6) : draw > 0 ? 1.8 : street === 'flop' ? 1 : 0.6;
+    if (roll('bluff') < bluffFrequency(size, opponentCount) * preference) {
+      const desired = Math.floor(pot * size);
+      const target = Math.min(Math.max(legal.minBet ?? 0, desired), Math.min(legal.maxBet ?? desired, bluffCap));
+      if (target >= (legal.minBet ?? 0) && target < stack) return { action: 'bet', amount: target };
+    }
+  }
+
+  return { action: 'check' };
+}
+
+interface PreflopContext {
+  bb: number;
+  pot: number;
+  stack: number;
+  myBet: number;
+  toCall: number;
+  opponents: Player[];
+  readOf: (id: string) => PlayerRead;
+  roll: (kind: string) => number;
+  seed: string;
+  sims: number;
+}
+
+function expertPreflop(state: GameState, me: Player, legal: LegalActions, ctx: PreflopContext): BotDecision {
+  const { bb, pot, stack, myBet, toCall, opponents, readOf, roll } = ctx;
+  const percentile = preflopPercentile(me.holeCards);
+  const headsUp = state.players.filter((p) => p.holeCards.length === 2 && !p.sittingOut).length === 2;
+  const raised = state.currentBet > bb;
+  const raiserWidth = opponents.reduce((w, p) => Math.min(w, readOf(p.id).preflopWidth), 1);
+  // Players still to act after us: anyone in the hand who has not acted yet
+  // (or must act again) and can still put chips in.
+  const behind = opponents.filter((p) => !p.allIn && p.chips > 0 && !p.hasActed).length;
+
+  const largestOpponent = opponents.reduce((m, p) => Math.max(m, p.chips + p.currentBet), 0);
+  const effectiveBB = Math.min(stack + myBet, largestOpponent) / bb;
+
+  if (effectiveBB <= PUSH_FOLD_MAX_BB) {
+    const aggressorAllIn = opponents.some((p) => p.allIn && p.currentBet >= state.currentBet && raised);
+    const choice = pushFoldAction({
+      percentile,
+      effectiveBB,
+      behind,
+      facing: !raised ? 'unopened' : aggressorAllIn ? 'shove' : 'raise',
+      raiserWidth,
+      canCheck: toCall === 0,
+    });
+    if (choice === 'shove') return { action: 'allin' };
+    if (choice === 'call') return legal.actions.includes('call') ? { action: 'call' } : { action: 'allin' };
+    return { action: choice };
+  }
+
+  const canRaise = legal.actions.includes('raise') && legal.minRaiseTo !== undefined;
+  const raiseTo = (desired: number): BotDecision | null => {
+    if (!canRaise || legal.minRaiseTo === undefined) return null;
+    const to = Math.min(Math.max(desired, legal.minRaiseTo), legal.maxRaiseTo ?? desired);
+    // A raise that would put most of the stack in is a shove in all but name;
+    // make it one rather than leaving a stack too small to fold.
+    if (to - myBet >= stack * 0.45) return { action: 'allin' };
+    return { action: 'raise', amount: to };
+  };
+
+  if (!raised) {
+    const limpers = opponents.filter((p) => p.currentBet >= bb && p.hasActed).length;
+    // Isolating limpers needs a tighter range than opening: there is already
+    // a player who has said they want to see a flop.
+    const width = openWidth(Math.max(1, behind), headsUp) * (limpers > 0 ? 0.7 : 1);
+    if (percentile <= width) {
+      const open = raiseTo(Math.round(2.5 * bb + limpers * bb));
+      if (open) return open;
+    }
+    if (toCall === 0) return { action: 'check' };
+    // Completing from the small blind into a limped or heads-up pot is cheap
+    // enough that a wide range is worth a flop.
+    if (toCall <= bb / 2 && percentile <= 0.6) return { action: 'call' };
+    return { action: 'fold' };
+  }
+
+  // Facing a raise. Re-raise for value from the top of what continues, and
+  // occasionally with suited aces and suited connectors just below it: they
+  // block the hands that continue and play well when called.
+  const valueWidth = threeBetWidth(raiserWidth);
+  // Position after the flop, not preflop: the big blind closes the preflop
+  // action but is first to act on every street after it.
+  const order = (p: Player): number => positionBonus(state.players.indexOf(p), state.dealerIndex, state.players.length);
+  const inPosition = opponents.every((p) => order(p) < order(me));
+  if (percentile <= valueWidth) {
+    const reraise = raiseTo(Math.round(state.currentBet * (inPosition ? 3 : 3.5)));
+    if (reraise) return reraise;
+  }
+  const [a, b] = me.holeCards;
+  const suited = a.suit === b.suit;
+  const bluffShape = suited && (a.rank === 14 || b.rank === 14 || Math.abs(a.rank - b.rank) === 1);
+  if (bluffShape && percentile <= raiserWidth * 1.5 && roll('light3bet') < 0.3) {
+    const reraise = raiseTo(Math.round(state.currentBet * (inPosition ? 3 : 3.5)));
+    if (reraise && reraise.action === 'raise') return reraise;
+  }
+
+  // Call by equity against the raiser's range, with a margin out of position,
+  // where less of that equity gets realised.
+  const table = buildComboTable(me.holeCards, []);
+  const weights = opponents.length > 0 ? opponents.map((p) => opponentWeights(table, readOf(p.id))) : [comboWeights(table, NO_READ)];
+  const equity = rangeEquity(me.holeCards, [], table, weights, ctx.sims, ctx.seed);
+  const potOdds = toCall / (pot + toCall);
+  // An all-in call realises all of its equity, there is no later street to be
+  // outplayed on, so it gets no position margin.
+  const allInCall = toCall >= stack || opponents.some((p) => p.allIn);
+  const realisation = allInCall ? 0 : inPosition ? 0.01 : 0.04;
+  if (equity >= potOdds + realisation + stackRiskPremium(toCall, stack)) return { action: 'call' };
+  return { action: 'fold' };
 }
