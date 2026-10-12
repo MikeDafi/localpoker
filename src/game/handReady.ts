@@ -192,3 +192,107 @@ export function evaluateNextHandReadiness(input: NextHandReadinessInput): NextHa
     disconnectedSince,
   };
 }
+
+/*
+ * How long the host waits on everybody else once it has asked for the next
+ * hand itself.
+ *
+ * Consent has to have a deadline, like every other wait at this table (the
+ * turn clock, the rebuy window, the show or muck choice). Build 46 shipped it
+ * without one, and anything that kept a single answer from arriving stopped
+ * the game for good: a phone locked after its owner folded, a seat whose
+ * roster entry read as connected, or a `handReady` write the deployed rules
+ * refused. Long enough for somebody still reading the result to tap, short
+ * enough that a missing answer costs one beat rather than the table.
+ */
+export const NEXT_HAND_CONSENT_MS = 15_000;
+
+export type NextHandDealInput = {
+  readiness: Pick<NextHandReadiness, 'activePlayerIds' | 'waitingPlayers'>;
+  /** The host's own seat id, which counts as ready once `hostAskedAt` is set. */
+  hostId: string | null | undefined;
+  /**
+   * When the host asked for the next hand on its own device, or null.
+   *
+   * Local rather than read back from `handReady`, because the host's own flag
+   * goes through the same rules as everybody else's. If that write is refused
+   * the host must still be able to say "I am done", or nothing ever deals.
+   */
+  hostAskedAt: number | null;
+  /** A rebuy window still counting down, which decides on its own clock. */
+  rebuyWaiting: boolean;
+  now: number;
+  timeoutMs?: number;
+};
+
+export type NextHandDeal = {
+  deal: boolean;
+  reason: 'everyone' | 'deadline' | null;
+  /** The humans the host is still waiting on, excluding the host. */
+  waitingOn: HandReadyWaitingPlayer[];
+  /** Whole seconds until the host deals anyway, or null if no clock is running. */
+  secondsLeft: number | null;
+};
+
+/**
+ * Whether the host should deal the next hand now.
+ *
+ * Pure so that the deadlock that shipped can be pinned by a test: whatever
+ * the readiness flags say, a host that has asked always deals within
+ * `timeoutMs`, unless a rebuy window is still deciding the table.
+ */
+export function decideNextHandDeal(input: NextHandDealInput): NextHandDeal {
+  const timeoutMs = input.timeoutMs ?? NEXT_HAND_CONSENT_MS;
+  const waitingOn = input.readiness.waitingPlayers.filter((p) => p.id !== input.hostId);
+  const idle: NextHandDeal = { deal: false, reason: null, waitingOn, secondsLeft: null };
+
+  // The rebuy window owns the table until it closes. Dealing over it is the
+  // "Table over while the rebuy clock is still running" contradiction.
+  if (input.rebuyWaiting) return idle;
+  // Nobody deals before the host has finished with the hand itself: the host
+  // is a player too, and its own countdown is what asks on its behalf.
+  if (input.hostAskedAt === null) return idle;
+
+  if (waitingOn.length === 0 && input.readiness.activePlayerIds.length >= 2) {
+    return { deal: true, reason: 'everyone', waitingOn, secondsLeft: null };
+  }
+
+  const leftMs = input.hostAskedAt + timeoutMs - input.now;
+  if (leftMs <= 0) return { deal: true, reason: 'deadline', waitingOn, secondsLeft: 0 };
+  return { deal: false, reason: null, waitingOn, secondsLeft: Math.ceil(leftMs / 1000) };
+}
+
+/**
+ * Whether two `disconnectedSince` maps say the same thing.
+ *
+ * The readiness evaluation hands back when each absent player was first seen
+ * gone, and the screen has to carry that into the next evaluation for the
+ * grace window to ever run out. Passing nothing, as build 46 did, restarted
+ * the window on every render, so a player who had really left was waited on
+ * forever. Compared by value so carrying it does not loop renders.
+ */
+export function sameDisconnectedSince(
+  a: Record<string, number>,
+  b: Record<string, number>,
+): boolean {
+  const aKeys = Object.keys(a);
+  if (aKeys.length !== Object.keys(b).length) return false;
+  return aKeys.every((key) => b[key] === a[key]);
+}
+
+/**
+ * What the Next Hand button says once this player has asked.
+ *
+ * An empty list used to print "Waiting for 0 players", which is the moment
+ * between the last answer and the host's deal landing. The countdown is the
+ * host's own deadline, so the table can see the wait is bounded.
+ */
+export function nextHandWaitLabel(input: {
+  waitingOn: readonly HandReadyWaitingPlayer[];
+  secondsLeft?: number | null;
+}): string {
+  const clock = typeof input.secondsLeft === 'number' && input.secondsLeft > 0 ? ` ${input.secondsLeft}s` : '';
+  if (input.waitingOn.length === 0) return 'Dealing…';
+  if (input.waitingOn.length === 1) return `Waiting for ${input.waitingOn[0]!.name}…${clock}`;
+  return `Waiting for ${input.waitingOn.length} players…${clock}`;
+}

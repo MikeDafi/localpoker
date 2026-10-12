@@ -46,6 +46,7 @@ export {
   HOST_LEFT_REASON,
   TOO_FEW_PLAYERS_REASON,
   markHandReady,
+  publishRoomSettings,
   subscribeHandReady,
   subscribeRoomClosure,
   getCachedHostGame,

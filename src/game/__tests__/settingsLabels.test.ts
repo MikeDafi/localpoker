@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { blindSchedulePreview, formatBlindSchedulePreview } from '../gameMode';
 import {
   DEFAULT_GAME_SETTINGS,
   DEVICE_ONLY_SETTINGS,
   SETTINGS_SCHEMA,
   availableSettingOptions,
+  formatBlinds,
   gameSetupSectionsForMode,
   normalizeSettings,
   resolveSettingSelection,
   settingsForModeDefaults,
   tableMenuRuleFields,
+  withPairedBlinds,
 } from '../settings';
 
 /**
@@ -88,7 +91,8 @@ describe('every setting is real', () => {
    * Keys with no control on purpose, because code sets them rather than the
    * player. Anything else without a control is dead weight.
    */
-  const INTERNAL_ONLY = new Set(['cardFace', 'maxPlayers']);
+  // `bigBlind` is derived: always twice the small blind, set by the Blinds row.
+  const INTERNAL_ONLY = new Set(['cardFace', 'maxPlayers', 'bigBlind']);
 
   const schemaKeys = new Set(
     SETTINGS_SCHEMA.flatMap((section) => section.fields.map((field) => String(field.key))),
@@ -156,22 +160,21 @@ describe('what Game Setup is allowed to show', () => {
 
   it('keeps cash setup to buy-in and fixed blind controls', () => {
     const keys = setupKeys('cash');
-    expect(keys).toEqual(expect.arrayContaining(['gameMode', 'smallBlind', 'bigBlind', 'startingStack']));
+    expect(keys).toEqual(expect.arrayContaining(['gameMode', 'smallBlind', 'startingStack']));
+    expect(keys).not.toContain('bigBlind');
     expect(keys).not.toContain('ante');
     expect(keys).not.toContain('blindLevelLengthHands');
   });
 
   /*
-   * Level length deliberately left out of setup, see `setupHidden`. It is
-   * asked for in the table's own menu instead, which is the only place the
-   * question means anything: before the first hand nobody knows how long a
-   * level should be, and after a few they do. Every mode still carries a
-   * sensible default, which is what the schedule test below pins.
+   * Level length is offered in setup as well as the table's menu, with the
+   * schedule it produces shown under it, so players can see when the blinds
+   * go up before the first hand.
    */
   it('adds blind schedule controls for tournament modes', () => {
     for (const mode of ['tournament', 'turbo'] as const) {
       const keys = setupKeys(mode);
-      expect(keys).not.toContain('blindLevelLengthHands');
+      expect(keys).toContain('blindLevelLengthHands');
       expect(keys).toContain('ante');
       expect(tableMenuRuleFields(mode).map((f) => String(f.key))).toContain('blindLevelLengthHands');
     }
@@ -293,5 +296,54 @@ describe('cosmetic setting options', () => {
       'table-lunar',
     ]);
     expect(values('chipStyle', ['chips-candy'])).toEqual(['classic', 'chips-candy']);
+  });
+});
+
+describe('blind schedule preview in setup', () => {
+  it('lists the first levels from the same ladder the table deals', () => {
+    const rows = blindSchedulePreview('tournament', 10);
+    expect(rows.map((r) => [r.fromHand, r.toHand, r.level.smallBlind, r.level.bigBlind])).toEqual([
+      [1, 10, 10, 20], [11, 20, 15, 30], [21, 30, 25, 50], [31, 40, 50, 100],
+    ]);
+    expect(formatBlindSchedulePreview(rows)).toBe('Hands 1-10: 10/20 · 11-20: 15/30 · 21-30: 25/50 · 31-40: 50/100 +10 ante');
+  });
+
+  it('follows the level length and shows nothing for cash', () => {
+    expect(blindSchedulePreview('turbo', 4)[1].fromHand).toBe(5);
+    expect(blindSchedulePreview('cash', 10)).toEqual([]);
+    expect(blindSchedulePreview('tournament', 0)).toEqual([]);
+  });
+});
+
+describe('one row for both blinds', () => {
+  it('always makes the big blind double the small one', () => {
+    expect(normalizeSettings({ smallBlind: 50, bigBlind: 75 }).bigBlind).toBe(100);
+    expect(normalizeSettings({ smallBlind: 3 }).bigBlind).toBe(6);
+  });
+
+  it('carries the big blind with a small blind change', () => {
+    expect(withPairedBlinds({ smallBlind: 25 })).toEqual({ smallBlind: 25, bigBlind: 50 });
+    expect(withPairedBlinds({ turnTimerSec: 10 })).toEqual({ turnTimerSec: 10 });
+  });
+
+  it('reads as small/big', () => {
+    expect(formatBlinds(50)).toBe('50/100');
+  });
+});
+
+describe('a tournament ladder started at the chosen blinds', () => {
+  it('scales every rung from level one', () => {
+    const rows = blindSchedulePreview('tournament', 10, 4, 50);
+    expect(rows.map((r) => [r.level.smallBlind, r.level.bigBlind])).toEqual([[50, 100], [75, 150], [125, 250], [250, 500]]);
+    expect(rows[3]!.level.ante).toBe(50);
+  });
+
+  it('is the stock ladder at its own start', () => {
+    expect(blindSchedulePreview('tournament', 10, 1, 10)[0]!.level).toEqual({ smallBlind: 10, bigBlind: 20, ante: 0 });
+  });
+
+  it('keeps the chosen blinds when a tournament is picked', () => {
+    const picked = settingsForModeDefaults({ ...DEFAULT_GAME_SETTINGS, smallBlind: 50, bigBlind: 100 }, 'tournament');
+    expect([picked.smallBlind, picked.bigBlind]).toEqual([50, 100]);
   });
 });

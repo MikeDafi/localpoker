@@ -10,15 +10,17 @@ import { WiiPanel } from '../components/WiiPanel';
 import {
   DEFAULT_GAME_SETTINGS,
   availableSettingOptions,
+  bigBlindFor,
   gameSetupSectionsForMode,
   normalizeSettings,
   resolveSettingSelection,
   settingsForModeDefaults,
+  withPairedBlinds,
   type GameSettings,
   type SettingsSection,
   type SettingField,
 } from '../game/settings';
-import { isGameMode } from '../game/gameMode';
+import { blindSchedulePreview, formatBlindSchedulePreview, isGameMode } from '../game/gameMode';
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
 import { useHoldRepeat } from '../components/useHoldRepeat';
@@ -47,6 +49,11 @@ export function GameSetupScreen({ navigation, route }: Props) {
     () => gameSetupSectionsForMode(setupMode, isFriends),
     [isFriends, setupMode],
   );
+  // When the blinds go up, under the level length, from the function the table deals with.
+  const schedulePreview = useMemo(() => {
+    const rows = blindSchedulePreview(setupMode, Number(local.blindLevelLengthHands), 4, Number(local.smallBlind));
+    return rows.length ? formatBlindSchedulePreview(rows) : null;
+  }, [setupMode, local.blindLevelLengthHands, local.smallBlind]);
   const compact = width < 430;
   const [activeSectionId, setActiveSectionId] = useState(() => setupSections[0]?.id ?? '');
   const activeSection = useMemo(
@@ -71,7 +78,7 @@ export function GameSetupScreen({ navigation, route }: Props) {
        * on 50/100 while the ladder starts at 10/20 would make level one a lie.
        */
       if (key === 'gameMode' && isGameMode(value)) return settingsForModeDefaults(prev, value);
-      return { ...prev, [key]: value };
+      return { ...prev, ...withPairedBlinds({ [key]: value } as Partial<GameSettings>) };
     });
   }, []);
 
@@ -207,6 +214,9 @@ export function GameSetupScreen({ navigation, route }: Props) {
                   onSelectChange={handleSelectChange}
                 />
               ))}
+              {activeSection.id === 'table' && schedulePreview ? (
+                <Text style={styles.schedulePreview}>{schedulePreview}</Text>
+              ) : null}
             </WiiPanel>
           </Animated.View>
         </ScrollView>
@@ -459,6 +469,7 @@ function formatRange(field: SettingField): string {
 
 function formatSettingValue(field: SettingField, value: number): string {
   const key = String(field.key).toLowerCase();
+  if (field.key === 'smallBlind') return `${formatChips(value)}/${formatChips(bigBlindFor(value))}`;
   if (key.includes('pct') || key.includes('volume') || key.includes('aggression')) return `${value}%`;
   if (key.includes('sec')) return `${value}s`;
   if (key.includes('min')) return `${value}m`;
@@ -473,6 +484,12 @@ function formatChips(value: number): string {
 }
 
 const styles = StyleSheet.create({
+  schedulePreview: {
+    ...type.caption,
+    color: colors.inkMuted,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
   container: {
     flex: 1,
     paddingHorizontal: spacing.lg,

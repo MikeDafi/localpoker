@@ -14,7 +14,8 @@ import { offeredNumberValues } from '../game/settingNumbers';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import {
-  CHIP_SOUND_OPTIONS, SETTINGS_SCHEMA, availableSettingOptions, tableMenuRuleFields,
+  CHIP_SOUND_OPTIONS, SETTINGS_SCHEMA, availableSettingOptions, bigBlindFor, formatBlinds, normalizeSettings,
+  roomSettingsJson, tableMenuRuleFields, withPairedBlinds,
   type GameSettings, type SettingField,
 } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
@@ -48,10 +49,9 @@ import {
   type HoleCardExposure,
 } from '../game/holeCardExposure';
 import { playerTapActions } from '../game/playerActions';
-import { botShowsHand, canMuck, showdownOrder } from '../game/showdownOrder';
+import { botShowsHand, showdownOrder } from '../game/showdownOrder';
 import {
   advanceReveal,
-  awaitingChoiceFrom,
   pendingPlayer,
   revealComplete,
   startReveal,
@@ -63,19 +63,23 @@ import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
 import { BOARD_THROW_MS, boardDealDelay } from '../game/boardDeal';
-import { isRunningOut, runoutAction, runoutFelt, runoutLabel, runoutRunLabel, SHOWDOWN_STEP_MS, SHOW_CHOICE_MS } from '../game/runout';
+import { isRunningOut, runoutAction, runoutFelt, runoutLabel, runoutRunLabel, SHOWDOWN_STEP_MS } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
-import { evaluateNextHandReadiness, type HandReadyRecord } from '../game/handReady';
+import {
+  decideNextHandDeal,
+  evaluateNextHandReadiness,
+  nextHandWaitLabel,
+  sameDisconnectedSince,
+  type HandReadyRecord,
+} from '../game/handReady';
 import {
   actionReadDelayMs,
   chipMotionEvents,
-  chipMotionPath,
   displayedPotAmount,
   heroBetChipPoint,
   heroSeatChipPoint,
   opponentBetChipPoint,
   opponentSeatChipPoint,
-  potChipPoint,
   totalCommittedChips,
   type ChipPoint,
 } from '../game/chipMotion';
@@ -114,6 +118,7 @@ import {
   revealOwnHand,
   TOO_FEW_PLAYERS_REASON,
   markHandReady,
+  publishRoomSettings,
   subscribeHandReady,
   subscribeRoomClosure,
   subscribeShownHands,
@@ -197,7 +202,14 @@ export function TableScreen({ navigation, route }: Props) {
   // Resume support: use the saved game's settings/seed when resuming.
   // A friends game abandoned for >15s is not resumable.
   const resuming = !!route.params.resume && isResumable(savedGame);
-  const settings = resuming && savedGame ? savedGame.settings : route.params.settings;
+  /*
+   * Live, not fixed at mount. The table menu used to save its changes to the
+   * app's defaults while the table went on reading the settings it was opened
+   * with, so changing the blinds mid game did nothing at all.
+   */
+  const [settings, setTableSettings] = useState<GameSettings>(
+    () => (resuming && savedGame ? savedGame.settings : route.params.settings),
+  );
   const seed = resuming && savedGame ? savedGame.seed : route.params.seed;
   const roomCode = resuming && savedGame ? savedGame.roomCode : route.params.roomCode;
   const tournament = isTournamentMode(settings.gameMode);
@@ -686,6 +698,17 @@ export function TableScreen({ navigation, route }: Props) {
     () => (showingRunout ? runoutFelt(state, revealedBoard, activeRunIndex) : state),
     [state, showingRunout, revealedBoard, activeRunIndex],
   );
+  /*
+   * The board as drawn, which trails the engine by the street beat.
+   *
+   * The beat used to hold back only `revealedBoard`, and outside a run-out
+   * nothing drew from it, so a call that closed the betting put the flop down
+   * in the same frame. A run-out's felt is already cut to what has landed.
+   */
+  const shownBoard = useMemo(
+    () => (showingRunout ? felt.board : felt.board.slice(0, revealedBoard)),
+    [showingRunout, felt.board, revealedBoard],
+  );
 
   /*
    * Which seat is mine.
@@ -885,7 +908,7 @@ export function TableScreen({ navigation, route }: Props) {
   const handHint = useMemo(() => {
     if (human.holeCards.length < 2 || human.folded) return null;
     try {
-      const evalCards = [...human.holeCards, ...felt.board];
+      const evalCards = [...human.holeCards, ...shownBoard];
       if (evalCards.length < 5) return null;
       return handName(evaluateHand(evalCards).category);
     } catch (error) {
@@ -895,7 +918,7 @@ export function TableScreen({ navigation, route }: Props) {
       }
       return null;
     }
-  }, [human.holeCards, human.folded, felt.board]);
+  }, [human.holeCards, human.folded, shownBoard]);
 
   // The exact 5 cards that make up the winning hand(s), to highlight at
   // showdown. Also during a run-out, so each board rings its own winner
@@ -929,7 +952,11 @@ export function TableScreen({ navigation, route }: Props) {
   );
   const [revealProgress, setRevealProgress] = useState(startReveal);
   /** Hands already face up, which is what the layout below is allowed to show. */
-  const revealShown = contestedShowdown ? revealProgress.shown : undefined;
+  const revealShown = contestedShowdown
+    ? reveal === 'show' && !revealProgress.shown.includes(human.id)
+      ? [...revealProgress.shown, human.id]
+      : revealProgress.shown
+    : undefined;
 
   /*
    * Whether the human's cards are visible to the table.
@@ -942,7 +969,7 @@ export function TableScreen({ navigation, route }: Props) {
   const humanCardsShown = handsTabled && !human.folded
     ? true
     : contestedShowdown
-      ? revealProgress.shown.includes(human.id)
+      ? revealProgress.shown.includes(human.id) || reveal === 'show'
       : isShowdown
         ? reveal === 'show' || (reveal === 'auto' && !settings.autoMuck && humanWon)
         : true;
@@ -1018,30 +1045,6 @@ export function TableScreen({ navigation, route }: Props) {
     },
     [felt.players, felt.board, revealProgress.shown],
   );
-
-  const awaitingShowChoice =
-    isShowdown && contestedShowdown && awaitingChoiceFrom(revealOrder, revealProgress, human.id);
-
-  /*
-   * Do not hold the table up forever waiting for an answer.
-   *
-   * Auto-muck decides what silence means, which is exactly what that setting
-   * is for: on, a hand nobody has to see goes in the muck; off, it gets
-   * tabled. Either way the next player stops waiting.
-   */
-  useEffect(() => {
-    if (!awaitingShowChoice) return undefined;
-    const timer = setTimeout(() => {
-      setRevealProgress((prev) => advanceReveal(revealOrder, prev, !settings.autoMuck));
-    }, SHOW_CHOICE_MS);
-    return () => clearTimeout(timer);
-  }, [awaitingShowChoice, revealOrder, settings.autoMuck]);
-
-  const answerShowChoice = (show: boolean) => {
-    sound.play('tap');
-    setRevealProgress((prev) => advanceReveal(revealOrder, prev, show));
-    if (show) tableBothCards();
-  };
 
   const promptExposeCard = useCallback(() => {
     sound.play('tap');
@@ -1157,7 +1160,6 @@ export function TableScreen({ navigation, route }: Props) {
     if (revealComplete(revealOrder, revealProgress)) return undefined;
     const pending = pendingPlayer(revealOrder, revealProgress);
     if (pending === null) return undefined;
-    if (pending === human.id && canMuck(revealOrder, pending)) return undefined;
 
     const timer = setTimeout(() => {
       setRevealProgress((prev) => {
@@ -1165,7 +1167,13 @@ export function TableScreen({ navigation, route }: Props) {
         if (at === null || at !== pending) return prev;
         const show =
           at === human.id
-            ? true // forced: a winner or the player who made the claim
+            /*
+             * Nobody is asked any more. A Show / Muck row under a hand the
+             * player could already see was noise, so auto-muck answers for
+             * them, and the flip button beside Next Hand still tables it.
+             * A forced hand is tabled whatever this says.
+             */
+            ? reveal === 'show' || !settings.autoMuck
             : botShowsHand({ order: revealOrder, playerId: at, stillBest: stillBestAgainstShown(at) });
         return advanceReveal(revealOrder, prev, show);
       });
@@ -1178,6 +1186,8 @@ export function TableScreen({ navigation, route }: Props) {
     revealProgress,
     human.id,
     stillBestAgainstShown,
+    reveal,
+    settings.autoMuck,
   ]);
 
   /*
@@ -1991,9 +2001,14 @@ export function TableScreen({ navigation, route }: Props) {
         // to. `prev.handNumber` is the hand just finished.
         handNumber: prev.handNumber + 1,
         levelLengthHands: settings.blindLevelLengthHands,
+        startSmallBlind: settings.smallBlind,
       });
-      const ready = dueLevel && blindsDue(prev.config, dueLevel.level)
-        ? applyBlindLevel(prev, dueLevel.level)
+      // A cash table plays the blinds it is set to, so a change from the
+      // table menu lands on the next hand.
+      const level = dueLevel?.level
+        ?? (tournament ? null : { smallBlind: settings.smallBlind, bigBlind: bigBlindFor(settings.smallBlind), ante: 0 });
+      const ready = level && blindsDue(prev.config, level)
+        ? applyBlindLevel(prev, level)
         : prev;
       if (!canStartHand(ready)) return prev;
       let next: GameState;
@@ -2139,6 +2154,19 @@ export function TableScreen({ navigation, route }: Props) {
     const timer = setInterval(() => setTournamentNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [tournament, tournamentStartedAt]);
+  /*
+   * The ladder a guest reads is the host's, republished whenever the host
+   * changes a rule, rather than whatever this phone joined with.
+   */
+  const hostRulesJson = roomCode && !isOnlineHost ? room?.settingsJson ?? null : null;
+  const ladderRules = useMemo(() => {
+    if (!hostRulesJson) return settings;
+    try {
+      return normalizeSettings(JSON.parse(hostRulesJson) as Partial<GameSettings>);
+    } catch {
+      return settings;
+    }
+  }, [hostRulesJson, settings]);
   const tournamentStatus = useMemo(
     () => tournamentTableStatus({
       mode: settings.gameMode,
@@ -2147,9 +2175,10 @@ export function TableScreen({ navigation, route }: Props) {
       currentBlinds: state.config,
       // The hand about to be played, which is what the ladder counts.
       handNumber: state.handNumber + 1,
-      levelLengthHands: settings.blindLevelLengthHands,
+      levelLengthHands: ladderRules.blindLevelLengthHands,
+      startSmallBlind: ladderRules.smallBlind,
     }),
-    [settings.gameMode, settings.blindLevelLengthHands, tournamentStartedAt,
+    [settings.gameMode, ladderRules.blindLevelLengthHands, ladderRules.smallBlind, tournamentStartedAt,
       state.config, state.handNumber, tournamentNow],
   );
   const tournamentStatusText = tournamentStatus ? formatTournamentStatus(tournamentStatus) : null;
@@ -2235,6 +2264,53 @@ export function TableScreen({ navigation, route }: Props) {
   const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
 
   /*
+   * When this device asked for the next hand, per hand number.
+   *
+   * Kept locally as well as written to `handReady`, because the write can be
+   * refused or queued offline, and build 46 showed what happens when the
+   * screen only believes the database: the tap appeared to do nothing, the
+   * button stayed "Next Hand", and the host never dealt. The host's deadline
+   * runs off this, so it holds even when no flag ever arrives.
+   */
+  const [askedForHand, setAskedForHand] = useState<{ hand: number; at: number } | null>(null);
+  const askedAt = askedForHand?.hand === state.handNumber ? askedForHand.at : null;
+  /*
+   * The readiness clock. Only ticks while a finished hand is on screen in a
+   * room, because the grace window for an absent player and the host's
+   * consent deadline both need time to pass between renders to ever expire.
+   *
+   * The time is state, set by the interval, rather than `Date.now()` read in
+   * render, so a render stays a function of its inputs. The disconnection
+   * times are carried in the same tick: build 46 passed none, so every
+   * evaluation restarted the grace window and a player who had really gone
+   * was waited on forever.
+   */
+  const [consentNow, setConsentNow] = useState(() => Date.now());
+  const [disconnectedSince, setDisconnectedSince] = useState<Record<string, number>>({});
+  const consentClockOn = !!roomCode && firebaseOnline && isShowdown;
+  const rosterPlayers = room?.players;
+  const rosterPublicPlayers = room?.publicState?.players;
+  useEffect(() => {
+    if (!consentClockOn) return undefined;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setConsentNow(now);
+      setDisconnectedSince((prev) => {
+        // Only the connection times are read off this, so the hand number
+        // and ready flags it would otherwise weigh are irrelevant here.
+        const next = evaluateNextHandReadiness({
+          handNumber: 0,
+          players: rosterPlayers ?? {},
+          publicPlayers: rosterPublicPlayers,
+          disconnectedSince: prev,
+          now,
+        }).disconnectedSince;
+        return sameDisconnectedSince(prev, next) ? prev : next;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [consentClockOn, rosterPlayers, rosterPublicPlayers]);
+  /*
    * The next hand needs everybody, not just the host.
    *
    * The host deals, so the host used to decide alone when a hand ended, and
@@ -2251,19 +2327,34 @@ export function TableScreen({ navigation, route }: Props) {
     () =>
       evaluateNextHandReadiness({
         handNumber: state.handNumber,
-        players: room?.players ?? {},
+        players: rosterPlayers ?? {},
         ready: handReady,
-        publicPlayers: room?.publicState?.players,
+        publicPlayers: rosterPublicPlayers,
+        disconnectedSince,
+        now: consentNow,
       }),
-    [state.handNumber, room?.players, room?.publicState?.players, handReady],
+    [state.handNumber, rosterPlayers, rosterPublicPlayers, handReady, disconnectedSince, consentNow],
   );
   const consentRequired =
     !!roomCode && firebaseOnline && nextHandReadiness.activePlayerIds.length >= 2;
   const iAmReady =
-    consentRequired && !!authRoomId && nextHandReadiness.readyPlayerIds.includes(authRoomId);
+    consentRequired &&
+    (askedAt !== null || (!!authRoomId && nextHandReadiness.readyPlayerIds.includes(authRoomId)));
+  const nextHandDeal = decideNextHandDeal({
+    readiness: nextHandReadiness,
+    hostId: room?.hostId,
+    hostAskedAt: isOnlineHost ? askedAt : null,
+    rebuyWaiting: rebuyState.phase === 'waiting',
+    now: consentNow,
+  });
   const waitingOnOthers = authRoomId
     ? nextHandReadiness.waitingPlayers.filter((p) => p.id !== authRoomId)
     : nextHandReadiness.waitingPlayers;
+  // The host reads its own deadline; a guest has no clock to show, because
+  // only the host's device decides when the wait is over.
+  const nextHandWaitText = isOnlineHost
+    ? nextHandWaitLabel({ waitingOn: nextHandDeal.waitingOn, secondsLeft: nextHandDeal.secondsLeft })
+    : nextHandWaitLabel({ waitingOn: waitingOnOthers });
 
   /*
    * Only the host deals, and only once per hand.
@@ -2271,19 +2362,21 @@ export function TableScreen({ navigation, route }: Props) {
    * Guarded by hand number rather than by a boolean, because the readiness
    * flags are cleared by the publish that starts the next hand, so there is a
    * window in which they still say everybody is ready for the hand that just
-   * finished.
+   * finished. The latch is only taken when `decideNextHandDeal` says deal,
+   * which it never does over an open rebuy window: taking it while nextHand
+   * was bound to bail left the table stuck once the window closed.
    */
   const dealtAfterHand = useRef(-1);
   useEffect(() => {
     if (!isOnlineHost || !consentRequired || !isShowdown) return;
-    if (!nextHandReadiness.canStartNextHand) return;
+    if (!nextHandDeal.deal) return;
     if (dealtAfterHand.current === state.handNumber) return;
     dealtAfterHand.current = state.handNumber;
     nextHand();
     // nextHand closes over the current hand and is recreated every render, so
     // depending on it would re-fire this on every frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnlineHost, consentRequired, isShowdown, nextHandReadiness.canStartNextHand, state.handNumber]);
+  }, [isOnlineHost, consentRequired, isShowdown, nextHandDeal.deal, state.handNumber]);
 
   /** Ask for the next hand: mine alone offline, everybody's at a live table. */
   const askForNextHand = useCallback(() => {
@@ -2291,6 +2384,7 @@ export function TableScreen({ navigation, route }: Props) {
       nextHand();
       return;
     }
+    setAskedForHand((prev) => (prev?.hand === state.handNumber ? prev : { hand: state.handNumber, at: Date.now() }));
     void markHandReady(roomCode, state.handNumber).then((result) => {
       if (!result.ok) noteSync(false);
     });
@@ -2825,7 +2919,6 @@ export function TableScreen({ navigation, route }: Props) {
     chipMotionFrom.current = felt;
     if (events.length === 0) return;
 
-    const potPoint = potChipPoint({ areaWidth: area.w, laneTop, boardBox });
     const flights: RenderedChipFlight[] = [];
     for (const event of events) {
       const isHero = event.playerId === human.id;
@@ -2843,13 +2936,12 @@ export function TableScreen({ navigation, route }: Props) {
         }
       }
       if (!seatPoint || !betPoint) continue;
-      const path = chipMotionPath(event.phase, seatPoint, betPoint, potPoint);
       chipFlightSeq.current += 1;
       flights.push({
         id: chipFlightSeq.current,
         amount: event.amount,
-        from: path.from,
-        to: path.to,
+        from: seatPoint,
+        to: betPoint,
         delayMs: event.delayMs,
         durationMs: event.durationMs,
       });
@@ -2963,16 +3055,19 @@ export function TableScreen({ navigation, route }: Props) {
           <View style={styles.feltGlow} pointerEvents="none" />
         </LinearGradient>
 
-        {/* Community cards + pot, centred in the lane between the seat arc and
+        {/* Community cards + pot, in the lane between the seat arc and
             the hero pod (see `laneTop`/`laneBottom`). */}
-        {/* Centred mid-hand, but pinned to the top of the lane at a showdown:
-            the lane then carries a second row of cards under the board, and
-            centring the pair of them pushed the lower row onto the hero. */}
+        {/* Pinned a fixed inset below the top of the lane mid-hand, and to the
+            very top at a showdown, where a second row of cards sits under the
+            board and has to clear the hero. */}
         <View
           style={[
             styles.centerZone,
             { top: laneTop, bottom: laneBottom },
-            layingOut && styles.centerZoneTop,
+            // Pinned at the inset the card size is computed from. Centred, the
+            // board dropped as soon as the pot pill under it was swept, which
+            // is every hand that ends in a fold.
+            !layingOut && { paddingTop: BOARD_PIN_TOP },
           ]}
           pointerEvents="box-none"
         >
@@ -2993,7 +3088,7 @@ export function TableScreen({ navigation, route }: Props) {
           )}
           <View style={styles.board} onLayout={(e) => setBoardBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y, w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
             {Array.from({ length: BOARD_CELLS }).map((_, i) => {
-              const card = felt.board[i];
+              const card = shownBoard[i];
               if (!card) {
                 return (
                   <View key={i} style={styles.boardCardWrap}>
@@ -3075,7 +3170,10 @@ export function TableScreen({ navigation, route }: Props) {
         {opponents.map((p, idx) => {
           const pos = seatPos(idx, opponents.length);
           const visible = visiblePlayer(p);
-          const showAllCards = (isShowdown || handsTabled) && !p.folded && remainingAtEnd > 1;
+          // A beaten hand that was mucked in turn stays face down at the seat
+          // too, not just in the row under the board.
+          const showAllCards = !p.folded && remainingAtEnd > 1 && (handsTabled
+            || (isShowdown && (!contestedShowdown || revealProgress.shown.includes(p.id))));
           const shownCards = showAllCards ? [true, true] : cardExposureForPlayer(p.id);
           return (
             <Pressable
@@ -3270,7 +3368,7 @@ export function TableScreen({ navigation, route }: Props) {
             <View style={styles.runVoteRow}>
               <View style={styles.runVoteCopy}>
                 <Text style={styles.runVoteTitle}>Run it how many times?</Text>
-                <Text style={styles.runVoteNote}>Highest vote wins. No answer means 1.</Text>
+                <Text style={styles.runVoteNote}>Lowest vote wins. No answer means 1.</Text>
               </View>
               <RunCountWheel
                 value={humanRunVote?.choice ?? 1}
@@ -3428,20 +3526,6 @@ export function TableScreen({ navigation, route }: Props) {
                 This panel is the one thing tall enough to reach the hole
                 cards above it, so every row it does not take is a row the
                 cards keep. */}
-            {/*
-              * Your turn to show or muck.
-              *
-              * Only appears when there is a real choice: forced hands are
-              * tabled without asking. Seeing what is already face up before
-              * answering is the whole point of the order.
-              */}
-            {awaitingShowChoice && (
-              <View style={styles.showChoiceRow}>
-                <Text style={styles.showChoiceLabel}>Show your hand?</Text>
-                <WiiButton label="Show" variant="blue" onPress={() => answerShowChoice(true)} />
-                <WiiButton label="Muck" variant="white" onPress={() => answerShowChoice(false)} />
-              </View>
-            )}
             </ScrollView>
             <View style={styles.nextRow}>
               <WiiButton
@@ -3458,9 +3542,7 @@ export function TableScreen({ navigation, route }: Props) {
                       ? 'Finish Tournament'
                       : consentRequired
                         ? iAmReady
-                          ? waitingOnOthers.length === 1
-                            ? `Waiting for ${waitingOnOthers[0].name}…`
-                            : `Waiting for ${waitingOnOthers.length} players…`
+                          ? nextHandWaitText
                           : 'Next Hand'
                         : roomCode && !isOnlineHost
                           ? 'Waiting for host…'
@@ -3564,7 +3646,15 @@ export function TableScreen({ navigation, route }: Props) {
         isHost={!roomCode || isOnlineHost}
         settings={settings}
         ownedCosmeticIds={cosmetics.ownedCosmeticIds}
-        onChange={(patch) => updateSettings({ ...pickMidGameSafe(patch), ...pickDeviceOnly(patch) })}
+        onChange={(patch) => {
+          const allowed = withPairedBlinds({ ...pickMidGameSafe(patch), ...pickDeviceOnly(patch) });
+          const next = normalizeSettings({ ...settings, ...allowed });
+          setTableSettings(next);
+          updateSettings(allowed);
+          if (roomCode && isOnlineHost) {
+            publishRoomSettings(roomCode, roomSettingsJson(next)).catch(() => {});
+          }
+        }}
       />
     </ScreenBackground>
   );
@@ -3863,10 +3953,10 @@ function MenuSettingRow({
               style={[styles.menuChoice, on && styles.menuChoiceOn]}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
-              accessibilityLabel={`${field.label}: ${choice.toLocaleString()}`}
+              accessibilityLabel={`${field.label}: ${field.key === 'smallBlind' ? formatBlinds(choice) : choice.toLocaleString()}`}
             >
               <Text style={[styles.menuChoiceText, on && styles.menuChoiceTextOn]}>
-                {choice.toLocaleString()}
+                {field.key === 'smallBlind' ? formatBlinds(choice) : choice.toLocaleString()}
               </Text>
             </Pressable>
           );
@@ -3988,8 +4078,7 @@ const styles = StyleSheet.create({
   // inner shadow where the felt meets the rail, so the surface reads as recessed
   feltInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 190, borderWidth: 14, borderColor: colors.feltInnerShadow, opacity: 0.55 },
   feltGlow: { position: 'absolute', alignSelf: 'center', top: '18%', width: 300, height: 300, borderRadius: 150, backgroundColor: colors.feltLight, opacity: 0.22 },
-  centerZone: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  centerZoneTop: { justifyContent: 'flex-start' },
+  centerZone: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'flex-start', gap: 6 },
   // Width is set per-render from SEAT_W: it has to match the width `seatPos`
   // positions the pod with, or the pod sits off-centre by half the difference.
   seatAbs: { position: 'absolute', alignItems: 'center' },
@@ -4091,8 +4180,6 @@ const styles = StyleSheet.create({
   nextBtn: { flex: 1 },
   // 44pt because that is the smallest target iOS considers reachable, and the
   // button is now a circle with no words to widen it.
-  showChoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  showChoiceLabel: { fontFamily: fonts.bold, fontSize: 13, color: colors.onDarkSoft },
   runVoteRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs },
   runVoteCopy: { flex: 1 },
   runVoteTitle: { fontFamily: fonts.bold, fontSize: 16, color: colors.onDark },

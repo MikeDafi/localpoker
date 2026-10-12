@@ -54,10 +54,75 @@ export function isGameMode(value: unknown): value is GameMode {
   return typeof value === 'string' && GAME_MODE_OPTIONS.some((option) => option.value === value);
 }
 
-export function tournamentStructureForMode(mode: GameMode): TournamentStructure | null {
-  if (mode === 'tournament') return STANDARD_STRUCTURE;
-  if (mode === 'turbo') return TURBO_STRUCTURE;
-  return null;
+/**
+ * The mode's ladder, started at the small blind the table was set up with.
+ *
+ * Setup always said tournaments use the blinds as level one, and nothing did:
+ * the ladder began at 10/20 whatever was picked. Every rung is scaled by the
+ * same factor, so the shape of the climb is the mode's and only its size is
+ * the table's. Omitted, or already the ladder's own start, the ladder is
+ * returned untouched.
+ */
+export function tournamentStructureForMode(mode: GameMode, startSmallBlind?: number): TournamentStructure | null {
+  const structure = mode === 'tournament' ? STANDARD_STRUCTURE : mode === 'turbo' ? TURBO_STRUCTURE : null;
+  if (!structure) return null;
+  const base = structure.levels[0].smallBlind;
+  if (typeof startSmallBlind !== 'number' || !Number.isFinite(startSmallBlind) || startSmallBlind < 1) return structure;
+  const start = Math.round(startSmallBlind);
+  if (start === base) return structure;
+  const factor = start / base;
+  return {
+    ...structure,
+    levels: structure.levels.map((level) => {
+      const smallBlind = Math.max(1, Math.round(level.smallBlind * factor));
+      return {
+        smallBlind,
+        bigBlind: smallBlind * 2,
+        ante: level.ante > 0 ? Math.max(1, Math.round(level.ante * factor)) : 0,
+      };
+    }),
+  };
+}
+
+export interface BlindSchedulePreviewRow {
+  fromHand: number;
+  /** Null on the final level, which does not end. */
+  toHand: number | null;
+  level: BlindLevel;
+}
+
+/**
+ * The first few levels a tournament will climb, for Game Setup to show under
+ * the level length.
+ *
+ * Built from `levelAtHand`, the same function the table deals from, so the
+ * preview cannot drift from what is actually dealt.
+ */
+export function blindSchedulePreview(
+  mode: GameMode,
+  levelLengthHands: number,
+  count = 4,
+  startSmallBlind?: number,
+): BlindSchedulePreviewRow[] {
+  const structure = tournamentStructureForMode(mode, startSmallBlind);
+  const length = Number.isFinite(levelLengthHands) ? Math.floor(levelLengthHands) : 0;
+  if (!structure || length <= 0) return [];
+  const rows: BlindSchedulePreviewRow[] = [];
+  for (let i = 0; i < Math.min(count, structure.levels.length); i += 1) {
+    const fromHand = i * length + 1;
+    const state = levelAtHand(structure, fromHand, length);
+    rows.push({ fromHand, toHand: state.nextLevel ? fromHand + length - 1 : null, level: state.level });
+  }
+  return rows;
+}
+
+/** One line for setup: "Hands 1-10: 10/20 · 11-20: 15/30 · ...". */
+export function formatBlindSchedulePreview(rows: readonly BlindSchedulePreviewRow[]): string {
+  return rows.map((row, i) => {
+    const hands = row.toHand === null ? `${row.fromHand}+` : `${row.fromHand}-${row.toHand}`;
+    const blinds = `${row.level.smallBlind}/${row.level.bigBlind}${row.level.ante > 0 ? ` +${row.level.ante} ante` : ''}`;
+    return `${i === 0 ? 'Hands ' : ''}${hands}: ${blinds}`;
+  }).join(' · ');
 }
 
 export function isTournamentMode(mode: GameMode): boolean {
@@ -83,8 +148,10 @@ export function tournamentLevelForMode(input: {
    * the stacks with no poker played in between.
    */
   levelLengthHands?: number;
+  /** Level one's small blind, which the whole ladder is scaled from. */
+  startSmallBlind?: number;
 }): LevelState | null {
-  const structure = tournamentStructureForMode(input.mode);
+  const structure = tournamentStructureForMode(input.mode, input.startSmallBlind);
   if (!structure) return null;
   const byHand = typeof input.levelLengthHands === 'number' && input.levelLengthHands > 0;
   if (byHand) return levelAtHand(structure, input.handNumber ?? 1, input.levelLengthHands!);
@@ -110,10 +177,8 @@ export const TOURNAMENT_STARTING_BIG_BLINDS = 100;
  * What picking a mode does to the rest of the table.
  *
  * A tournament is not a cash game with a flag set on it: it has a published
- * ladder, and the blinds it starts on are the first rung of that ladder rather
- * than whatever the cash game happened to be playing. Choosing the mode and
- * then leaving the table on 50/100 when the ladder starts at 10/20 would mean
- * the first level was a lie.
+ * ladder. The ladder is scaled to start at the table's own blinds, so the
+ * blinds stay where they were and only the ante moves to the first rung's.
  *
  * The stack moves with them. Blinds mean nothing on their own; what decides
  * whether a tournament has any play in it is how many big blinds people sit
@@ -128,7 +193,9 @@ export const TOURNAMENT_STARTING_BIG_BLINDS = 100;
 export function settingsForMode<
   T extends { gameMode: GameMode; smallBlind: number; bigBlind: number; ante: number; startingStack: number },
 >(settings: T, mode: GameMode): T {
-  const level = initialBlindLevelForMode(mode);
+  // The ladder starts wherever the table's blinds already are, so picking a
+  // tournament no longer throws away the blinds somebody chose.
+  const level = tournamentStructureForMode(mode, settings.smallBlind)?.levels[0] ?? null;
   if (!level) return { ...settings, gameMode: mode };
   const floor = level.bigBlind * TOURNAMENT_STARTING_BIG_BLINDS;
   return {
@@ -159,6 +226,7 @@ export function tournamentTableStatus(input: {
   currentBlinds: { smallBlind: number; bigBlind: number; ante?: number };
   handNumber?: number;
   levelLengthHands?: number;
+  startSmallBlind?: number;
 }): TournamentTableStatus | null {
   const level = tournamentLevelForMode(input);
   if (!level) return null;

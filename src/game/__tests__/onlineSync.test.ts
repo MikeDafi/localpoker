@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, createGame, startHand, type ActionResult, type GameConfig, type GameState, type PlayerInput } from '../../engine';
-import { applyHostIntent, redactGameState, shouldEndOnlineTableForTooFewPlayers, validateHostIntent } from '../onlineSync';
+import { applyHostIntent, hydrateGameState, redactGameState, shouldEndOnlineTableForTooFewPlayers, validateHostIntent } from '../onlineSync';
 
 const config: GameConfig = {
   smallBlind: 5,
@@ -58,6 +58,33 @@ describe('online redaction', () => {
     expect(state.board).toHaveLength(5);
     expect(publicState.players.a.holeCards).toEqual(state.players.find((player) => player.id === 'a')?.holeCards);
     expect(publicState.players.b.holeCards).toEqual(state.players.find((player) => player.id === 'b')?.holeCards);
+  });
+
+  it('tells guests who bet the river, so the bettor shows first rather than being asked', () => {
+    let state = startHand(createGame(config, players(['a', 'b']), 'redaction-aggressor'));
+    state = must(applyAction(state, 'a', 'call'));
+    state = must(applyAction(state, 'b', 'check'));
+    for (let i = 0; i < 4; i += 1) state = must(applyAction(state, state.players[state.currentPlayerIndex].id, 'check'));
+    const bettor = state.players[state.currentPlayerIndex].id;
+    state = must(applyAction(state, bettor, 'bet', 20));
+    state = must(applyAction(state, state.players[state.currentPlayerIndex].id, 'call'));
+
+    expect(state.street).toBe('showdown');
+    const bettorIndex = state.players.findIndex((p) => p.id === bettor);
+    expect(state.lastAggressorIndex).toBe(bettorIndex);
+    const guest = hydrateGameState(redactGameState(state).publicState);
+    expect(guest.lastAggressorIndex).toBe(bettorIndex);
+  });
+
+  it('leaves the aggressor empty for guests when the river was checked through', () => {
+    let state = startHand(createGame(config, players(['a', 'b']), 'redaction-checked'));
+    state = must(applyAction(state, 'a', 'call'));
+    state = must(applyAction(state, 'b', 'check'));
+    for (let i = 0; i < 6; i += 1) state = must(applyAction(state, state.players[state.currentPlayerIndex].id, 'check'));
+
+    const { publicState } = redactGameState(state);
+    expect('lastAggressorIndex' in publicState).toBe(false);
+    expect(hydrateGameState(publicState).lastAggressorIndex).toBeNull();
   });
 });
 

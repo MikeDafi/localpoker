@@ -124,6 +124,17 @@ export function LobbyScreen({ navigation, route }: Props) {
       if (cancelled) return;
       if (!res.ok) {
         setStatus(res.reason || 'Could not connect to the room.');
+        /*
+         * Say so and leave. The lobby used to stay up with the code showing
+         * and a line of small text in the roster, so a host whose table was
+         * never created went on inviting people to a room that did not exist.
+         */
+        navigatedRef.current = true;
+        showAlert(
+          host ? 'Could not open the table' : 'Could not join',
+          res.reason || 'Could not connect to the room.',
+          [{ text: 'Back to menu', onPress: () => navigation.replace('Home') }],
+        );
         return;
       }
       setConnected(true);

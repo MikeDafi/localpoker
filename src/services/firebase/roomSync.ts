@@ -722,11 +722,16 @@ export const createRoom = async (
     }
 
     /*
-     * Tidy up first, then refuse only if they genuinely have three live ones.
+     * Tidy up first, then close the oldest tables to make room.
      *
      * A host who set up tables and wandered off would otherwise hit the cap
      * against rooms that no longer exist, so the stale entries are cleared
      * before the count is taken rather than counting ghosts against them.
+     *
+     * Past that, the new table wins. This used to refuse, and the lobby still
+     * showed the code, so the host sat in a room that did not exist and every
+     * invite failed. A host can only deal at one table at a time anyway, so
+     * the oldest ones are the ones nobody is playing at.
      */
     const hosted = await hostedRoomCodes(db, hostId);
     const others = hosted.filter((c) => c !== roomCode);
@@ -741,11 +746,14 @@ export const createRoom = async (
         }
         live.push(other);
       }
-      if (live.length >= MAX_ROOMS_PER_HOST) {
-        return {
-          ok: false,
-          reason: `You already have ${MAX_ROOMS_PER_HOST} tables open. Close one before starting another.`,
-        };
+      // `hostedRoomCodes` is oldest first, so these are the stalest tables.
+      for (const old of live.slice(0, live.length - MAX_ROOMS_PER_HOST + 1)) {
+        const ended = await endRoom(old, 'The host opened a new table.');
+        if (ended.ok) {
+          await set(ref(db, userRoomPath(hostId, old)), null);
+        } else {
+          reportFirebaseError('create-room-close-oldest', new Error(ended.reason ?? 'end-room failed'));
+        }
       }
     }
 
@@ -2060,6 +2068,27 @@ export const subscribeActions = (code: string, cb: (action: RoomAction) => void)
 };
 
 /** Updates a player's presence and registers onDisconnect cleanup when connected. */
+/**
+ * Republish the table's rules after the host changes one mid game.
+ *
+ * Only the host's engine deals, so the blinds themselves reach everybody
+ * through the published hand. This is for what guests derive on their own,
+ * like the tournament ladder in the header, which otherwise kept reading the
+ * rules the room was opened with.
+ */
+export const publishRoomSettings = async (code: string, settingsJson: string): Promise<Result> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return unavailableResult();
+  try {
+    await updateRoot(db, { [`${roomPath(roomCode)}/settingsJson`]: settingsJson });
+    return { ok: true };
+  } catch (error) {
+    reportFirebaseError('publish-room-settings', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
 export const setPlayerConnected = async (
   code: string,
   playerId: string,

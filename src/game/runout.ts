@@ -71,13 +71,6 @@ export const SHOWDOWN_SETTLE_MS = 1000;
 export const SHOWDOWN_STEP_MS = 850;
 
 /**
- * How long a player gets to decide whether to show a hand nobody can make
- * them show. Long enough to think about it, short enough that the rest of the
- * table is not held hostage by somebody who put their phone down.
- */
-export const SHOW_CHOICE_MS = 6000;
-
-/**
  * Sound played as a street is waited on, not as it lands.
  *
  * The river gets the urgent cue because by then the hand is one card from over.

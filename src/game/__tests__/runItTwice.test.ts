@@ -12,9 +12,9 @@ const human = (id: string, choice: RunVote['choice']): RunVote => ({ playerId: i
 const bot = (id: string, choice: RunVote['choice'] = null): RunVote => ({ playerId: id, choice, isBot: true });
 
 describe('agreedRuns', () => {
-  it('takes the highest number anybody asked for', () => {
-    expect(agreedRuns([human('a', 1), human('b', 3)])).toBe(3);
-    expect(agreedRuns([human('a', 2), human('b', 1)])).toBe(2);
+  it('takes the lowest number anybody asked for', () => {
+    expect(agreedRuns([human('a', 1), human('b', 3)])).toBe(1);
+    expect(agreedRuns([human('a', 2), human('b', 3)])).toBe(2);
   });
 
   it('runs once when nobody asked for more', () => {

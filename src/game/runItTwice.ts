@@ -26,11 +26,11 @@ export interface RunVote {
 /**
  * How many times the board actually gets run.
  *
- * The highest number anybody asks for wins. That is a house rule rather than
- * the usual one, which needs everybody to agree and otherwise runs once, and
- * it has a consequence worth being honest about: running more times lowers
- * variance, so the most cautious player at the table always gets their way and
- * somebody who wants the gamble can never have it.
+ * The lowest number anybody asks for wins. Running it more than once is a
+ * favour the table does for whoever wants less variance, so it needs everyone
+ * who answered to want at least that many: one player asking for three and
+ * another for one runs it once. This used to take the highest, which let the
+ * most cautious player overrule somebody who wanted the gamble.
  *
  * Bots do not get an opinion. They would otherwise decide it between
  * themselves every time a human was not involved, and a bot cannot want
@@ -44,7 +44,7 @@ export function agreedRuns(votes: readonly RunVote[]): RunCount {
     .map((v) => v.choice)
     .filter((c): c is RunCount => c !== null);
   if (asked.length === 0) return 1;
-  return Math.min(MAX_RUNS, Math.max(...asked)) as RunCount;
+  return Math.min(MAX_RUNS, ...asked) as RunCount;
 }
 
 /** Whether everybody who gets a say has said something. */

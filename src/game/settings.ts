@@ -214,6 +214,21 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
 
 export const BLIND_LEVEL_LENGTH_HANDS_BY_MODE = BLIND_LEVEL_LENGTH_HANDS_BY_MODE_SOURCE;
 
+/** The big blind is always double the small one. */
+export function bigBlindFor(smallBlind: number): number {
+  return smallBlind * 2;
+}
+
+/** "10/20", for the one row that sets both blinds. */
+export function formatBlinds(smallBlind: number): string {
+  return `${smallBlind.toLocaleString()}/${bigBlindFor(smallBlind).toLocaleString()}`;
+}
+
+/** A patch that sets the small blind carries its big blind with it. */
+export function withPairedBlinds(patch: Partial<GameSettings>): Partial<GameSettings> {
+  return typeof patch.smallBlind === 'number' ? { ...patch, bigBlind: bigBlindFor(patch.smallBlind) } : patch;
+}
+
 export function defaultBlindLevelLengthHands(mode: GameMode): number {
   return BLIND_LEVEL_LENGTH_HANDS_BY_MODE[mode];
 }
@@ -230,8 +245,11 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     id: 'table', title: 'Table', icon: '🎲',
     fields: [
       { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash has a buy-in and fixed blinds. Tournament modes publish a hand-based blind schedule and busted players are out.', options: GAME_MODE_OPTIONS },
-      { key: 'smallBlind', label: 'Small Blind', type: 'number', min: 1, max: 100000, step: 1, presets: [1, 2, 5, 10, 25, 50, 100, 250, 500], help: 'Cash uses this as the fixed small blind. Tournament modes use it as level one.' },
-      { key: 'bigBlind', label: 'Big Blind', type: 'number', min: 2, max: 200000, step: 1, presets: [2, 4, 10, 20, 50, 100, 200, 500, 1000], help: 'Cash uses this as the fixed big blind. Tournament modes use it as level one.' },
+      /*
+       * One row for both blinds. The big blind is always twice the small, so
+       * a second row only ever offered a way to set up a table wrong.
+       */
+      { key: 'smallBlind', label: 'Blinds', type: 'number', min: 1, max: 100000, step: 1, presets: [1, 2, 5, 10, 25, 50, 100, 250, 500], help: 'Small blind / big blind; the big blind is always double. Cash plays these all game. Tournaments start their ladder here.' },
       { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, presets: [0, 1, 2, 5, 10, 25, 50], modes: ['tournament', 'turbo'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
       {
         key: 'blindLevelLengthHands',
@@ -242,7 +260,14 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         step: 1,
         presets: [3, 5, 8, 10, 15, 20, 30],
         modes: ['tournament', 'turbo'],
-        setupHidden: true,
+        /*
+         * Shown in setup now, with the schedule it produces under it.
+         *
+         * It was hidden on the grounds that nobody can choose a level length
+         * before playing, but that left players unable to see when the blinds
+         * would go up at all, which is the part of a tournament they plan
+         * around. The preview answers the question the bare number could not.
+         */
         help: 'Hands per blind level. All clients derive the same level from the shared hand number.',
       },
       { key: 'startingStack', label: 'Buy-In / Stack', type: 'number', min: 100, max: 1000000, step: 100, presets: [500, 1000, 2000, 5000, 10000, 25000, 50000] },
@@ -383,7 +408,8 @@ export function normalizeSettings(s?: Partial<GameSettings> | null): GameSetting
       ),
     );
   if (merged.gameMode === 'cash') merged.ante = 0;
-  if (merged.bigBlind < merged.smallBlind) merged.bigBlind = merged.smallBlind * 2;
+  merged.smallBlind = Math.max(1, Math.round(Number(merged.smallBlind) || DEFAULT_GAME_SETTINGS.smallBlind));
+  merged.bigBlind = bigBlindFor(merged.smallBlind);
   merged.numOpponents = Math.max(1, Math.min(8, merged.numOpponents));
   merged.maxPlayers = Math.max(merged.numOpponents + 1, merged.maxPlayers);
   for (const key of APPEARANCE_SETTING_KEYS) {

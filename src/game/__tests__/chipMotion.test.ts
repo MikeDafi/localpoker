@@ -1,16 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHIP_COMMIT_DURATION_MS,
-  CHIP_SWEEP_DURATION_MS,
   actionReadDelayMs,
-  payoutEvents,
-  CHIP_PAYOUT_PAUSE_MS,
-  CHIP_PAYOUT_STAGGER_MS,
   actionMovesChips,
   ACTION_READ_DELAY_MS,
   CHIP_ACTION_READ_BONUS_MS,
   chipMotionEvents,
-  chipMotionPath,
   currentStreetBetTotal,
   displayedPotAmount,
   heroBetChipPoint,
@@ -18,7 +13,6 @@ import {
   initialChipMotionEvents,
   opponentBetChipPoint,
   opponentSeatChipPoint,
-  potChipPoint,
   renderedBetPillTotal,
   sweptPotAmount,
   totalCommittedChips,
@@ -273,7 +267,7 @@ describe('chip motion events', () => {
     ]);
   });
 
-  it('sweeps every final bet after a call completes the round', () => {
+  it('only commits the call that closes a round, with no sweep across the board', () => {
     const prev = state({
       contributions: { a: 100, b: 50 },
       pots: [{ amount: 150 }],
@@ -294,12 +288,10 @@ describe('chip motion events', () => {
     const events = chipMotionEvents(prev, next);
     expect(events).toEqual([
       { phase: 'commit', playerId: 'b', amount: 50, delayMs: 0, durationMs: CHIP_COMMIT_DURATION_MS },
-      { phase: 'sweep', playerId: 'a', amount: 100, delayMs: 430, durationMs: CHIP_SWEEP_DURATION_MS },
-      { phase: 'sweep', playerId: 'b', amount: 100, delayMs: 430, durationMs: CHIP_SWEEP_DURATION_MS },
     ]);
   });
 
-  it('sweeps prior bets when a fold ends the hand', () => {
+  it('moves no chips when a fold ends the hand', () => {
     const prev = state({
       contributions: { a: 40, b: 40 },
       pots: [{ amount: 80 }],
@@ -317,32 +309,16 @@ describe('chip motion events', () => {
         { id: 'b', currentBet: 40 },
       ],
     });
-    expect(chipMotionEvents(prev, next)).toEqual([
-      { phase: 'sweep', playerId: 'a', amount: 40, delayMs: 70, durationMs: CHIP_SWEEP_DURATION_MS },
-      { phase: 'sweep', playerId: 'b', amount: 40, delayMs: 70, durationMs: CHIP_SWEEP_DURATION_MS },
-    ]);
+    expect(chipMotionEvents(prev, next)).toEqual([]);
   });
 });
 
 describe('chip motion geometry', () => {
-  it('resolves seat, bet, and pot points for table overlays', () => {
+  it('resolves seat and bet points for table overlays', () => {
     expect(opponentSeatChipPoint({ left: 20, top: 10 }, 80, 90)).toEqual({ x: 60, y: 47.8 });
     expect(opponentBetChipPoint({ left: 20, top: 10 }, 80, 90)).toEqual({ x: 60, y: 94 });
     expect(heroSeatChipPoint(320, 300, 100)).toEqual({ x: 160, y: 242 });
     expect(heroBetChipPoint(320, 300)).toEqual({ x: 160, y: 286 });
-    expect(potChipPoint({
-      areaWidth: 320,
-      laneTop: 80,
-      boardBox: { x: 60, y: 20, w: 200, h: 52 },
-    })).toEqual({ x: 160, y: 176 });
-  });
-
-  it('maps commit paths to the bet point and sweep paths to the pot', () => {
-    const seat = { x: 10, y: 20 };
-    const bet = { x: 30, y: 40 };
-    const pot = { x: 50, y: 60 };
-    expect(chipMotionPath('commit', seat, bet, pot)).toEqual({ from: seat, to: bet });
-    expect(chipMotionPath('sweep', seat, bet, pot)).toEqual({ from: bet, to: pot });
   });
 
   it('removes the bot read delay when animations are disabled', () => {
@@ -388,89 +364,20 @@ describe('chip motion geometry', () => {
   });
 });
 
-describe('paying the pot out', () => {
-  const showdown = {
-    handNumber: 4,
-    street: 'showdown' as const,
-    players: [{ id: 'a', currentBet: 0 }, { id: 'b', currentBet: 0 }],
-    contributions: { a: 50, b: 50 },
-    pots: [{ amount: 100 }],
-  };
-
-  it('sends the pot to the one winner', () => {
-    const events = payoutEvents({ ...showdown, winners: [{ playerId: 'a', amount: 100 }] });
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ phase: 'payout', playerId: 'a', amount: 100 });
-  });
-
+describe('ending a hand', () => {
   /*
-   * The screen used to say "split pot" in words while a single stack slid to
-   * one player, which is the opposite of what had happened.
+   * The pot used to fly from the middle to the winner, across the board, while
+   * the tabled hands were still landing. The stack updating says who won.
    */
-  it('gives every winner of a split their own share', () => {
-    const events = payoutEvents({
-      ...showdown,
-      winners: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }],
-    });
-    expect(events.map((e) => [e.playerId, e.amount])).toEqual([['a', 50], ['b', 50]]);
-  });
-
-  it('staggers them, so two winners do not look like one', () => {
-    const events = payoutEvents({
-      ...showdown,
-      winners: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }],
-    });
-    expect(events[0]!.delayMs).toBe(CHIP_PAYOUT_PAUSE_MS);
-    expect(events[1]!.delayMs - events[0]!.delayMs).toBe(CHIP_PAYOUT_STAGGER_MS);
-  });
-
-  it('waits for the tabled hands to land before paying', () => {
-    const events = payoutEvents({ ...showdown, winners: [{ playerId: 'a', amount: 100 }] });
-    expect(events[0]!.delayMs).toBeGreaterThan(2000);
-  });
-
-  it('pays nobody a side pot of nothing', () => {
-    const events = payoutEvents({
-      ...showdown,
-      winners: [{ playerId: 'a', amount: 100 }, { playerId: 'b', amount: 0 }],
-    });
-    expect(events.map((e) => e.playerId)).toEqual(['a']);
-  });
-
-  it('pays nothing before the hand is over', () => {
-    expect(payoutEvents({ ...showdown, street: 'river', winners: [{ playerId: 'a', amount: 100 }] })).toEqual([]);
-  });
-
-  it('pays once, on arriving at the showdown, not on every render after it', () => {
-    const river = { ...showdown, street: 'river' as const, winners: [] };
-    const paid = { ...showdown, winners: [{ playerId: 'a', amount: 100 }] };
-    expect(chipMotionEvents(river, paid).some((e) => e.phase === 'payout')).toBe(true);
-    expect(chipMotionEvents(paid, paid).some((e) => e.phase === 'payout')).toBe(false);
-  });
-
-  /*
-   * The regression this locks down: paying out replaced the sweep, so the
-   * player watched the pot be handed over without ever seeing it collected.
-   */
-  it('collects the last bets before handing the pot over', () => {
-    const prev = {
+  it('flies no chips to the winner at the showdown', () => {
+    const river = {
       handNumber: 4,
       street: 'river' as const,
       contributions: { a: 40, b: 40 },
       pots: [{ amount: 80 }],
       players: [{ id: 'a', currentBet: 40 }, { id: 'b', currentBet: 40 }],
     };
-    const next = { ...prev, street: 'showdown' as const, winners: [{ playerId: 'a', amount: 80 }] };
-    const phases = chipMotionEvents(prev, next).map((e) => e.phase);
-    expect(phases).toContain('sweep');
-    expect(phases).toContain('payout');
-    expect(phases.indexOf('sweep')).toBeLessThan(phases.indexOf('payout'));
-  });
-
-  it('runs the chips from the pot back to the seat', () => {
-    const seat = { x: 10, y: 20 };
-    const bet = { x: 30, y: 40 };
-    const pot = { x: 50, y: 60 };
-    expect(chipMotionPath('payout', seat, bet, pot)).toEqual({ from: pot, to: seat });
+    const paid = { ...river, street: 'showdown' as const, winners: [{ playerId: 'a', amount: 80 }] };
+    expect(chipMotionEvents(river, paid)).toEqual([]);
   });
 });
