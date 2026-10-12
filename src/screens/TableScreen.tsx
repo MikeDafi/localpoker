@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
-import { podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
+import { SEAT_GAP, podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
 import { offeredNumberValues } from '../game/settingNumbers';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
@@ -141,6 +141,8 @@ const HUMAN_ID = 'me';
  * alone would quietly push the cards over it.
  */
 const FELT_INSET = 4;
+/** Points the middle of a crowded seat arc rises above the felt, into the empty header band. */
+const CROWDED_SEAT_LIFT = 26;
 const FELT_RAIL = 10;
 const BOT_NAMES = ['Ravi', 'Mika', 'Jules', 'Nina', 'Theo', 'Zoe', 'Kai', 'Lena'];
 
@@ -2622,14 +2624,24 @@ export function TableScreen({ navigation, route }: Props) {
    * instead, and the avatar shrinks to fit inside its pod, so the board keeps
    * the same lane however many people are seated.
    */
-  const SEAT_W = podWidthForOneArc(opponents.length, area.w, Math.max(62, avatarSize + 20));
-  const seatAvatar = Math.min(avatarSize, SEAT_W - 14);
+  const preferredSeatW = Math.max(62, avatarSize + 20);
+  const SEAT_W = podWidthForOneArc(opponents.length, area.w, preferredSeatW);
+  const crowdedRail = SEAT_W < preferredSeatW;
+  /*
+   * On a crowded rail the faces nearly touch: the ring may use the gap
+   * between pods, leaving a couple of points, so the faces are as big as the
+   * rail allows rather than floating apart inside their pods.
+   */
+  const seatAvatar = crowdedRail ? Math.min(avatarSize, SEAT_W + SEAT_GAP - 12) : avatarSize;
+  // The middle of a crowded rail rises out over the empty space above the felt.
+  const seatLift = crowdedRail ? CROWDED_SEAT_LIFT : 0;
   const seatRingInput = {
     count: opponents.length,
     width: area.w,
     height: stageH,
     podWidth: SEAT_W,
     podHeight: podH,
+    lift: seatLift,
   };
   const seatPos = (idx: number, n: number) =>
     seatRingSlot({ ...seatRingInput, index: idx, count: n });

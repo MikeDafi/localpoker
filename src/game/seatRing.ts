@@ -60,6 +60,16 @@ export interface SeatRingInput {
   podWidth: number;
   /** Height of one pod in points. Also the step between arcs. */
   podHeight: number;
+  /**
+   * How far the middle of the arc may rise above the stage, in points.
+   *
+   * A full table packs eight narrow pods along the rail, and the ones in the
+   * middle sat inside the felt. The space above the felt between the header
+   * buttons was empty, so the middle of the arc rises into it and the ends
+   * stay where they were: the board keeps its lane and the pods get to be
+   * taller. Zero, the default, leaves the arc as it was.
+   */
+  lift?: number;
 }
 
 export interface SeatRingSlot {
@@ -259,9 +269,14 @@ export function seatRingSlot(input: SeatRingInput): SeatRingSlot {
   const t = half > 0 ? Math.max(-1, Math.min(1, (centreX - arcMiddle) / half)) : 0;
   const drop = curve * (1 - Math.sqrt(Math.max(0, 1 - t * t)));
 
+  // Rises most at the crown and not at all at the ends, following the same
+  // ellipse, so the ends keep clear of the header buttons in the corners.
+  const lift = row === 0 ? Math.max(0, input.lift ?? 0) : 0;
+  const rise = lift * Math.sqrt(Math.max(0, 1 - t * t));
+
   return {
     left: clampLeft(left, width, podWidth),
-    top: Math.max(EDGE_INSET, crown + row * rowStep + drop),
+    top: Math.max(EDGE_INSET - lift, crown + row * rowStep + drop - rise),
     row,
   };
 }

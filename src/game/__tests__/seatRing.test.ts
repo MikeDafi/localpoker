@@ -321,3 +321,15 @@ describe('one arc at every table size', () => {
     expect(podWidthForOneArc(2, 402, 86)).toBe(86);
   });
 });
+
+describe('lifting the middle of a crowded arc', () => {
+  const base = { count: 8, width: 398, height: 400, podWidth: 44, podHeight: 112 };
+  it('raises the crown and leaves the ends where they were', () => {
+    const flat = Array.from({ length: 8 }, (_, index) => seatRingSlot({ ...base, index }));
+    const lifted = Array.from({ length: 8 }, (_, index) => seatRingSlot({ ...base, index, lift: 26 }));
+    expect(lifted[0]!.top).toBeCloseTo(flat[0]!.top, 5);
+    expect(lifted[7]!.top).toBeCloseTo(flat[7]!.top, 5);
+    expect(lifted[3]!.top).toBeLessThan(flat[3]!.top - 15);
+    expect(seatRingBottom({ ...base, lift: 26 })).toBeCloseTo(seatRingBottom(base), 5);
+  });
+});

@@ -208,7 +208,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
   const narrow = podWidth < COMPACT_POD_W - 20;
   const cardTuck = narrow ? -4 : -15;
   // A roomy table keeps the pod it always had; only a crowded rail narrows it.
-  const wrapW = narrow ? podWidth : COMPACT_POD_W;
+  const wrapW = narrow ? podWidth + 4 : COMPACT_POD_W;
 
   // Compact vertical pod for opponents: a round avatar with a small name/stack
   // tag beneath it. Keeps each seat narrow so the felt stays uncluttered.
