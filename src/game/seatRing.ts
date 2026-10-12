@@ -105,6 +105,9 @@ export const EDGE_INSET = 2;
  */
 const INNER_ARC_SPAN = 0.72;
 
+/** Share of the rail a short table's outer arc spreads across, by seat count. */
+const SHORT_TABLE_SPAN: Record<number, number> = { 2: 0.6, 3: 0.82 };
+
 /**
  * How many pods fit across one arc of a given span.
  *
@@ -213,8 +216,12 @@ function arcDepth(height: number, podHeight: number, arcs: number): number {
  */
 function arcSpan(row: number, countOnArc: number, width: number, podWidth: number): number {
   const full = Math.max(0, width - EDGE_INSET * 2 - podWidth);
-  if (row === 0) return full;
   const needed = Math.max(0, countOnArc - 1) * (podWidth + SEAT_GAP);
+  if (row === 0) {
+    // Two or three opponents spread to the very edges looked like strangers at
+    // opposite ends of the room, so a short table draws its seats in.
+    return Math.min(full, Math.max(needed, full * (SHORT_TABLE_SPAN[countOnArc] ?? 1)));
+  }
   return Math.min(full, Math.max(full * INNER_ARC_SPAN, needed));
 }
 

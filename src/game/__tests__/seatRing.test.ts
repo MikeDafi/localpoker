@@ -346,3 +346,14 @@ describe('capping how low the seats reach', () => {
     expect(seatRingBottom({ ...input, maxBottom: 162 })).toBeCloseTo(seatRingBottom(input), 5);
   });
 });
+
+describe('a short table draws its seats in', () => {
+  it('puts two opponents closer together than the full rail', () => {
+    const input = { count: 2, width: 398, height: 404, podWidth: 90, podHeight: 150 };
+    const a = seatRingSlot({ ...input, index: 0 });
+    const b = seatRingSlot({ ...input, index: 1 });
+    expect(a.left).toBeGreaterThan(EDGE_INSET + 40);
+    expect(398 - (b.left + 90)).toBeCloseTo(a.left, 5);
+    expect(slotsOverlap(a, b, 90, 150)).toBe(false);
+  });
+});
