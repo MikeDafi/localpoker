@@ -341,9 +341,31 @@ function awardShowdownBoard(input: {
   return Array.from(winners.values()).filter((winner) => winner.amount > 0);
 }
 
+/**
+ * Gives back the part of the biggest bet nobody could match.
+ *
+ * A player who covers everyone else is only ever called up to the next
+ * biggest stack. The rest used to stay in as a side pot with one name on it,
+ * which paid the same chips back but was recorded as a pot won, so a player
+ * who lost every board was ringed in gold and listed as winning each run.
+ */
+function returnUncalled(state: GameState): void {
+  const levels = state.players
+    .map((player) => ({ player, amount: state.contributions[player.id] ?? 0 }))
+    .filter(({ amount }) => amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const [top, next] = levels;
+  if (!top || !next || top.amount <= next.amount) return;
+  const excess = top.amount - next.amount;
+  top.player.chips += excess;
+  state.contributions[top.player.id] = next.amount;
+  if (top.player.chips > 0) top.player.allIn = false;
+}
+
 export function showdownRuns(state: GameState, runs: number): GameState {
   const next = cloneState(state);
 
+  returnUncalled(next);
   refreshPots(next);
   const remaining = remainingIndexes(next);
   if (remaining.length === 0) {

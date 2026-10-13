@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { onValue, onDisconnect, ref, serverTimestamp, set } from 'firebase/database';
 import { getDb, isFirebaseConfigured } from './config';
 import { ensureSignedIn, getAuthUid } from './auth';
@@ -40,6 +41,7 @@ export const startPresence = (): (() => void) => {
 
   let stopped = false;
   let offConnected: (() => void) | null = null;
+  let foreground = AppState.currentState === 'active';
 
   ensureSignedIn()
     .then((uid) => {
@@ -47,7 +49,7 @@ export const startPresence = (): (() => void) => {
       const mine = ref(db, presencePath(uid));
 
       offConnected = onValue(ref(db, '.info/connected'), (snapshot) => {
-        if (stopped || snapshot.val() !== true) return;
+        if (stopped || snapshot.val() !== true || !foreground) return;
         // Register the disconnect handler *before* claiming to be online, so a
         // socket that drops between the two still gets cleaned up.
         onDisconnect(mine)
@@ -62,8 +64,26 @@ export const startPresence = (): (() => void) => {
       captureError(error, { tags: { area: 'firebase-presence', operation: 'start' } });
     });
 
+  /*
+   * Out of the app is offline.
+   *
+   * iOS keeps the socket for a while after the app is backgrounded, and the
+   * server only runs onDisconnect once it notices the socket is gone, so a
+   * player who had just switched away still read as online. An invite sent in
+   * that window skipped the push, on the reasoning that they were in the app
+   * to see it.
+   */
+  const appState = AppState.addEventListener('change', (next) => {
+    const uid = getAuthUid();
+    const nowForeground = next === 'active';
+    if (stopped || !uid || nowForeground === foreground) return;
+    foreground = nowForeground;
+    set(ref(db, presencePath(uid)), { online: nowForeground, lastSeen: serverTimestamp() }).catch(() => {});
+  });
+
   return () => {
     stopped = true;
+    appState.remove();
     if (offConnected) offConnected();
     const uid = getAuthUid();
     if (!uid) return;

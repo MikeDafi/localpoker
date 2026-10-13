@@ -167,6 +167,8 @@ const STATS_KEY = '@pokerpals/stats';
 const AUTH_KEY = '@pokerpals/auth';
 const FRIENDS_KEY = '@pokerpals/friends';
 const SETTINGS_KEY = '@pokerpals/settings';
+/** Set once the player has been asked about notifications, so it is asked only once. */
+const PUSH_ASKED_KEY = '@pokerpals/pushAsked';
 export const SAVED_GAME_KEY = '@pokerpals/savedgame';
 const AGE_KEY = '@pokerpals/ageVerified';
 const BLOCKS_KEY = '@pokerpals/blocks';
@@ -652,6 +654,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }),
     [friends, live],
   );
+
+  /*
+   * Ask about notifications once, after signing in.
+   *
+   * Notifications were opt in from a Settings toggle almost nobody opened, so
+   * a friend invited to a table while out of the app was never told: with no
+   * token there was nobody to send to. Turning the toggle on once raises the
+   * system prompt; declining it switches the toggle back off below, and the
+   * question is never asked again either way.
+   */
+  useEffect(() => {
+    if (!ready || !auth.loggedIn || settings.pushNotifications) return;
+    let active = true;
+    AsyncStorage.getItem(PUSH_ASKED_KEY).then((asked) => {
+      if (!active || asked) return;
+      AsyncStorage.setItem(PUSH_ASKED_KEY, '1').catch(() => {});
+      setSettings((prev) => {
+        if (prev.pushNotifications) return prev;
+        const next = { ...prev, pushNotifications: true };
+        persist(SETTINGS_KEY, next);
+        return next;
+      });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [auth.loggedIn, persist, ready, settings.pushNotifications]);
 
   /**
    * Keep the push token in step with the toggle.

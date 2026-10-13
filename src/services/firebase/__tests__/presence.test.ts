@@ -14,6 +14,10 @@ const configured = { value: true };
 const listeners: Record<string, ((snap: { val: () => unknown }) => void)[]> = {};
 const errorHandlers: Record<string, ((e: Error) => void)[]> = {};
 
+vi.mock('react-native', () => ({
+  AppState: { currentState: 'active', addEventListener: () => ({ remove: () => {} }) },
+}));
+
 vi.mock('../config', () => ({
   isFirebaseConfigured: () => configured.value,
   getDb: () => ({}),

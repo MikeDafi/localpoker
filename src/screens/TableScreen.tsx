@@ -724,6 +724,38 @@ export function TableScreen({ navigation, route }: Props) {
    * nothing drew from it, so a call that closed the betting put the flop down
    * in the same frame. A run-out's felt is already cut to what has landed.
    */
+  /*
+   * The bets that closed the last street, held for the street beat.
+   *
+   * The call that ends a betting round moves the engine to the next street in
+   * the same update, which zeroes every bet, so the caller's chips were never
+   * drawn in front of them and "Call" was never seen. For the beat before the
+   * next card lands, each seat keeps the chips it closed the street with.
+   */
+  const [closingBets, setClosingBets] = useState<Record<string, { amount: number; called: boolean }> | null>(null);
+  const prevBetsState = useRef<GameState | null>(null);
+  useEffect(() => {
+    const prev = prevBetsState.current;
+    prevBetsState.current = state;
+    if (!prev || animsOff || prev.handNumber !== state.handNumber || prev.street === state.street || prev.street === 'showdown') return undefined;
+    const bets: Record<string, { amount: number; called: boolean }> = {};
+    prev.players.forEach((p, i) => {
+      const added = (state.contributions[p.id] ?? 0) - (prev.contributions[p.id] ?? 0);
+      const amount = p.currentBet + Math.max(0, added);
+      if (amount <= 0 || p.folded) return;
+      // The player whose chips went in on this update made the closing call.
+      bets[p.id] = { amount, called: added > 0 ? amount <= prev.currentBet : calledThisStreet(prev, i) };
+    });
+    if (Object.keys(bets).length === 0) return undefined;
+    setClosingBets(bets);
+    const timer = setTimeout(() => setClosingBets(null), STREET_BEAT_MS);
+    return () => clearTimeout(timer);
+  }, [state, animsOff]);
+  const seatBet = (p: { id: string; currentBet: number }, called: boolean) => {
+    const held = closingBets?.[p.id];
+    return held ? { amount: held.amount, called: held.called } : { amount: p.currentBet, called };
+  };
+
   const shownBoard = useMemo(
     () => (showingRunout ? felt.board : felt.board.slice(0, revealedBoard)),
     [showingRunout, felt.board, revealedBoard],
@@ -2316,7 +2348,14 @@ export function TableScreen({ navigation, route }: Props) {
    * they had lost before the river landed.
    */
   const resultShown = isShowdown && (!contestedShowdown || revealComplete(revealOrder, revealProgress));
-  const tableBlocked = !tournament && resultShown && !canDealHand(state.players);
+  /*
+   * Bots never buy back in, so a bots game that only a bot busted out of is
+   * over, not waiting: it used to sit on "Waiting for Ravi to rebuy" for the
+   * whole window. The wait is only for a person, which offline means you.
+   */
+  const onlyBotsBusted = !roomCode && human.chips > 0;
+  const tableBlocked = !tournament && resultShown && !canDealHand(state.players) && !onlyBotsBusted;
+  const tableCleared = onlyBotsBusted && !tournament && handOver && !canDealHand(state.players);
 
   useEffect(() => {
     if (!tableBlocked) {
@@ -3225,7 +3264,9 @@ export function TableScreen({ navigation, route }: Props) {
             })}
           </View>
 
-          {displayedPot > 0 && (
+          {/* Not while hands are tabled on the felt: they land right over the
+              pot, and a number showing through between cards read as clutter. */}
+          {displayedPot > 0 && revealHands.length === 0 && (
             <View style={styles.potWrap}>
               <View style={styles.potCenter}>
                 <Text style={styles.potCenterLabel}>Pot</Text>
@@ -3293,14 +3334,14 @@ export function TableScreen({ navigation, route }: Props) {
               accessibilityLabel={`${visible.name}, open player options`}
             >
               <Seat
-                player={visible}
+                player={{ ...visible, currentBet: seatBet(p, false).amount }}
                 pal={pals[p.id] ?? palFromSeed(p.id)}
                 isHuman={false}
                 compact
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
                 showBet={!isShowdown}
-                called={calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === p.id))}
+                called={seatBet(p, calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === p.id))).called}
                 showCards={showAllCards}
                 shownCards={shownCards}
                 displayCards={displayHoleCards(p.holeCards, exposedCardsForPlayer(p.id))}
@@ -3331,13 +3372,13 @@ export function TableScreen({ navigation, route }: Props) {
         <View style={[styles.humanSeatAbs]} onLayout={(e) => growHero(e.nativeEvent.layout.height)}>
           <Pressable onPress={() => { sound.play('tap'); navigation.navigate('Profile'); }} accessibilityRole="button" accessibilityLabel="Open your profile">
             <Seat
-              player={visiblePlayer(human)}
+              player={{ ...visiblePlayer(human), currentBet: seatBet(human, false).amount }}
               pal={pals[human.id] ?? profile.pal}
               isHuman
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
               showBet={!isShowdown}
-              called={calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === human.id))}
+              called={seatBet(human, calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === human.id))).called}
               back={cardBack}
               won={humanWon && !multiRunVerdict}
               lost={seatLost(human)}
@@ -3640,7 +3681,9 @@ export function TableScreen({ navigation, route }: Props) {
                     ? 'Waiting for players…'
                     : tournamentWinnerId
                       ? 'Finish Tournament'
-                      : consentRequired
+                      : tableCleared
+                        ? 'Finish'
+                        : consentRequired
                         ? iAmReady
                           ? nextHandWaitText
                           : 'Next Hand'

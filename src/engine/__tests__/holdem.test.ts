@@ -168,7 +168,10 @@ describe('holdem engine', () => {
     expect(result.street).toBe('showdown');
     expect(winnerAmount(result, 'a')).toBe(150);
     expect(winnerAmount(result, 'b')).toBe(100);
-    expect(winnerAmount(result, 'c')).toBe(100);
+    // Nobody could call c's last 100, so it goes back to c rather than being
+    // a pot c "won" with the worst hand.
+    expect(winnerAmount(result, 'c')).toBe(0);
+    expect(result.players.find((player) => player.id === 'c')?.chips).toBe(100);
     expect(result.players.reduce((sum, player) => sum + player.chips, 0)).toBe(350);
   });
 
