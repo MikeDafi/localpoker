@@ -924,6 +924,30 @@ export function TableScreen({ navigation, route }: Props) {
       : baseRunoutStatus
     : null;
 
+  /*
+   * Each run's result as soon as its river lands.
+   *
+   * With several runs the table used to deal them all and only then list who
+   * took each one, so a run that had already been decided sat unannounced
+   * while the next board went out. A run counts as finished once its board is
+   * fully dealt, which is the beat before the next run starts.
+   */
+  const finishedRuns = showingRunout && !isShowdown && runResults && runCount > 1
+    ? runResults.slice(0, activeRunIndex + (revealedBoard >= activeRunBoardLength ? 1 : 0))
+    : [];
+  const runWinnersLine = (run: NonNullable<GameState['runResults']>[number]) => (
+    run.winners.length === 0
+      ? 'No winner'
+      : run.winners
+        .map((w) => {
+          const p = state.players.find((pp) => pp.id === w.playerId);
+          const name = p ? visiblePlayer(p).name : 'Player';
+          const hand = w.hand ? ` \u00b7 ${handName(w.hand.category)}` : '';
+          return `${name} ${w.amount.toLocaleString()}${hand}`;
+        })
+        .join(', ')
+  );
+
   // Reads the felt's board, so during a run-out it climbs with each street the
   // player is watching land rather than jumping straight to the final hand.
   const handHint = useMemo(() => {
@@ -3517,18 +3541,7 @@ export function TableScreen({ navigation, route }: Props) {
               ? runResults.map((run, runIndex) => (
                 <View key={`run-${runIndex}`} style={styles.runResultRow}>
                   <Text style={styles.runResultTag}>{`Run ${runIndex + 1}`}</Text>
-                  <Text style={styles.resultLine} numberOfLines={1}>
-                    {run.winners.length === 0
-                      ? 'No winner'
-                      : run.winners
-                        .map((w) => {
-                          const p = state.players.find((pp) => pp.id === w.playerId);
-                          const name = p ? visiblePlayer(p).name : 'Player';
-                          const hand = w.hand ? ` \u00b7 ${handName(w.hand.category)}` : '';
-                          return `${name} ${w.amount.toLocaleString()}${hand}`;
-                        })
-                        .join(', ')}
-                  </Text>
+                  <Text style={styles.resultLine} numberOfLines={1}>{runWinnersLine(run)}</Text>
                 </View>
               ))
               : state.winners.map((w) => {
@@ -3678,6 +3691,12 @@ export function TableScreen({ navigation, route }: Props) {
                 ? 'You are out of the tournament.'
                 : rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
             </Text>
+            {finishedRuns.map((run, runIndex) => (
+              <View key={`live-run-${runIndex}`} style={styles.runResultRow}>
+                <Text style={styles.runResultTag}>{`Run ${runIndex + 1}`}</Text>
+                <Text style={styles.resultLine} numberOfLines={1}>{runWinnersLine(run)}</Text>
+              </View>
+            ))}
             {human.folded && !isShowdown && (
               <Text style={styles.foldedNote}>You folded this hand</Text>
             )}
