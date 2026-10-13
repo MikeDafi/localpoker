@@ -19,6 +19,7 @@ import {
   type GameSettings, type SettingField,
 } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
+import { calledThisStreet } from '../game/betLabel';
 import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
 import { blindsForMode, formatBlindLevel, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
@@ -218,6 +219,16 @@ export function TableScreen({ navigation, route }: Props) {
   const [settings, setTableSettings] = useState<GameSettings>(
     () => (resuming && savedGame ? savedGame.settings : route.params.settings),
   );
+  /*
+   * Menu changes waiting for the next deal.
+   *
+   * Blinds, the clock, the bots and the look of the table all change between
+   * hands, never during one, so a felt does not swap under a pot and a turn
+   * clock does not shrink on someone already thinking. Held in a ref as well
+   * as state so the deal reads the latest queue even from an older closure.
+   */
+  const [pendingSettings, setPendingSettings] = useState<Partial<GameSettings>>({});
+  const pendingRef = useRef<Partial<GameSettings>>({});
   const seed = resuming && savedGame ? savedGame.seed : route.params.seed;
   const roomCode = resuming && savedGame ? savedGame.roomCode : route.params.roomCode;
   const tournament = isTournamentMode(settings.gameMode);
@@ -2026,7 +2037,22 @@ export function TableScreen({ navigation, route }: Props) {
     startNext();
   };
 
+  /** Folds the queued menu changes into the table's settings for the hand about to be dealt. */
+  const takePendingSettings = (): GameSettings => {
+    const queued = pendingRef.current;
+    if (Object.keys(queued).length === 0) return settings;
+    const next = normalizeSettings({ ...settings, ...queued });
+    pendingRef.current = {};
+    setPendingSettings({});
+    setTableSettings(next);
+    if (roomCode && isOnlineHost) {
+      publishRoomSettings(roomCode, roomSettingsJson(next)).catch(() => {});
+    }
+    return next;
+  };
+
   const startNext = () => {
+    const rules = takePendingSettings();
     sound.play('start');
     handFlags.current = { vpip: false, pfr: false };
     recorded.current = false;
@@ -2040,19 +2066,19 @@ export function TableScreen({ navigation, route }: Props) {
        * one is ever missed, hold the current hand rather than crash.
        */
       const dueLevel = tournamentLevelForMode({
-        mode: settings.gameMode,
+        mode: rules.gameMode,
         startedAt: tournamentStartedAt,
         now: Date.now(),
         // The hand about to be dealt, which is the one the new blinds apply
         // to. `prev.handNumber` is the hand just finished.
         handNumber: prev.handNumber + 1,
-        levelLengthHands: settings.blindLevelLengthHands,
-        startSmallBlind: settings.smallBlind,
+        levelLengthHands: rules.blindLevelLengthHands,
+        startSmallBlind: rules.smallBlind,
       });
       // A cash table plays the blinds it is set to, so a change from the
       // table menu lands on the next hand.
       const level = dueLevel?.level
-        ?? (tournament ? null : { smallBlind: settings.smallBlind, bigBlind: bigBlindFor(settings.smallBlind), ante: 0 });
+        ?? (tournament ? null : { smallBlind: rules.smallBlind, bigBlind: bigBlindFor(rules.smallBlind), ante: 0 });
       const ready = level && blindsDue(prev.config, level)
         ? applyBlindLevel(prev, level)
         : prev;
@@ -3274,6 +3300,7 @@ export function TableScreen({ navigation, route }: Props) {
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
                 showBet={!isShowdown}
+                called={calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === p.id))}
                 showCards={showAllCards}
                 shownCards={shownCards}
                 displayCards={displayHoleCards(p.holeCards, exposedCardsForPlayer(p.id))}
@@ -3310,6 +3337,7 @@ export function TableScreen({ navigation, route }: Props) {
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
               showBet={!isShowdown}
+              called={calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === human.id))}
               back={cardBack}
               won={humanWon && !multiRunVerdict}
               lost={seatLost(human)}
@@ -3722,15 +3750,28 @@ export function TableScreen({ navigation, route }: Props) {
         onClose={() => setMenuOpen(false)}
         roomCode={roomCode}
         isHost={!roomCode || isOnlineHost}
-        settings={settings}
+        settings={{ ...settings, ...pendingSettings }}
+        pendingKeys={Object.keys(pendingSettings).filter((key) => (
+          pendingSettings[key as keyof GameSettings] !== settings[key as keyof GameSettings]))}
         ownedCosmeticIds={cosmetics.ownedCosmeticIds}
         onChange={(patch) => {
-          const allowed = withPairedBlinds({ ...pickMidGameSafe(patch), ...pickDeviceOnly(patch) });
-          const next = normalizeSettings({ ...settings, ...allowed });
-          setTableSettings(next);
-          updateSettings(allowed);
-          if (roomCode && isOnlineHost) {
-            publishRoomSettings(roomCode, roomSettingsJson(next)).catch(() => {});
+          /*
+           * The phone's own sound and who can find the table change now:
+           * neither touches a hand. Everything else waits for the next deal.
+           */
+          const { roomVisibility, ...rules } = withPairedBlinds(pickMidGameSafe(patch));
+          const now: Partial<GameSettings> = { ...pickDeviceOnly(patch), ...(roomVisibility ? { roomVisibility } : {}) };
+          updateSettings({ ...now, ...rules });
+          if (Object.keys(rules).length > 0) {
+            pendingRef.current = { ...pendingRef.current, ...rules };
+            setPendingSettings(pendingRef.current);
+          }
+          if (Object.keys(now).length > 0) {
+            const next = normalizeSettings({ ...settings, ...now });
+            setTableSettings(next);
+            if (roomCode && isOnlineHost && roomVisibility) {
+              publishRoomSettings(roomCode, roomSettingsJson(next)).catch(() => {});
+            }
           }
         }}
       />
@@ -3756,6 +3797,7 @@ function TableMenu({
   roomCode,
   isHost,
   settings,
+  pendingKeys,
   ownedCosmeticIds,
   onChange,
 }: {
@@ -3764,6 +3806,8 @@ function TableMenu({
   roomCode?: string;
   isHost: boolean;
   settings: GameSettings;
+  /** Settings changed here that the next hand will pick up. */
+  pendingKeys: readonly string[];
   ownedCosmeticIds: readonly string[];
   onChange: (patch: Partial<GameSettings>) => void;
 }) {
@@ -3867,7 +3911,7 @@ function TableMenu({
                   accessibilityLabel={`${MENU_COSMETIC_LABELS[key]}, currently ${labelFor(key)}`}
                   accessibilityHint="Changes to the next one you own"
                 >
-                  <Text style={styles.menuRowLabel}>{MENU_COSMETIC_LABELS[key]}</Text>
+                  <MenuLabel label={MENU_COSMETIC_LABELS[key]} pending={pendingKeys.includes(key)} />
                   <Text style={styles.menuRowValue}>{labelFor(key)}</Text>
                 </Pressable>
               ))}
@@ -3912,12 +3956,13 @@ function TableMenu({
                   key={String(field.key)}
                   field={field}
                   value={settings[field.key]}
+                  pending={pendingKeys.includes(String(field.key))}
                   onChange={onChange}
                 />
               ))}
               <Text style={styles.menuNote}>
-                Every rule here is read when a hand starts, so a change lands on the next
-                hand and never moves under the one being played.
+                Changes here, the look included, start with the next hand and never move
+                under the one being played. Buy-in stays as everyone sat down with.
               </Text>
             </>
           ) : null}
@@ -3949,13 +3994,25 @@ function TableMenu({
  * this has to fit a sheet over a live hand. Numbers step, everything else
  * cycles, so every rule is one tap wide and nothing here opens a sub screen.
  */
+/** A menu row's name, tagged when the change is waiting for the next hand. */
+function MenuLabel({ label, pending }: { label: string; pending?: boolean }) {
+  return (
+    <View style={styles.menuLabelWrap}>
+      <Text style={styles.menuRowLabel}>{label}</Text>
+      {pending ? <Text style={styles.menuPendingTag}>Next hand</Text> : null}
+    </View>
+  );
+}
+
 function MenuSettingRow({
   field,
   value,
+  pending,
   onChange,
 }: {
   field: SettingField;
   value: GameSettings[keyof GameSettings];
+  pending?: boolean;
   onChange: (patch: Partial<GameSettings>) => void;
 }) {
   const set = (next: unknown) => onChange({ [field.key]: next } as Partial<GameSettings>);
@@ -3970,7 +4027,7 @@ function MenuSettingRow({
         accessibilityState={{ checked: on }}
         accessibilityLabel={field.label}
       >
-        <Text style={styles.menuRowLabel}>{field.label}</Text>
+        <MenuLabel label={field.label} pending={pending} />
         <Text style={[styles.menuRowValue, on && styles.menuRowValueOn]}>{on ? 'On' : 'Off'}</Text>
       </Pressable>
     );
@@ -3991,7 +4048,7 @@ function MenuSettingRow({
         accessibilityLabel={`${field.label}, currently ${current?.label ?? String(value)}`}
         accessibilityHint="Changes to the next option"
       >
-        <Text style={styles.menuRowLabel}>{field.label}</Text>
+        <MenuLabel label={field.label} pending={pending} />
         <Text style={styles.menuRowValue}>{current?.label ?? String(value)}</Text>
       </Pressable>
     );
@@ -4013,7 +4070,7 @@ function MenuSettingRow({
   const choices = offeredNumberValues({ min, max, step, presets: field.presets }, current);
   return (
     <View style={styles.menuNumberRow}>
-      <Text style={styles.menuRowLabel}>{field.label}</Text>
+      <MenuLabel label={field.label} pending={pending} />
       <ScrollView
         horizontal
         directionalLockEnabled
@@ -4178,6 +4235,8 @@ const styles = StyleSheet.create({
   menuRowLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.onDarkSoft, flexShrink: 1 },
   menuRowValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark },
   menuRowValueOn: { color: colors.green },
+  menuLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  menuPendingTag: { fontFamily: fonts.semibold, fontSize: 11, color: colors.gold, textTransform: 'uppercase', letterSpacing: 0.4 },
   menuNote: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.onDarkMuted, marginTop: spacing.xs },
   // Capped so a long rule list cannot push the Close button off a short
   // phone, which is the same mistake the result card made.

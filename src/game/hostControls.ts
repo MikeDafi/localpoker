@@ -59,7 +59,6 @@ export const TABLE_RULE_SETTING_KEYS = [
   'bigBlind',
   'ante',
   'blindLevelLengthHands',
-  'startingStack',
   'turnTimerSec',
 ] as const satisfies readonly (keyof GameSettings)[];
 
@@ -99,6 +98,9 @@ export const AGREED_SETTING_KEYS = [
   'gameMode',
   'maxPlayers',
   'numOpponents',
+  // Everyone bought in for the same stack; changing it mid session would
+  // leave the table playing two different games.
+  'startingStack',
 ] as const satisfies readonly (keyof GameSettings)[];
 
 /** Only the safe keys, so a caller cannot hand the room an agreed term. */

@@ -259,14 +259,16 @@ function init() {
     }
   });
   /*
-   * Mix, do not take the audio session over.
+   * Mix, do not take the audio session over, and stay quiet on silent.
    *
    * Players are created before this promise settles so the first cue cannot be
    * dropped behind an audio-session round trip. Mixing means table sounds sit
-   * on top of FaceTime or music instead of fighting for the device.
+   * on top of FaceTime or music instead of fighting for the device. The
+   * ringer switch is the player saying "no sound", so table cues obey it like
+   * every other app's do.
    */
   void audio.setAudioModeAsync({
-    playsInSilentMode: true,
+    playsInSilentMode: false,
     shouldPlayInBackground: false,
     interruptionMode: 'mixWithOthers',
   }).catch((error: unknown) => {

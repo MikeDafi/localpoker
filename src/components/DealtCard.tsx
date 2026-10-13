@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated';
 import { PlayingCard, PlayingCardProps } from './PlayingCard';
 import { motion, easings } from '../theme/theme';
@@ -88,6 +89,25 @@ export function DealtCard({
     // Later changes (e.g. cards revealed at showdown) flip in place.
     flip.value = withTiming(faceUp ? 1 : 0, { duration: motion.base, easing: Easing.bezier(...easings.inOut) });
   }, [faceUp, animate, noFlip, delay, throwMs, flip]);
+
+  /*
+   * Coming back to the app lands every card that was mid throw.
+   *
+   * iOS suspends the UI thread's frame loop in the background, and a throw cut
+   * off there could stay frozen near its start, which is fully transparent:
+   * the turn was in the game and missing from the felt. Settling on return
+   * means a card that has been dealt is always on the table.
+   */
+  const faceUpRef = useRef(faceUp);
+  faceUpRef.current = faceUp;
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active' || !thrown.current) return;
+      p.value = 1;
+      flip.value = faceUpRef.current ? 1 : 0;
+    });
+    return () => sub.remove();
+  }, [p, flip]);
 
   const throwStyle = useAnimatedStyle(() => {
     const t = p.value;

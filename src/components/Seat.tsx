@@ -50,6 +50,8 @@ export interface SeatProps {
   /** Whether to animate the deal at all (off when resuming or anims disabled). */
   dealAnimate?: boolean;
   showBet?: boolean;
+  /** The chips in front of this seat are a call, so the pill says so instead of the amount. */
+  called?: boolean;
   /**
    * Avatar diameter for a compact pod. A short-handed table has room to spare,
    * so faces get bigger the fewer opponents there are - at six-plus they have to
@@ -126,7 +128,7 @@ const EXPOSED_CARD_SCALE = 2.5;
 /** A compact pod's width when the rail has room for it. */
 const COMPACT_POD_W = 84;
 
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, handOff = false, back, cardsLeft = false, avatarSize = 42, podWidth = COMPACT_POD_W }: SeatProps) {
+export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, called = false, handOff = false, back, cardsLeft = false, avatarSize = 42, podWidth = COMPACT_POD_W }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -312,7 +314,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
           */}
         <View style={styles.betSlot}>
           {showBet && player.currentBet > 0 && !player.sittingOut && (
-            <BetChips amount={player.currentBet} />
+            <BetChips amount={player.currentBet} called={called} />
           )}
         </View>
       </View>
@@ -382,7 +384,7 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
           changes height mid hand. See the note on the compact seat above. */}
       <View style={styles.betSlot}>
         {showBet && player.currentBet > 0 && !player.sittingOut && (
-          <BetChips amount={player.currentBet} />
+          <BetChips amount={player.currentBet} called={called} />
         )}
       </View>
     </View>
@@ -405,13 +407,13 @@ export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, sho
  * chips behave, and it has the rest of the slot to grow into before it could
  * reach the name.
  */
-function BetChips({ amount }: { amount: number }) {
+function BetChips({ amount, called }: { amount: number; called?: boolean }) {
   return (
     <View style={styles.betRow}>
       <View style={styles.betChips} pointerEvents="none">
         <ChipStack amount={amount} size={BET_CHIP_W} showLabel={false} compact />
       </View>
-      <View style={styles.bet}><Text style={styles.betText}>{amount.toLocaleString()}</Text></View>
+      <View style={styles.bet}><Text style={styles.betText}>{called ? 'Call' : amount.toLocaleString()}</Text></View>
     </View>
   );
 }

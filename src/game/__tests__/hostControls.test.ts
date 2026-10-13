@@ -27,7 +27,7 @@ describe('mid game host controls', () => {
       [
         'ante', 'bigBlind', 'blindLevelLengthHands', 'botSpeed', 'cardBack', 'cardFace',
         'chipStyle', 'difficulty', 'feltStyle', 'mixedDifficulty',
-        'roomVisibility', 'smallBlind', 'startingStack', 'turnTimerSec',
+        'roomVisibility', 'smallBlind', 'turnTimerSec',
       ].sort(),
     );
   });
@@ -80,9 +80,13 @@ describe('mid game host controls', () => {
     it('lets the host retune the rules of play', () => {
       const patch = {
         smallBlind: 25, bigBlind: 50, ante: 5,
-        startingStack: 12_000, turnTimerSec: 45, blindLevelLengthHands: 6,
+        turnTimerSec: 45, blindLevelLengthHands: 6,
       };
       expect(pickMidGameSafe(patch)).toEqual(patch);
+    });
+
+    it('keeps the buy-in fixed once the table is seated', () => {
+      expect(pickMidGameSafe({ startingStack: 12_000, turnTimerSec: 45 })).toEqual({ turnTimerSec: 45 });
     });
 
     it('returns nothing for an empty or wholly unsafe patch', () => {
