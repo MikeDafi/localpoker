@@ -284,6 +284,9 @@ export function positionBonus(seatIndex: number, dealerIndex: number, playerCoun
   return seatsAfterTheButton / playerCount;
 }
 
+/** How close to the balanced bluff frequency each level gets; below 1 under-bluffs. */
+const GTO_BLUFF_SCALE = { medium: 0.8, hard: 1 } as const;
+
 export function decideAction(state: GameState, playerId: string, difficulty: Difficulty = 'medium'): BotDecision {
   const profile = PROFILES[difficulty] ?? PROFILES.medium;
   const legal = legalActions(state, playerId);
@@ -411,7 +414,15 @@ export function decideAction(state: GameState, playerId: string, difficulty: Dif
   // 10% of its bets were made with the worse hand even after raising the rate,
   // so folding to it stayed nearly free. A hand that cannot win unless the
   // other player folds is exactly the right hand to bet.
-  if (mayOpen && bluffing && !valueBetting && legal.actions.includes('bet')) {
+  //
+  // Medium and hard bluff at the balanced frequency for a half-pot bet rather
+  // than at a flat rate, leaning on blockers at the river the way expert does.
+  // A flat rate left their river bets about a fifth bluffs where a balanced
+  // range has more than a quarter, so a river bet could be folded to for free.
+  const gtoBluffing = (difficulty === 'medium' || difficulty === 'hard') && !preflop
+    && bluffRoll < bluffFrequency(0.5, opponents) * GTO_BLUFF_SCALE[difficulty]
+      * (state.street === 'river' ? (hasBlocker(me.holeCards, state.board) ? 1.4 : 0.8) : 1);
+  if (mayOpen && (difficulty === 'medium' || difficulty === 'hard' ? gtoBluffing : bluffing) && !valueBetting && legal.actions.includes('bet')) {
     const desired = Math.floor(pot * 0.5);
     const target = Math.min(Math.max(legal.minBet ?? 0, desired), Math.min(legal.maxBet ?? desired, bluffCap));
     if (target >= (legal.minBet ?? 0) && target < stack) {

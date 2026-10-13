@@ -80,8 +80,10 @@ function digest(difficulty: Difficulty): string {
 describe('easy, medium and hard decisions are unchanged', () => {
   it.each([
     ['easy', '290:8896cba3'],
-    ['medium', '248:f9b36489'],
-    ['hard', '229:273185b0'],
+    // Re-recorded when medium and hard moved to the balanced bluff frequency
+    // (scripts/bot-bluff-share.mts: river bets about a quarter bluffs, as GTO).
+    ['medium', '249:89c0c78'],
+    ['hard', '227:578bb93'],
   ] as const)('%s matches its recorded fingerprint', (difficulty, expected) => {
     expect(digest(difficulty)).toBe(expected);
   }, 120_000);
