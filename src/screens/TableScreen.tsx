@@ -3960,6 +3960,16 @@ function TableMenu({
       .filter((field) => isMidGameSafe(String(field.key))),
     [settings.gameMode, roomCode],
   );
+  /*
+   * Whether there is more of the sheet below what is showing.
+   *
+   * The sheet scrolls, and nothing said so: the indicator was off and the
+   * last visible row ended flush with the bottom, so the rules further down
+   * read as not being there. A fade and a "More below" line say it until the
+   * bottom is reached.
+   */
+  const [scrollBox, setScrollBox] = useState({ view: 0, content: 0, y: 0 });
+  const moreBelow = scrollBox.content - scrollBox.view - scrollBox.y > 8;
 
   if (!visible) return null;
 
@@ -3987,7 +3997,15 @@ function TableMenu({
         {/* Swallows taps on the sheet so only the backdrop closes it. */}
         <Pressable style={styles.menuSheet} onPress={() => {}}>
           <Text style={styles.menuTitle}>Table</Text>
-          <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
+          <View>
+          <ScrollView
+            style={styles.menuScroll}
+            showsVerticalScrollIndicator
+            scrollEventThrottle={32}
+            onLayout={(e) => { const view = e.nativeEvent.layout.height; setScrollBox((b) => ({ ...b, view })); }}
+            onContentSizeChange={(_, content) => setScrollBox((b) => ({ ...b, content }))}
+            onScroll={(e) => { const y = e.nativeEvent.contentOffset.y; setScrollBox((b) => ({ ...b, y })); }}
+          >
 
           {roomCode ? (
             <View style={styles.menuRow} accessibilityLabel={`Room code ${roomCode}`}>
@@ -4124,6 +4142,13 @@ function TableMenu({
             * which one you meant instead.
             */}
           </ScrollView>
+          {moreBelow ? (
+            <View pointerEvents="none" style={styles.menuMoreWrap}>
+              <LinearGradient colors={['rgba(0,0,0,0)', colors.surface]} style={styles.menuMoreFade} />
+              <Text style={styles.menuMoreText}>More below ⌄</Text>
+            </View>
+          ) : null}
+          </View>
           <View style={styles.menuActions}>
             <WiiButton label="Close" size="sm" variant="white" onPress={onClose} />
           </View>
@@ -4427,6 +4452,9 @@ const styles = StyleSheet.create({
   // Capped so a long rule list cannot push the Close button off a short
   // phone, which is the same mistake the result card made.
   menuScroll: { maxHeight: 420 },
+  menuMoreWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' },
+  menuMoreFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 56 },
+  menuMoreText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDarkSoft, paddingBottom: 2 },
   /*
    * The label sits above the values rather than beside them. A row of value
    * pills needs the whole width of the sheet, and sharing it with a label
