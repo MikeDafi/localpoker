@@ -10,7 +10,6 @@ import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { SEAT_GAP, podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
-import { offeredNumberValues } from '../game/settingNumbers';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import {
@@ -39,6 +38,7 @@ import { EmoteBar, type Emote } from '../components/EmoteBar';
 import { FlyingChipStack } from '../components/FlyingChipStack';
 import { RunCountWheel } from '../components/RunCountWheel';
 import { colors, fonts, radii, shadows, spacing, type, numeric, motion, easings } from '../theme/theme';
+import { useHoldRepeat } from '../components/useHoldRepeat';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
 import {
@@ -1829,14 +1829,13 @@ export function TableScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     /*
-     * Whose turn it is, audibly.
+     * Your turn, audibly.
      *
-     * Only your own turn made a sound, so the table was silent while waiting
-     * and there was no way to tell from audio that play had moved on at all.
-     * The two cues are deliberately inverted, rising for you and falling for
-     * everyone else, so they are distinguishable without being compared.
+     * Only your own turn. There used to be a second cue for everybody else's
+     * turn, which played several times a hand for nothing you had to do, and
+     * that is what made the table grating to sit at.
      */
-    const cue = isHumanTurn ? 'turn' : (current && !handOver ? 'turnOther' : null);
+    const cue = isHumanTurn ? 'turn' : null;
     if (!cue) return undefined;
     /*
      * Wait out whatever the action just played rather than talking over it.
@@ -1852,10 +1851,7 @@ export function TableScreen({ navigation, route }: Props) {
     }
     const timer = setTimeout(() => sound.play(cue), wait);
     return () => clearTimeout(timer);
-    // Keyed on who is to act, not on whether it is you. Keying on the latter
-    // meant play passing between two opponents made no sound at all, because
-    // the flag never changed.
-  }, [current?.id, isHumanTurn, handOver]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current?.id, isHumanTurn, handOver]);
 
   const shouldSaveLocalState = !roomCode || !firebaseOnline || isOnlineHost;
 
@@ -2140,7 +2136,7 @@ export function TableScreen({ navigation, route }: Props) {
 
   const startNext = () => {
     const rules = takePendingSettings();
-    sound.play('start');
+    // No sound for an ordinary next hand; only starting the game has one.
     handFlags.current = { vpip: false, pfr: false };
     recorded.current = false;
     setEarned(0);
@@ -3472,8 +3468,10 @@ export function TableScreen({ navigation, route }: Props) {
       >
         {handHint && !human.folded ? (
           <View style={styles.handChipSlot} pointerEvents="none">
-            <View style={styles.handChip}>
-              <Text style={styles.handChipText}>{handHint}</Text>
+            {/* Kept to the gutter beside the hole cards. At full size "Three
+                of a Kind" reached across the left card. */}
+            <View style={[styles.handChip, { maxWidth: Math.max(64, (width - 2 * (width < 380 ? 76 : 86) - 10) / 2 - 10) }]}>
+              <Text style={styles.handChipText} numberOfLines={2}>{handHint}</Text>
             </View>
           </View>
         ) : isShowdown && human.folded && !humanCardsShown ? (
@@ -3989,9 +3987,7 @@ function TableMenu({
                   accessibilityLabel="Table visibility"
                 >
                   <Text style={styles.menuRowLabel}>Visible to everyone</Text>
-                  <Text style={[styles.menuRowValue, isPublic && styles.menuRowValueOn]}>
-                    {isPublic ? 'Public' : 'Private'}
-                  </Text>
+                  <MenuValue text={isPublic ? 'Public' : 'Private'} on={isPublic} />
                 </Pressable>
               ) : null}
             </>
@@ -4020,7 +4016,7 @@ function TableMenu({
                   accessibilityHint="Changes to the next one you own"
                 >
                   <MenuLabel label={MENU_COSMETIC_LABELS[key]} pending={pendingKeys.includes(key)} />
-                  <Text style={styles.menuRowValue}>{labelFor(key)}</Text>
+                  <MenuValue text={labelFor(key)} />
                 </Pressable>
               ))}
             </>
@@ -4041,7 +4037,19 @@ function TableMenu({
             accessibilityHint="Changes to the next chip sound"
           >
             <Text style={styles.menuRowLabel}>Chip sound</Text>
-            <Text style={styles.menuRowValue}>{chipSoundLabel(settings.chipSound)}</Text>
+            <MenuValue text={chipSoundLabel(settings.chipSound)} />
+          </Pressable>
+          {/* This phone's sound, for anyone at the table. Like the chip
+              sound it never leaves the device. */}
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChange({ soundEnabled: !settings.soundEnabled })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.soundEnabled }}
+            accessibilityLabel="Sound"
+          >
+            <Text style={styles.menuRowLabel}>Sound</Text>
+            <MenuValue text={settings.soundEnabled ? 'On' : 'Off'} on={settings.soundEnabled} />
           </Pressable>
 
           {isHost ? (
@@ -4112,6 +4120,69 @@ function MenuLabel({ label, pending }: { label: string; pending?: boolean }) {
   );
 }
 
+/**
+ * The value side of a tappable row, drawn as a button.
+ *
+ * It used to be bare bold text at the end of the row, which nobody read as
+ * something to press: the felt, cards and chips rows looked like a read-out.
+ */
+function MenuValue({ text, on }: { text: string; on?: boolean }) {
+  return (
+    <View style={[styles.menuValuePill, on && styles.menuValuePillOn]}>
+      <Text style={[styles.menuRowValue, on && styles.menuRowValueOn]} numberOfLines={1}>{text}</Text>
+      <Text style={styles.menuValueChevron}>›</Text>
+    </View>
+  );
+}
+
+/** Minus, the value, plus: the same control Game Setup uses, held to ramp. */
+function MenuStepper({ field, value, onChange }: {
+  field: SettingField;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  const step = field.step ?? 1;
+  const min = field.min ?? 0;
+  const max = field.max ?? Number.MAX_SAFE_INTEGER;
+  // Seeded from the value on screen when a press starts, then advanced by
+  // each repeat, which outruns the re-render that would update `value`.
+  const live = useRef(value);
+  const nudge = (direction: 1 | -1) => (multiplier: number) => {
+    const next = Math.max(min, Math.min(max, live.current + direction * step * multiplier));
+    if (next === live.current) return;
+    live.current = next;
+    onChange(next);
+  };
+  const down = useHoldRepeat(nudge(-1));
+  const up = useHoldRepeat(nudge(1));
+  const label = field.key === 'smallBlind' ? formatBlinds(value) : value.toLocaleString();
+  return (
+    <View style={styles.menuStepper}>
+      <Pressable
+        disabled={value <= min}
+        onPressIn={() => { live.current = value; down.onPressIn(); }}
+        onPressOut={down.onPressOut}
+        style={[styles.menuStepBtn, value <= min && styles.menuStepBtnOff]}
+        accessibilityRole="button"
+        accessibilityLabel={`Decrease ${field.label}`}
+      >
+        <Text style={styles.menuStepText}>−</Text>
+      </Pressable>
+      <Text style={styles.menuStepValue} numberOfLines={1}>{label}</Text>
+      <Pressable
+        disabled={value >= max}
+        onPressIn={() => { live.current = value; up.onPressIn(); }}
+        onPressOut={up.onPressOut}
+        style={[styles.menuStepBtn, value >= max && styles.menuStepBtnOff]}
+        accessibilityRole="button"
+        accessibilityLabel={`Increase ${field.label}`}
+      >
+        <Text style={styles.menuStepText}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function MenuSettingRow({
   field,
   value,
@@ -4136,7 +4207,7 @@ function MenuSettingRow({
         accessibilityLabel={field.label}
       >
         <MenuLabel label={field.label} pending={pending} />
-        <Text style={[styles.menuRowValue, on && styles.menuRowValueOn]}>{on ? 'On' : 'Off'}</Text>
+        <MenuValue text={on ? 'On' : 'Off'} on={on} />
       </Pressable>
     );
   }
@@ -4157,54 +4228,22 @@ function MenuSettingRow({
         accessibilityHint="Changes to the next option"
       >
         <MenuLabel label={field.label} pending={pending} />
-        <Text style={styles.menuRowValue}>{current?.label ?? String(value)}</Text>
+        <MenuValue text={current?.label ?? String(value)} />
       </Pressable>
     );
   }
 
   /*
-   * Numbers are picked from a short list here, never stepped.
+   * Numbers step, with a plus and a minus, exactly as in Game Setup.
    *
-   * Only here. Game Setup still has a plus and minus pair, and should: it is
-   * a full screen with room for a readout and a hold-to-ramp, and setting a
-   * table up is the one time somebody might want a number nobody else would
-   * pick. This is a sheet over a live hand with room for neither, and getting
-   * from a 2000 stack to 25000 in it was more than twenty taps.
+   * They were a scrolling strip of preset values for a while, which made the
+   * blinds and the clock the only rules in the app that did not work like
+   * everywhere else. Holding a button ramps, so big jumps are still quick.
    */
-  const step = field.step ?? 1;
-  const min = field.min ?? 0;
-  const max = field.max ?? Number.MAX_SAFE_INTEGER;
-  const current = typeof value === 'number' ? value : min;
-  const choices = offeredNumberValues({ min, max, step, presets: field.presets }, current);
   return (
-    <View style={styles.menuNumberRow}>
+    <View style={styles.menuRow}>
       <MenuLabel label={field.label} pending={pending} />
-      <ScrollView
-        horizontal
-        directionalLockEnabled
-        nestedScrollEnabled
-        alwaysBounceVertical={false}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.menuChoices}
-      >
-        {choices.map((choice) => {
-          const on = choice === current;
-          return (
-            <Pressable
-              key={choice}
-              onPress={() => set(choice)}
-              style={[styles.menuChoice, on && styles.menuChoiceOn]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={`${field.label}: ${field.key === 'smallBlind' ? formatBlinds(choice) : choice.toLocaleString()}`}
-            >
-              <Text style={[styles.menuChoiceText, on && styles.menuChoiceTextOn]}>
-                {field.key === 'smallBlind' ? formatBlinds(choice) : choice.toLocaleString()}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <MenuStepper field={field} value={typeof value === 'number' ? value : field.min ?? 0} onChange={set} />
     </View>
   );
 }
@@ -4295,7 +4334,7 @@ const styles = StyleSheet.create({
    * knowing about it. Pinned top to bottom so it stays vertically centred
    * without needing to know how tall a card is.
    */
-  handChip: { alignSelf: 'flex-start', backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  handChip: { alignSelf: 'flex-start', backgroundColor: colors.surfaceAlt, borderRadius: radii.md, paddingHorizontal: spacing.sm, paddingVertical: 3, marginBottom: 6, marginLeft: 4, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
   /*
    * The slot stretches, the label does not.
    *
@@ -4306,7 +4345,7 @@ const styles = StyleSheet.create({
    * size and still costs the cards no width.
    */
   handChipSlot: { position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center', zIndex: 2 },
-  handChipText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDark },
+  handChipText: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, color: colors.onDark, textAlign: 'center' },
   muckedChip: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginBottom: 6 },
   muckedChipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onDarkSoft },
   friendsBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.md, paddingVertical: 6, paddingHorizontal: spacing.md },
@@ -4343,6 +4382,14 @@ const styles = StyleSheet.create({
   menuRowLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.onDarkSoft, flexShrink: 1 },
   menuRowValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark },
   menuRowValueOn: { color: colors.green },
+  menuValuePill: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0, maxWidth: 170, paddingLeft: spacing.md, paddingRight: spacing.sm, height: 34, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorderStrong, backgroundColor: colors.surfaceAlt },
+  menuValuePillOn: { borderColor: colors.green },
+  menuValueChevron: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 20, color: colors.onDarkMuted },
+  menuStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  menuStepBtn: { width: 36, height: 36, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorderStrong, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  menuStepBtnOff: { opacity: 0.4 },
+  menuStepText: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: colors.onDark },
+  menuStepValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onDark, minWidth: 64, textAlign: 'center', ...numeric },
   menuLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   menuPendingTag: { fontFamily: fonts.semibold, fontSize: 11, color: colors.gold, textTransform: 'uppercase', letterSpacing: 0.4 },
   menuNote: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.onDarkMuted, marginTop: spacing.xs },
@@ -4387,7 +4434,9 @@ const styles = StyleSheet.create({
   // Right aligned, not centred. The gear, Show and chat are different
   // widths, so centring them on a single anchor staggered their edges
   // and the column read as three unrelated buttons.
-  emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 46, alignItems: 'flex-end' },
+  // Low in the hero row, so the gear, Show and chat sit just above the turn
+  // timer instead of floating halfway up the cards.
+  emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 30, alignItems: 'flex-end' },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },
   rebuyNotice: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, textAlign: 'center', marginTop: spacing.xs },

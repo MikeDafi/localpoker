@@ -149,8 +149,30 @@ writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }
  */
 writeWav('fold.wav', tone(240, 0.16, { type: 'tri', vol: 0.35, decay: 1.5, sweep: -300 }));
 // Every cue is one sound. Two-note figures read as the cue firing twice.
-// Yours is a single high note that rises; everyone else's a lower one that falls.
-writeWav('turn.wav', tone(1040, 0.16, { type: 'sine', vol: 0.32, decay: 1.6, sweep: 180 }));
+/*
+ * Your turn: one soft wooden "bonk", like a marimba bar.
+ *
+ * The old cue was a bare 1kHz sine starting at full volume, which is about as
+ * piercing as a phone can make, and it played every single turn. This sits an
+ * octave and a half lower, fades in over a few milliseconds so it has no
+ * click, and carries a little of the bar's own overtone so it reads as an
+ * object being struck rather than as an alarm.
+ */
+function marimba(freq, dur, vol) {
+  const n = Math.floor(SR * dur);
+  const out = new Float32Array(n);
+  const attack = Math.floor(SR * 0.004);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const fund = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t / 0.11);
+    const bar = 0.22 * Math.sin(2 * Math.PI * freq * 3.93 * t) * Math.exp(-t / 0.018);
+    const ramp = i < attack ? i / attack : 1;
+    const tail = Math.min(1, (n - i) / (SR * 0.01));
+    out[i] = (fund + bar) * vol * ramp * tail;
+  }
+  return out;
+}
+writeWav('turn.wav', marimba(587, 0.28, 0.3));
 // Someone else to act. Deliberately the inverse shape of `turn`: two notes
 // falling instead of rising, lower and quieter, so the ear can tell whose
 // turn it is without looking. A rising figure means it is on you.

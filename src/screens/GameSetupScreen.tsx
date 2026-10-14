@@ -145,6 +145,26 @@ export function GameSetupScreen({ navigation, route }: Props) {
             <View style={styles.heroIntro}>
               <Text style={styles.modeLabel}>{isFriends ? 'Private friends table' : 'Quick play vs bots'}</Text>
             </View>
+            {/*
+              * Sound is this phone's, not the table's, so it is not one of the
+              * setup sections. It still belongs within reach here: this is
+              * where somebody about to play on a train finds out it is on.
+              * Written to the app straight away and to the table copy too, or
+              * Start would put back whatever it was when the screen opened.
+              */}
+            <Pressable
+              onPress={() => {
+                const next = !local.soundEnabled;
+                setLocal((prev) => ({ ...prev, soundEnabled: next }));
+                updateSettings({ soundEnabled: next });
+              }}
+              style={[styles.soundToggle, local.soundEnabled && styles.soundToggleOn]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: local.soundEnabled }}
+              accessibilityLabel="Sound"
+            >
+              <Text style={styles.soundToggleText}>{local.soundEnabled ? '🔊 Sound on' : '🔇 Sound off'}</Text>
+            </Pressable>
           </View>
 
           {/* The action buttons stay before the stakes chip because changing
@@ -498,6 +518,17 @@ const styles = StyleSheet.create({
   heroPanel: {
     marginTop: spacing.xs,
   },
+  soundToggle: {
+    paddingHorizontal: spacing.md,
+    height: 32,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.blueDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  soundToggleOn: { borderColor: colors.green },
+  soundToggleText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.ink },
   heroTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

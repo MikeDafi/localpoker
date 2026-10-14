@@ -54,6 +54,24 @@ function winnerAmount(state: GameState, playerId: string): number {
 }
 
 describe('holdem engine', () => {
+  it('deals every run of a multi-run board from the one deck, never reusing a card', () => {
+    const allIn = { ...config, ante: 100, startingStack: 100 };
+    for (const seed of ['runs-a', 'runs-b', 'runs-c', 'runs-d']) {
+      const settled = startHand(createGame(allIn, players(), seed));
+      expect(settled.street).toBe('showdown');
+      const ran = rerunShowdownFromSettled(settled, 3, 0);
+      const seen = new Set<string>();
+      const take = (c: Card) => {
+        const key = `${c.rank}${c.suit}`;
+        expect(seen.has(key), `${key} dealt twice`).toBe(false);
+        seen.add(key);
+      };
+      ran.players.forEach((p) => p.holeCards.forEach(take));
+      expect(ran.runResults).toHaveLength(3);
+      ran.runResults!.forEach((run) => run.board.forEach(take));
+    }
+  });
+
   it('records a short all-in as setting the price without making it the aggressor', () => {
     const state = startHand(createGame(config, players(), 'short-shove'));
     const actor = state.currentPlayerIndex;
