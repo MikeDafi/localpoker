@@ -734,10 +734,22 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const [closingBets, setClosingBets] = useState<Record<string, { amount: number; called: boolean }> | null>(null);
   const prevBetsState = useRef<GameState | null>(null);
+  /*
+   * The timer lives outside the effect. As effect cleanup it was cancelled by
+   * whatever update came next, and one usually lands inside the beat (a bot
+   * acting, the guest's private view arriving), so the hold was never lifted
+   * and the next street drew the old street's chips and "Call" over its own.
+   */
+  const closingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (closingTimer.current) clearTimeout(closingTimer.current); }, []);
   useEffect(() => {
     const prev = prevBetsState.current;
     prevBetsState.current = state;
-    if (!prev || animsOff || prev.handNumber !== state.handNumber || prev.street === state.street || prev.street === 'showdown') return undefined;
+    if (!prev || prev.handNumber !== state.handNumber) {
+      if (closingTimer.current) clearTimeout(closingTimer.current);
+      setClosingBets(null);
+    }
+    if (!prev || animsOff || prev.handNumber !== state.handNumber || prev.street === state.street || prev.street === 'showdown') return;
     const bets: Record<string, { amount: number; called: boolean }> = {};
     prev.players.forEach((p, i) => {
       const added = (state.contributions[p.id] ?? 0) - (prev.contributions[p.id] ?? 0);
@@ -746,10 +758,10 @@ export function TableScreen({ navigation, route }: Props) {
       // The player whose chips went in on this update made the closing call.
       bets[p.id] = { amount, called: added > 0 ? amount <= prev.currentBet : calledThisStreet(prev, i) };
     });
-    if (Object.keys(bets).length === 0) return undefined;
+    if (Object.keys(bets).length === 0) return;
     setClosingBets(bets);
-    const timer = setTimeout(() => setClosingBets(null), STREET_BEAT_MS);
-    return () => clearTimeout(timer);
+    if (closingTimer.current) clearTimeout(closingTimer.current);
+    closingTimer.current = setTimeout(() => setClosingBets(null), STREET_BEAT_MS);
   }, [state, animsOff]);
   const seatBet = (p: { id: string; currentBet: number }, called: boolean) => {
     const held = closingBets?.[p.id];
@@ -3340,7 +3352,9 @@ export function TableScreen({ navigation, route }: Props) {
                 compact
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
-                showBet={!isShowdown}
+                // A river call ends the hand in the same update, so its chips
+                // are only ever drawn by the hold; showdown must not hide them.
+                showBet={!isShowdown || !!closingBets?.[p.id]}
                 called={seatBet(p, calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === p.id))).called}
                 showCards={showAllCards}
                 shownCards={shownCards}
@@ -3377,7 +3391,7 @@ export function TableScreen({ navigation, route }: Props) {
               isHuman
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
-              showBet={!isShowdown}
+              showBet={!isShowdown || !!closingBets?.[human.id]}
               called={seatBet(human, calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === human.id))).called}
               back={cardBack}
               won={humanWon && !multiRunVerdict}
