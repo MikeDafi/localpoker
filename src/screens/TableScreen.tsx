@@ -3762,7 +3762,13 @@ export function TableScreen({ navigation, route }: Props) {
                 * A pot won on a fold is deliberately not covered. Nobody saw
                 * that hand, so showing a bluff is still a real choice.
                 */}
-              {!handsTabled && !(isShowdown && humanCardsShown) && (
+              {/*
+                * Uncontested, `humanCardsShown` can be true with auto-muck
+                * off and the pot won, but nothing ever sends those cards to
+                * anybody, so the button vanished on exactly the hands it is
+                * for. Only an actual show takes it away there.
+                */}
+              {!handsTabled && !(isShowdown && (contestedShowdown ? humanCardsShown : reveal === 'show')) && (
                 <Pressable
                   onPress={() => {
                     sound.play('tap');
