@@ -406,6 +406,13 @@ function logOk(message) {
     }));
     logOk('someone not seated cannot act at the table');
 
+    // The counter is gated on a seat, but the action node used to be gated on
+    // auth alone, so writing only the action slipped a stranger's fold into
+    // the queue for the host to read.
+    await assertFails(set(ref(strangerDb, 'localpoker/rooms/PLAY1/actions/a3only'),
+      { playerId: 'stranger', type: 'fold', seq: 3, ts: 53 }));
+    logOk('not even by writing the action without the counter');
+
     await assertFails(update(ref(playerDb), {
       'localpoker/rooms/PLAY1/actions/a4': { playerId: 'host', type: 'fold', seq: 3, ts: 54 },
       'localpoker/rooms/PLAY1/actionSeq': 3,

@@ -323,8 +323,13 @@
             }
           },
           "actions": {
+            /*
+             * Only a seated player may queue an action. Without the seat check
+             * a stranger could drop a fold or bet into any live room by writing
+             * the action alone, without the actionSeq bump that is gated.
+             */
             "$id": {
-              ".write": "auth != null && newData.child('playerId').val() === auth.uid",
+              ".write": "auth != null && newData.child('playerId').val() === auth.uid && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
               ".validate": "newData.hasChildren(['playerId','type','seq','ts']) && newData.child('playerId').val() === auth.uid && newData.child('type').isString() && (newData.child('type').val() === 'fold' || newData.child('type').val() === 'check' || newData.child('type').val() === 'call' || newData.child('type').val() === 'bet' || newData.child('type').val() === 'raise' || newData.child('type').val() === 'allin') && newData.child('seq').isNumber() && root.child('localpoker').child('rooms').child($code).child('actionSeq').isNumber() && newData.child('seq').val() > root.child('localpoker').child('rooms').child($code).child('actionSeq').val() && newData.child('seq').val() <= 9007199254740990 && newData.child('ts').isNumber() && (!newData.child('amount').exists() || newData.child('amount').isNumber())"
             }
           }
