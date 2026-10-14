@@ -188,6 +188,7 @@ function resetStreetBets(state: GameState): void {
   state.currentBet = 0;
   state.minRaise = state.config.bigBlind;
   state.lastAggressorIndex = null;
+  state.priceSetterIndex = null;
   for (const player of state.players) {
     player.currentBet = 0;
     player.hasActed = false;
@@ -212,6 +213,7 @@ function markAggression(state: GameState, aggressorIndex: number, raiseSize: num
   state.currentBet = state.players[aggressorIndex].currentBet;
   state.minRaise = Math.max(state.currentBet, raiseSize, state.config.bigBlind);
   state.lastAggressorIndex = aggressorIndex;
+  state.priceSetterIndex = aggressorIndex;
   for (const [index, player] of state.players.entries()) {
     if (canAct(player)) player.hasActed = index === aggressorIndex;
   }
@@ -586,6 +588,7 @@ export function startHand(state: GameState): GameState {
   const bigPosted = commitChips(next, bigBlindIndex, next.config.bigBlind);
   next.currentBet = Math.max(smallPosted, bigPosted);
   next.lastAggressorIndex = bigBlindIndex;
+  next.priceSetterIndex = bigBlindIndex;
   refreshPots(next);
   next.log.push(`${next.players[smallBlindIndex].name} posts small blind ${smallPosted}`);
   next.log.push(`${next.players[bigBlindIndex].name} posts big blind ${bigPosted}`);
@@ -692,6 +695,7 @@ export function applyAction(state: GameState, playerId: string, action: PlayerAc
     if (targetBet > previousBet) {
       const raiseSize = targetBet - previousBet;
       next.currentBet = targetBet;
+      next.priceSetterIndex = actorIndex;
       const fullBetOrRaise = previousBet === 0 ? targetBet >= next.config.bigBlind : raiseSize >= previousMinRaise;
       if (fullBetOrRaise) {
         markAggression(next, actorIndex, previousBet === 0 ? targetBet : raiseSize);

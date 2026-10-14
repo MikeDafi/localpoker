@@ -65,6 +65,7 @@ export type PublicGameState = {
    * first at a showdown. Absent when the street was checked through.
    */
   lastAggressorIndex?: number;
+  priceSetterIndex?: number;
   handNumber: number;
   street: Street;
   winners: Winner[];
@@ -273,6 +274,7 @@ export function redactGameState(
       currentBet: state.currentBet,
       minRaise: state.minRaise,
       ...(state.lastAggressorIndex !== null ? { lastAggressorIndex: state.lastAggressorIndex } : {}),
+      ...(typeof state.priceSetterIndex === 'number' ? { priceSetterIndex: state.priceSetterIndex } : {}),
       handNumber: state.handNumber,
       street: state.street,
       winners: state.winners.map((winner) => ({
@@ -340,6 +342,7 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
     // Without it every guest walked the showdown as if the river had been
     // checked through, so the player who bet was asked whether to show.
     lastAggressorIndex: typeof publicState.lastAggressorIndex === 'number' ? publicState.lastAggressorIndex : null,
+    priceSetterIndex: typeof publicState.priceSetterIndex === 'number' ? publicState.priceSetterIndex : null,
     handNumber: publicState.handNumber,
     winners: (publicState.winners ?? []).map((winner) => ({
       playerId: winner.playerId,

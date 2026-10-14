@@ -54,6 +54,17 @@ function winnerAmount(state: GameState, playerId: string): number {
 }
 
 describe('holdem engine', () => {
+  it('records a short all-in as setting the price without making it the aggressor', () => {
+    const state = startHand(createGame(config, players(), 'short-shove'));
+    const actor = state.currentPlayerIndex;
+    const bigBlind = state.lastAggressorIndex;
+    state.players[actor].chips = 14;
+    const next = must(applyAction(state, state.players[actor].id, 'allin'));
+    expect(next.currentBet).toBe(14);
+    expect(next.lastAggressorIndex).toBe(bigBlind);
+    expect(next.priceSetterIndex).toBe(actor);
+  });
+
   it('posts blinds, deals two hole cards, and sets first action', () => {
     const state = startHand(createGame(config, players(), 'blinds'));
 

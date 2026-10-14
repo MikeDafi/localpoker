@@ -732,7 +732,10 @@ export function TableScreen({ navigation, route }: Props) {
    * drawn in front of them and "Call" was never seen. For the beat before the
    * next card lands, each seat keeps the chips it closed the street with.
    */
-  const [closingBets, setClosingBets] = useState<Record<string, { amount: number; called: boolean }> | null>(null);
+  const [closingHold, setClosingHold] = useState<{ hand: number; bets: Record<string, { amount: number; called: boolean }> } | null>(null);
+  // Only ever this hand's. The hold is cleared by an effect, which runs after
+  // the first frame of the next hand has already drawn the last one's chips.
+  const closingBets = closingHold?.hand === state.handNumber ? closingHold.bets : null;
   const prevBetsState = useRef<GameState | null>(null);
   /*
    * The timer lives outside the effect. As effect cleanup it was cancelled by
@@ -747,9 +750,12 @@ export function TableScreen({ navigation, route }: Props) {
     prevBetsState.current = state;
     if (!prev || prev.handNumber !== state.handNumber) {
       if (closingTimer.current) clearTimeout(closingTimer.current);
-      setClosingBets(null);
+      setClosingHold(null);
     }
     if (!prev || animsOff || prev.handNumber !== state.handNumber || prev.street === state.street || prev.street === 'showdown') return;
+    // Won uncontested: everybody else folded, so nobody called anything and
+    // the bet that took it down needs no holding.
+    if (state.players.filter((p) => !p.folded).length < 2) return;
     const bets: Record<string, { amount: number; called: boolean }> = {};
     prev.players.forEach((p, i) => {
       const added = (state.contributions[p.id] ?? 0) - (prev.contributions[p.id] ?? 0);
@@ -759,9 +765,9 @@ export function TableScreen({ navigation, route }: Props) {
       bets[p.id] = { amount, called: added > 0 ? amount <= prev.currentBet : calledThisStreet(prev, i) };
     });
     if (Object.keys(bets).length === 0) return;
-    setClosingBets(bets);
+    setClosingHold({ hand: state.handNumber, bets });
     if (closingTimer.current) clearTimeout(closingTimer.current);
-    closingTimer.current = setTimeout(() => setClosingBets(null), STREET_BEAT_MS);
+    closingTimer.current = setTimeout(() => setClosingHold(null), STREET_BEAT_MS);
   }, [state, animsOff]);
   const seatBet = (p: { id: string; currentBet: number }, called: boolean) => {
     const held = closingBets?.[p.id];
@@ -3352,9 +3358,11 @@ export function TableScreen({ navigation, route }: Props) {
                 compact
                 isCurrent={current?.id === p.id && !isShowdown}
                 isDealer={dealerId === p.id}
-                // A river call ends the hand in the same update, so its chips
-                // are only ever drawn by the hold; showdown must not hide them.
-                showBet={!isShowdown || !!closingBets?.[p.id]}
+                // Once the hand is over only the held closing call is drawn.
+                // The engine leaves the river's bets on each player, and
+                // showing them until the results opened put the caller's
+                // amount back up as a bet after the "Call" had gone.
+                showBet={!handOver || !!closingBets?.[p.id]}
                 called={seatBet(p, calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === p.id))).called}
                 showCards={showAllCards}
                 shownCards={shownCards}
@@ -3391,7 +3399,7 @@ export function TableScreen({ navigation, route }: Props) {
               isHuman
               isCurrent={isHumanTurn}
               isDealer={dealerId === human.id}
-              showBet={!isShowdown || !!closingBets?.[human.id]}
+              showBet={!handOver || !!closingBets?.[human.id]}
               called={seatBet(human, calledThisStreet(felt, felt.players.findIndex((fp) => fp.id === human.id))).called}
               back={cardBack}
               won={humanWon && !multiRunVerdict}

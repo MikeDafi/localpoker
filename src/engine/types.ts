@@ -59,6 +59,12 @@ export interface GameState {
   currentBet: number;
   minRaise: number;
   lastAggressorIndex: number | null;
+  /**
+   * Who set the price everyone else is matching this street. Usually the last
+   * aggressor, but a short all-in raises the price without reopening the
+   * betting, so it is not counted as aggression and only shows up here.
+   */
+  priceSetterIndex?: number | null;
   handNumber: number;
   winners: Winner[];
   runCount?: number;
