@@ -5,6 +5,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { PalAvatar, PalAvatarProps, PalExpression } from './PalAvatar';
 import { getAppReduceMotion, subscribeAppReduceMotion } from '../theme/motionPreference';
+import { propsEqual } from './propsEqual';
 
 export interface AnimatedPalProps extends PalAvatarProps {
   /** enable organic idle motion + natural blinking */
@@ -21,7 +22,7 @@ const quickEase = Easing.out(Easing.cubic);
  * Wraps PalAvatar with layered game-avatar motion: breath, bob, sway,
  * randomized blinking, and expression-specific reaction pops. Honors reduce-motion.
  */
-export function AnimatedPal({
+function AnimatedPalInner({
   alive = true,
   reaction,
   ring,
@@ -276,3 +277,10 @@ export function AnimatedPal({
     </Animated.View>
   );
 }
+
+/**
+ * Memoised by value: the table hands this fresh object literals on every
+ * render, a timer tick included, so reference equality never skipped one.
+ * See propsEqual.
+ */
+export const AnimatedPal = React.memo(AnimatedPalInner, propsEqual);

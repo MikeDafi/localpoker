@@ -14,6 +14,7 @@ import {
   pipTransform,
   rankLabel,
 } from '../game/cardFace';
+import { propsEqual } from './propsEqual';
 
 export type { Suit };
 export { RANK_LABEL, rankLabel } from '../game/cardFace';
@@ -140,7 +141,7 @@ export function CardFaceContent({
  * opponent's card up to an 86pt hole card, instead of a pile of size
  * thresholds that quietly switch detail off.
  */
-export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, corners, back }: PlayingCardProps) {
+function PlayingCardInner({ rank, suit, faceDown, size = 56, dimmed, style, corners, back }: PlayingCardProps) {
   const g = useMemo(() => faceGeometry(size), [size]);
   const cardRadius = g.w * 0.085;
   /*
@@ -223,3 +224,10 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
 });
+
+/**
+ * Memoised by value: the table hands this fresh object literals on every
+ * render, a timer tick included, so reference equality never skipped one.
+ * See propsEqual.
+ */
+export const PlayingCard = React.memo(PlayingCardInner, propsEqual);

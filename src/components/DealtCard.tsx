@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated';
 import { PlayingCard, PlayingCardProps } from './PlayingCard';
 import { motion, easings } from '../theme/theme';
+import { propsEqual } from './propsEqual';
 
 export interface DealtCardProps extends Omit<PlayingCardProps, 'faceDown'> {
   /** Where the card is thrown from, as an offset (px) from its resting spot. */
@@ -34,7 +35,7 @@ export interface DealtCardProps extends Omit<PlayingCardProps, 'faceDown'> {
  * edge-on and mis-render the table, so this keeps the same read without the
  * 3D layer.
  */
-export function DealtCard({
+function DealtCardInner({
   fromX = 0,
   fromY = -160,
   delay = 0,
@@ -142,3 +143,10 @@ export function DealtCard({
     </Animated.View>
   );
 }
+
+/**
+ * Memoised by value: the table hands this fresh object literals on every
+ * render, a timer tick included, so reference equality never skipped one.
+ * See propsEqual.
+ */
+export const DealtCard = React.memo(DealtCardInner, propsEqual);

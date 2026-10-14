@@ -13,6 +13,7 @@ import type { Emote } from './EmoteBar';
 import type { Player } from '../engine';
 import type { CardBackVariant } from './CardBack';
 import type { MaybeHoleCard } from '../game/holeCardExposure';
+import { propsEqual } from './propsEqual';
 
 export interface SeatProps {
   player: Player;
@@ -128,7 +129,7 @@ const EXPOSED_CARD_SCALE = 2.5;
 /** A compact pod's width when the rail has room for it. */
 const COMPACT_POD_W = 84;
 
-export function Seat({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, called = false, handOff = false, back, cardsLeft = false, avatarSize = 42, podWidth = COMPACT_POD_W }: SeatProps) {
+function SeatInner({ player, pal, isCurrent, isDealer, isHuman, showCards, shownCards, displayCards, won, lost, reaction, idleMotion = true, compact = false, emote = null, dealKey, dealFrom, dealDelay = 0, dealStep = 400, dealAnimate = true, showBet = true, called = false, handOff = false, back, cardsLeft = false, avatarSize = 42, podWidth = COMPACT_POD_W }: SeatProps) {
   const dimmed = player.folded || player.sittingOut;
   const pulse = useSharedValue(0);
 
@@ -585,3 +586,10 @@ const styles = StyleSheet.create({
   cNameNarrow: { fontSize: 10 },
   cChipsNarrow: { fontSize: 12 },
 });
+
+/**
+ * Memoised by value: the table hands this fresh object literals on every
+ * render, a timer tick included, so reference equality never skipped one.
+ * See propsEqual.
+ */
+export const Seat = React.memo(SeatInner, propsEqual);

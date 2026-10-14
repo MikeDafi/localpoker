@@ -5,6 +5,7 @@ import { colors, fonts } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { resolveChips, type ChipPalette } from '../game/cosmetics';
 import { chipStackGeometry, compactChipCount, shade, vivid } from '../game/chipStackLook';
+import { propsEqual } from './propsEqual';
 
 /**
  * Denominations, coloured by whichever chip set the table is using.
@@ -187,7 +188,7 @@ export interface ChipStackProps {
   palette?: ChipPalette;
 }
 
-export function ChipStack({ amount, size = 26, showLabel = true, compact, palette: override }: ChipStackProps) {
+function ChipStackInner({ amount, size = 26, showLabel = true, compact, palette: override }: ChipStackProps) {
   /*
    * Read from the table's settings rather than taken as a prop.
    *
@@ -253,3 +254,10 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
 });
+
+/**
+ * Memoised by value: the table hands this fresh object literals on every
+ * render, a timer tick included, so reference equality never skipped one.
+ * See propsEqual.
+ */
+export const ChipStack = React.memo(ChipStackInner, propsEqual);
