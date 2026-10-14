@@ -419,11 +419,17 @@ export function TableScreen({ navigation, route }: Props) {
     }
 
     if (isOnlineHost) {
+      /*
+       * Never step the host back. The database fires this the moment the
+       * host's own write lands locally, before the publish has finished and
+       * updated the cache, so taking the cache unconditionally put the host's
+       * screen back to the state before their own action: their chips came
+       * off the felt and stayed off until somebody else acted.
+       */
       const cached = getCachedHostGame(roomCode);
-      if (cached) {
-        setState(cached);
-        return;
-      }
+      const live = stateRef.current;
+      if (cached && (!live || atLeastAsFresh(cached, live))) setState(cached);
+      if (cached) return;
     }
 
     /*
