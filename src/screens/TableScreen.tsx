@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { AppState, View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, FadeInUp, FadeOut, Easing } from 'react-native-reanimated';
@@ -1917,6 +1917,37 @@ export function TableScreen({ navigation, route }: Props) {
    * resume. Writing once more on unmount stamps `savedAt` at the instant you
    * actually left, which is what makes the timer pick up where it was.
    */
+  /*
+   * Leaving the app counts as stepping away.
+   *
+   * iOS can end a backgrounded app at any time, and when it did, coming back
+   * found nothing to resume: a guest never saves the table at all, and a
+   * host's last autosave was not marked as a step away, so the 15 second rule
+   * for dropped players threw it out. Saving the step away the moment the app
+   * goes to the background puts Resume on the home screen either way. Whether
+   * the room is still there is checked there before it is offered.
+   */
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'background' || skipNextTableSave.current) return;
+      const s = snapshot.current;
+      if (!s.roomCode) return; // a bots game already saves and always resumes
+      cancelPendingSave();
+      saveGame({
+        stateJson: JSON.stringify(s.state),
+        settings: s.settings,
+        seed: s.seed,
+        roomCode: s.roomCode,
+        handNumber: s.state.handNumber,
+        savedAt: Date.now(),
+        turnStartedAt: s.turnStartedAt,
+        ...(s.tournamentStartedAt !== null ? { tournamentStartedAt: s.tournamentStartedAt } : {}),
+        steppedAway: true,
+      });
+    });
+    return () => sub.remove();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => () => {
     // Chips are played on a stagger, so leaving mid-rattle would otherwise
     // carry the sound onto whatever screen comes next.
