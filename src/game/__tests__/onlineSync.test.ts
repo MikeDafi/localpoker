@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, createGame, startHand, type ActionResult, type GameConfig, type GameState, type PlayerInput } from '../../engine';
-import { applyHostIntent, hydrateGameState, redactGameState, shouldEndOnlineTableForTooFewPlayers, validateHostIntent } from '../onlineSync';
+import { applyHostIntent, atLeastAsFresh, hydrateGameState, redactGameState, shouldEndOnlineTableForTooFewPlayers, validateHostIntent } from '../onlineSync';
 
 const config: GameConfig = {
   smallBlind: 5,
@@ -159,5 +159,16 @@ describe('online table lifecycle', () => {
         host: { id: 'host' },
       },
     })).toBe(false);
+  });
+});
+
+describe('atLeastAsFresh', () => {
+  it('prefers the later hand, then the longer log within a hand', () => {
+    const at = (handNumber: number, entries: number) => ({ handNumber, log: Array.from({ length: entries }, () => 'x') });
+    expect(atLeastAsFresh(at(4, 2), at(3, 50))).toBe(true);
+    expect(atLeastAsFresh(at(3, 50), at(4, 2))).toBe(false);
+    // A publish that finished late must not stand in for the river.
+    expect(atLeastAsFresh(at(4, 9), at(4, 12))).toBe(false);
+    expect(atLeastAsFresh(at(4, 12), at(4, 12))).toBe(true);
   });
 });

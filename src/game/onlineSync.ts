@@ -111,6 +111,25 @@ export type OnlineTablePlayerCountSource = {
   players?: Record<string, unknown> | null;
 };
 
+/**
+ * Whether `a` is at least as far along as `b`.
+ *
+ * The host keeps two copies of the game: the screen's state and the copy
+ * cached at each publish. Publishes overlap, so an older one finishing last
+ * used to leave the cache a step behind the table, and every action after
+ * that was judged against the stale copy, where it was not that player's
+ * turn. Nothing was published on a rejection, so nothing ever caught the
+ * cache up, and a guest could tap Check on the river forever. The log only
+ * grows within a hand, which makes it the cheapest honest measure of progress.
+ */
+export function atLeastAsFresh(
+  a: Pick<GameState, 'handNumber' | 'log'>,
+  b: Pick<GameState, 'handNumber' | 'log'>,
+): boolean {
+  if (a.handNumber !== b.handNumber) return a.handNumber > b.handNumber;
+  return a.log.length >= b.log.length;
+}
+
 export function shouldEndOnlineTableForTooFewPlayers(
   room: OnlineTablePlayerCountSource | null | undefined,
 ): boolean {

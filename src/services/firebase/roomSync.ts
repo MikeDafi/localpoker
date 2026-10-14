@@ -34,6 +34,7 @@ import {
   applyConnectionStatusToGameState,
   redactGameState,
   shouldEndOnlineTableForTooFewPlayers,
+  atLeastAsFresh,
   type ExposedHoleCardsByPlayer,
   type PublicGameState,
 } from '../../game/onlineSync';
@@ -226,11 +227,13 @@ export const getCachedHostGame = (code: string): GameState | null => {
   return roomCode ? hostGameCache.get(roomCode) ?? null : null;
 };
 
-const setCachedHostGame = (code: string, state: GameState): void => {
+const setCachedHostGame = (code: string, state: GameState, fresh = false): void => {
   const roomCode = cleanKey(code);
-  if (roomCode) {
-    hostGameCache.set(roomCode, state);
-  }
+  if (!roomCode) return;
+  // Never let a slower, older publish overwrite a newer one. See atLeastAsFresh.
+  const cached = hostGameCache.get(roomCode);
+  if (cached && !fresh && !atLeastAsFresh(state, cached)) return;
+  hostGameCache.set(roomCode, state);
 };
 
 const isRoomAction = (value: unknown): value is RoomAction => {
@@ -1492,7 +1495,8 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
 
     await updateRoot(db, updates);
     await registerDisconnect(db, roomCode, hostId, true);
-    setCachedHostGame(roomCode, state);
+    // A new game in a room that has hosted one before starts again at hand 1.
+    setCachedHostGame(roomCode, state, true);
     return { ok: true, state, publicState };
   } catch (error) {
     reportFirebaseError('start-room-game', error);

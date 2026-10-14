@@ -84,7 +84,7 @@ import {
   totalCommittedChips,
   type ChipPoint,
 } from '../game/chipMotion';
-import { applyHostIntent, hydrateGameState } from '../game/onlineSync';
+import { applyHostIntent, atLeastAsFresh, hydrateGameState } from '../game/onlineSync';
 import { abandonedPlayers, noteActed, noteTimeout, type TimeoutCounts } from '../game/turnTimeouts';
 import type { Difficulty } from '../engine/bot';
 import {
@@ -450,7 +450,12 @@ export function TableScreen({ navigation, route }: Props) {
 
     return subscribeActions(roomCode, (action) => {
       setState((prev) => {
-        const currentState = getCachedHostGame(roomCode) ?? stateRef.current ?? prev;
+        // Whichever copy is further along. The cache carries presence folds the
+        // screen never saw; the screen can be ahead of a cache that a slow
+        // publish has not caught up yet.
+        const live = stateRef.current ?? prev;
+        const cached = getCachedHostGame(roomCode);
+        const currentState = cached && atLeastAsFresh(cached, live) ? cached : live;
         setTurnTimeouts((counts) => noteActed(counts, action.playerId));
         const result = applyHostIntent(currentState, action.playerId, {
           type: action.type,
@@ -1102,6 +1107,18 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const showdownHands = useMemo(() => {
     if (multiRunVerdict) return [];
+    /*
+     * Nothing is laid out in the beat between the last action and the result.
+     *
+     * The walk only starts once the result opens, and before that `revealShown`
+     * is undefined, which reads as "everybody showed". So every hand left in
+     * the pot started flying to the felt and was then pulled back the moment
+     * the walk began, which on a hand that was later mucked looked like the
+     * player was about to show and changed their mind. Found by simulating
+     * fourteen hands and logging each seat. A run-out tables its hands on
+     * purpose and is not affected.
+     */
+    if (!isShowdown && !runoutTabling && !runShowdown) return [];
     return selectShowdownHands(felt.winners, felt.players, {
       localPlayerId: human.id,
       /*
@@ -1121,7 +1138,7 @@ export function TableScreen({ navigation, route }: Props) {
       // hands sideways under a board that is still changing.
       seatOrder: handsTabled,
     });
-  }, [multiRunVerdict, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
+  }, [isShowdown, multiRunVerdict, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -1534,7 +1551,14 @@ export function TableScreen({ navigation, route }: Props) {
     const live = stateRef.current;
     if (!live) return null;
     const cached = roomCode ? getCachedHostGame(roomCode) : null;
-    return cached && cached.handNumber === live.handNumber ? cached : live;
+    /*
+     * Same hand was not enough. The cache can trail the screen within a hand
+     * too, when publishes overlap, and republishing it for a card being shown
+     * took the river back off the board for everyone until the showdown put it
+     * back. The showdown republish also bailed on the stale copy because it
+     * was not a showdown yet, so the hand that was turned over never arrived.
+     */
+    return cached && atLeastAsFresh(cached, live) ? cached : live;
   }, [roomCode]);
 
   /*
