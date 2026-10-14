@@ -502,4 +502,20 @@ describe('room writes are keyed by auth.uid', () => {
 
     expect(delivered).toEqual([1, 2, 3]);
   });
+
+  it('closes the table when a guest leaves while the host is mid-reconcile', async () => {
+    const { subscribeRoom, TOO_FEW_PLAYERS_REASON } = await import('../roomSync');
+    const both = { hostId: AUTH_UID, status: 'playing', players: { [AUTH_UID]: { connected: true }, other: { connected: true } } };
+    const alone = { ...both, players: { [AUTH_UID]: { connected: true } } };
+    readValues.set('localpoker/rooms/ROOM12', alone);
+
+    subscribeRoom('ROOM12', () => {});
+    const emitRoom = valueHandlers[valueHandlers.length - 1]!;
+    // The second update lands before the first reconcile has signed in.
+    emitRoom({ exists: () => true, val: () => both } as never);
+    emitRoom({ exists: () => true, val: () => alone } as never);
+    await vi.waitFor(() => {
+      expect(mergedRootUpdates()['localpoker/rooms/ROOM12/endedReason']).toBe(TOO_FEW_PLAYERS_REASON);
+    });
+  });
 });

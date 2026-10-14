@@ -3290,7 +3290,7 @@ export function TableScreen({ navigation, route }: Props) {
           return (
             <ShowdownReveal
               key={`${state.handNumber}-${placed.playerId}`}
-              revealKey={`${state.handNumber}-${placed.playerId}`}
+              revealKey={`${roomCode ?? seed}-${state.handNumber}-${placed.playerId}`}
               cards={hand.hole}
               from={revealFrom(placed.playerId)}
               to={placed.targets}

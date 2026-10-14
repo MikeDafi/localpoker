@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing, SharedValue, WithTimingConfig } from 'react-native-reanimated';
 import { PlayingCard, Suit } from './PlayingCard';
 import { REVEAL_BEATS } from '../game/showdownLayout';
 import { colors, radii, motion, easings } from '../theme/theme';
@@ -42,6 +42,50 @@ export interface ShowdownRevealProps {
  */
 export const REVEAL = REVEAL_BEATS;
 
+/*
+ * When each tabled hand started its entrance, by reveal key.
+ *
+ * The reveal remounts whenever the row under the board is rebuilt, which
+ * happens mid-showdown: a hand joins or leaves the row, or a card's face
+ * becomes known. Every remount started the sequence again from the seat, so
+ * the player watched their own cards fly out, get yanked back and fly out a
+ * second time. Remembering when it started lets a remount pick up where the
+ * first one had got to instead.
+ */
+const revealStarts = new Map<string, number>();
+const REVEAL_MEMORY_MS = 10 * 60 * 1000;
+
+const startedAtFor = (revealKey: string | undefined): number => {
+  const now = Date.now();
+  if (!revealKey) return now;
+  const known = revealStarts.get(revealKey);
+  if (known !== undefined && now - known < REVEAL_MEMORY_MS) return known;
+  for (const [key, at] of revealStarts) {
+    if (now - at >= REVEAL_MEMORY_MS) revealStarts.delete(key);
+  }
+  revealStarts.set(revealKey, now);
+  return now;
+};
+
+/** How far a beat has got `elapsed` ms into the sequence, 0 to 1. */
+const progressAt = (elapsed: number, delay: number, duration: number): number =>
+  Math.min(1, Math.max(0, (elapsed - delay) / duration));
+
+/** Run one beat from wherever `elapsed` puts it, rather than from the start. */
+const resumeBeat = (
+  value: SharedValue<number>,
+  elapsed: number,
+  delay: number,
+  duration: number,
+  easing?: WithTimingConfig['easing'],
+): void => {
+  const p = progressAt(elapsed, delay, duration);
+  value.value = p;
+  if (p >= 1) return;
+  const timing = withTiming(1, { duration: duration * (1 - p), ...(easing ? { easing } : {}) });
+  value.value = elapsed < delay ? withDelay(delay - elapsed, timing) : timing;
+};
+
 /**
  * The winner's hole cards being shown and then laid out with the board.
  *
@@ -65,11 +109,14 @@ export function ShowdownReveal({
   animate = true,
   revealKey,
 }: ShowdownRevealProps) {
+  const [startedAt] = useState(() => startedAtFor(revealKey));
   return (
     <View style={styles.layer} pointerEvents="none">
       {cards.map((card, i) => (
         <RevealedCard
-          key={`${revealKey}-${i}-${card ? `${card.rank}${card.suit}` : 'hidden'}`}
+          // By slot alone. Keying on the card's face remounted a card the
+          // moment it became known, which replayed its entrance.
+          key={`${revealKey}-${i}`}
           card={card}
           from={from}
           to={to[i] ?? { x: from.x, y: from.y }}
@@ -79,6 +126,7 @@ export function ShowdownReveal({
           highlight={!!highlight[i]}
           animate={animate}
           index={i}
+          startedAt={startedAt}
         />
       ))}
     </View>
@@ -95,6 +143,7 @@ function RevealedCard({
   highlight,
   animate,
   index,
+  startedAt,
 }: {
   card: RevealCard | null;
   from: { x: number; y: number };
@@ -105,19 +154,23 @@ function RevealedCard({
   highlight: boolean;
   animate: boolean;
   index: number;
+  startedAt: number;
 }) {
   const h = bigSize * 1.42;
   const minScale = smallSize / bigSize;
 
-  // 0 = still at the seat, 1 = resting in the community row.
-  const travel = useSharedValue(animate ? 0 : 1);
-  // 0 = face down, 1 = face up.
-  const flip = useSharedValue(animate ? 0 : 1);
-  // 0 = seat-sized, 1 = full size.
-  const grow = useSharedValue(animate ? 0 : 1);
-  const ring = useSharedValue(animate ? 0 : 1);
-
   const stagger = index * REVEAL.perCard;
+  const [mountedAt] = useState(() => Date.now() - startedAt);
+  const initial = (delay: number, duration: number) =>
+    animate ? progressAt(mountedAt, delay + stagger, duration) : 1;
+
+  // 0 = still at the seat, 1 = resting in the community row.
+  const travel = useSharedValue(initial(REVEAL.move, REVEAL.travelMs));
+  // 0 = face down, 1 = face up.
+  const flip = useSharedValue(initial(REVEAL.flip, motion.base));
+  // 0 = seat-sized, 1 = full size.
+  const grow = useSharedValue(initial(REVEAL.grow, 320));
+  const ring = useSharedValue(initial(REVEAL.ring, motion.base));
 
   useEffect(() => {
     if (!animate) {
@@ -127,28 +180,15 @@ function RevealedCard({
       ring.value = 1;
       return;
     }
-    travel.value = 0;
-    flip.value = 0;
-    grow.value = 0;
-    ring.value = 0;
-
-    flip.value = withDelay(
-      REVEAL.flip + stagger,
-      withTiming(1, { duration: motion.base, easing: Easing.bezier(...easings.inOut) }),
-    );
-    grow.value = withDelay(
-      REVEAL.grow + stagger,
-      withTiming(1, { duration: 320, easing: Easing.bezier(...easings.out) }),
-    );
-    travel.value = withDelay(
-      REVEAL.move + stagger,
-      withTiming(1, { duration: REVEAL.travelMs, easing: Easing.bezier(...easings.inOut) }),
-    );
+    const elapsed = Date.now() - startedAt;
+    resumeBeat(flip, elapsed, REVEAL.flip + stagger, motion.base, Easing.bezier(...easings.inOut));
+    resumeBeat(grow, elapsed, REVEAL.grow + stagger, 320, Easing.bezier(...easings.out));
+    resumeBeat(travel, elapsed, REVEAL.move + stagger, REVEAL.travelMs, Easing.bezier(...easings.inOut));
     // Always runs: it drives the gold ring on the winning cards *and* the fade
     // on the ones that aren't part of the best five. Gating it on `highlight`
     // left the unused hole card at full brightness while the unused board card
     // dimmed, which read as though it counted.
-    ring.value = withDelay(REVEAL.ring + stagger, withTiming(1, { duration: motion.base }));
+    resumeBeat(ring, elapsed, REVEAL.ring + stagger, motion.base);
     /*
      * Deliberately not keyed on `highlight` or `tone`.
      *
@@ -161,7 +201,7 @@ function RevealedCard({
      * has landed it stays at 1, and the two styles below simply read the
      * current verdict from it.
      */
-  }, [animate, stagger, travel, flip, grow, ring]);
+  }, [animate, stagger, startedAt, travel, flip, grow, ring]);
 
   const moveStyle = useAnimatedStyle(() => {
     const t = travel.value;

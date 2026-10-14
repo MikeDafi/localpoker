@@ -829,9 +829,23 @@ const notSignedInResult = (): Result => ({
 });
 
 const presenceReconcileInFlight = new Set<string>();
+/*
+ * The newest room that arrived while a reconcile was running.
+ *
+ * Updates that landed mid-reconcile used to be dropped outright. That was
+ * harmless for presence, which the next update repairs, but a guest leaving
+ * is often the last update a room ever gets: if it arrived while the host
+ * was busy, the table sat open with one player at it and nothing left to
+ * close it. The latest room is kept and reconciled once the current pass ends.
+ */
+const presenceReconcileQueued = new Map<string, RoomState | null>();
 
 const reconcileHostPresence = async (roomCode: string, room: RoomState | null): Promise<void> => {
-  if (!room || room.status !== 'playing' || presenceReconcileInFlight.has(roomCode)) {
+  if (presenceReconcileInFlight.has(roomCode)) {
+    presenceReconcileQueued.set(roomCode, room);
+    return;
+  }
+  if (!room || room.status !== 'playing') {
     return;
   }
 
@@ -884,6 +898,11 @@ const reconcileHostPresence = async (roomCode: string, room: RoomState | null): 
     console.warn('Unable to reconcile disconnected online players.', error);
   } finally {
     presenceReconcileInFlight.delete(roomCode);
+    if (presenceReconcileQueued.has(roomCode)) {
+      const next = presenceReconcileQueued.get(roomCode) ?? null;
+      presenceReconcileQueued.delete(roomCode);
+      void reconcileHostPresence(roomCode, next);
+    }
   }
 };
 
