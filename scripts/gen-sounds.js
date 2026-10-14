@@ -148,11 +148,13 @@ writeWav('deal.wav', mix(tone(1200, 0.06, { type: 'noise', vol: 0.18, decay: 3 }
  * same thing and says how much, so a fixed phrase would only fight it.
  */
 writeWav('fold.wav', tone(240, 0.16, { type: 'tri', vol: 0.35, decay: 1.5, sweep: -300 }));
-writeWav('turn.wav', seq(tone(880, 0.09, { type: 'sine', vol: 0.3, decay: 2 }), tone(1180, 0.09, { type: 'sine', vol: 0.3, decay: 2 })));
+// Every cue is one sound. Two-note figures read as the cue firing twice.
+// Yours is a single high note that rises; everyone else's a lower one that falls.
+writeWav('turn.wav', tone(1040, 0.16, { type: 'sine', vol: 0.32, decay: 1.6, sweep: 180 }));
 // Someone else to act. Deliberately the inverse shape of `turn`: two notes
 // falling instead of rising, lower and quieter, so the ear can tell whose
 // turn it is without looking. A rising figure means it is on you.
-writeWav('turnOther.wav', seq(tone(560, 0.07, { type: 'sine', vol: 0.16, decay: 3 }), tone(420, 0.07, { type: 'sine', vol: 0.14, decay: 3 })));
+writeWav('turnOther.wav', tone(500, 0.12, { type: 'sine', vol: 0.16, decay: 2.5, sweep: -120 }));
 writeWav('coins.wav', seq(
   tone(900, 0.05, { type: 'tri', vol: 0.3, decay: 2 }),
   tone(1200, 0.05, { type: 'tri', vol: 0.3, decay: 2 }),
@@ -169,7 +171,7 @@ writeWav('lose.wav', seq(
   tone(349, 0.13, { type: 'tri', vol: 0.3, decay: 1.5 }),
   tone(262, 0.26, { type: 'tri', vol: 0.32, decay: 1.2 }),
 ));
-writeWav('error.wav', seq(tone(200, 0.1, { type: 'square', vol: 0.25, decay: 2 }), tone(160, 0.12, { type: 'square', vol: 0.25, decay: 2 })));
+writeWav('error.wav', tone(180, 0.16, { type: 'square', vol: 0.25, decay: 2, sweep: -40 }));
 writeWav('start.wav', seq(
   tone(392, 0.08, { type: 'tri', vol: 0.3, decay: 2 }),
   tone(523, 0.08, { type: 'tri', vol: 0.3, decay: 2 }),

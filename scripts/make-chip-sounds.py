@@ -184,7 +184,8 @@ STYLE_SPECS = {
 # resonator here. A filtered noise burst gives a hard rap without giving the
 # ear a note to follow.
 CHECK_PEAK = 0.40
-CHECK_RAPS = [(0, 1.0, 17), (126, 0.86, 41)]
+# One rap, not two: a double knock read as the same cue playing twice.
+CHECK_RAPS = [(0, 1.0, 17)]
 
 
 def high_pass(samples: list[float], cutoff_hz: float) -> list[float]:
@@ -241,7 +242,7 @@ def knock_hit(duration_ms: int, salt: int) -> list[float]:
 
 
 def build_check() -> list[float]:
-    length = int(RATE * 0.225)
+    length = int(RATE * 0.1)
     mixed = [0.0] * length
     for onset_ms, gain, salt in CHECK_RAPS:
         hit = knock_hit(66, salt)
