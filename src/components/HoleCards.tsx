@@ -19,6 +19,7 @@ import {
   cardUnder,
   foldAmount,
   foldExtent,
+  foldLimit,
   foldOrigin,
   grabAnchor,
   PEEL_FRACTION,
@@ -54,11 +55,30 @@ export interface HoleCardsProps {
  * lifted towards you, and it means you can never lay your whole hand open by
  * accident.
  *
- * It governs where a fold may begin. It used to cap what a fold may uncover
- * as well, which pinned every sideways peel to nothing; that cap is now the
- * card's own extent, in reachFor.
+ * It governs two different things, and both are needed. Where a fold may
+ * *begin* is the obvious one. What a fold may *uncover* is the one that
+ * actually matters: a grab on the side at the midline starts perfectly legally
+ * and still folds the card across its full height, exposing the entire face.
  */
 const PEEL_HALF = 0.5;
+
+/**
+ * The least a peel has to point upwards, as the sine of its angle.
+ *
+ * A pull straight left or right folds along a vertical crease, which crosses
+ * the top half, so the bottom-half rule pinned it to nothing and the cards
+ * felt boxed in. Tilting a sideways pull up by at least this much turns it
+ * into a dog-ear of the bottom corner instead, which lifts sideways and still
+ * stops at the middle of the card.
+ */
+const MIN_LIFT = 0.45;
+
+/** Point a sideways pull far enough upwards to fold the bottom corner. */
+function liftward(nx: number, ny: number): { x: number; y: number } {
+  'worklet';
+  if (ny <= -MIN_LIFT || nx === 0) return { x: nx, y: ny };
+  return { x: Math.sign(nx) * Math.sqrt(1 - MIN_LIFT * MIN_LIFT), y: -MIN_LIFT };
+}
 
 /**
  * How far a peel may be pulled, given where it started and which way it is
@@ -73,16 +93,11 @@ const PEEL_HALF = 0.5;
  */
 function reachFor(size: number, h: number, anchor: { x: number; y: number }, dx: number, dy: number) {
   'worklet';
-  /*
-   * Only the card's own extent caps a peel now, not the bottom-half rule.
-   *
-   * That rule pinned any sideways pull to zero, because a fold from the side
-   * crosses the top half, so the cards could only ever be lifted upwards and
-   * felt boxed in. A peel still starts in the bottom half (see grabAnchor
-   * below) and still stops short of folding the card in two, so a side peel
-   * shows the index down that edge, not the whole face.
-   */
-  return (foldExtent(size, h, anchor, dx, dy) * PEEL_FRACTION) / PEEL_OVERSHOOT;
+  const cap = Math.min(
+    foldExtent(size, h, anchor, dx, dy) * PEEL_FRACTION,
+    foldLimit(size, h, anchor, dx, dy, h * PEEL_HALF),
+  );
+  return cap / PEEL_OVERSHOOT;
 }
 
 /**
@@ -209,8 +224,9 @@ export function HoleCards({
           const inX = size / 2 - anchor.x;
           const inY = h / 2 - anchor.y;
           const inLen = Math.sqrt(inX * inX + inY * inY) || 1;
-          peel.dirX.value = inX / inLen;
-          peel.dirY.value = inY / inLen;
+          const start = liftward(inX / inLen, inY / inLen);
+          peel.dirX.value = start.x;
+          peel.dirY.value = start.y;
           const seed = foldOrigin(size, h, peel.dirX.value, peel.dirY.value);
           peel.anchorX.value = seed.x;
           peel.anchorY.value = seed.y;
@@ -242,11 +258,10 @@ export function HoleCards({
             // lifted side: the back disappears and the card becomes a single
             // white triangle. Directions with no room to fold into are simply
             // not adopted, leaving the last good one in place.
-            const nx = vx / dist;
-            const ny = vy / dist;
-            if (foldExtent(size, h, anchor, nx, ny) > 0) {
-              peel.dirX.value = nx;
-              peel.dirY.value = ny;
+            const d = liftward(vx / dist, vy / dist);
+            if (foldExtent(size, h, anchor, d.x, d.y) > 0) {
+              peel.dirX.value = d.x;
+              peel.dirY.value = d.y;
             }
           }
 
