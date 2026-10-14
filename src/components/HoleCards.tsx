@@ -19,7 +19,6 @@ import {
   cardUnder,
   foldAmount,
   foldExtent,
-  foldLimit,
   foldOrigin,
   grabAnchor,
   PEEL_FRACTION,
@@ -55,10 +54,9 @@ export interface HoleCardsProps {
  * lifted towards you, and it means you can never lay your whole hand open by
  * accident.
  *
- * It governs two different things, and both are needed. Where a fold may
- * *begin* is the obvious one. What a fold may *uncover* is the one that
- * actually matters: a grab on the side at the midline starts perfectly legally
- * and still folds the card across its full height, exposing the entire face.
+ * It governs where a fold may begin. It used to cap what a fold may uncover
+ * as well, which pinned every sideways peel to nothing; that cap is now the
+ * card's own extent, in reachFor.
  */
 const PEEL_HALF = 0.5;
 
@@ -75,11 +73,16 @@ const PEEL_HALF = 0.5;
  */
 function reachFor(size: number, h: number, anchor: { x: number; y: number }, dx: number, dy: number) {
   'worklet';
-  const cap = Math.min(
-    foldExtent(size, h, anchor, dx, dy) * PEEL_FRACTION,
-    foldLimit(size, h, anchor, dx, dy, h * PEEL_HALF),
-  );
-  return cap / PEEL_OVERSHOOT;
+  /*
+   * Only the card's own extent caps a peel now, not the bottom-half rule.
+   *
+   * That rule pinned any sideways pull to zero, because a fold from the side
+   * crosses the top half, so the cards could only ever be lifted upwards and
+   * felt boxed in. A peel still starts in the bottom half (see grabAnchor
+   * below) and still stops short of folding the card in two, so a side peel
+   * shows the index down that edge, not the whole face.
+   */
+  return (foldExtent(size, h, anchor, dx, dy) * PEEL_FRACTION) / PEEL_OVERSHOOT;
 }
 
 /**
