@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Image, StyleSheet } from 'react-native';
-import Svg, { Defs, G, Path, Pattern, Rect } from 'react-native-svg';
+import Svg, { Defs, Ellipse, G, Path, Pattern, Rect } from 'react-native-svg';
 import { colors } from '../theme/theme';
+import type { FeltMotif } from '../game/cosmetics';
 
 /**
  * The felt's surface detail: a woven cloth texture plus a tonal suit watermark.
@@ -40,9 +41,81 @@ export interface FeltSurfaceProps {
   weaveOpacity?: number;
   /** Opacity of the suit watermark. */
   suitOpacity?: number;
+  /** What is printed into the cloth. The classic table has suits. */
+  motif?: FeltMotif;
+  /** Colour of the motif. */
+  motifColor?: string;
 }
 
-export function FeltSurface({ width, height, tile = 184, weaveOpacity = 0.5, suitOpacity = 0.045 }: FeltSurfaceProps) {
+/** A four-point star, 16x16. */
+const STAR = 'M8 0 L9.6 6.4 L16 8 L9.6 9.6 L8 16 L6.4 9.6 L0 8 L6.4 6.4 Z';
+
+/**
+ * One tile of a felt's printed motif.
+ *
+ * Each is drawn on the same tile as the suits so the cloth repeats at the
+ * same scale whichever felt is down.
+ */
+function MotifTile({ motif, tile, color }: { motif: FeltMotif; tile: number; color: string }) {
+  if (motif === 'lattice') {
+    // A diamond weave: two diagonals per tile, thin as a stitch.
+    return (
+      <G stroke={color} strokeWidth={1.2} fill="none">
+        <Path d={`M0 ${tile / 2} L${tile / 2} 0 L${tile} ${tile / 2} L${tile / 2} ${tile} Z`} />
+        <Path d={`M${tile / 2} ${tile / 2 - 3} L${tile / 2 + 3} ${tile / 2} L${tile / 2} ${tile / 2 + 3} L${tile / 2 - 3} ${tile / 2} Z`} fill={color} />
+      </G>
+    );
+  }
+  if (motif === 'waves') {
+    const row = (y: number) => {
+      const q = tile / 4;
+      return `M0 ${y} Q${q} ${y - 10} ${q * 2} ${y} T${tile} ${y}`;
+    };
+    return (
+      <G stroke={color} strokeWidth={2} fill="none" strokeLinecap="round">
+        <Path d={row(tile * 0.3)} />
+        <Path d={row(tile * 0.8)} />
+      </G>
+    );
+  }
+  if (motif === 'petals') {
+    // Five-petal blossoms at two sizes and turns, so the fall looks loose.
+    const blossom = (cx: number, cy: number, r: number, turn: number) => (
+      <G transform={`translate(${cx} ${cy}) rotate(${turn})`}>
+        {[0, 72, 144, 216, 288].map((a) => (
+          <Ellipse key={a} cx={0} cy={-r} rx={r * 0.55} ry={r} transform={`rotate(${a})`} />
+        ))}
+      </G>
+    );
+    return (
+      <G fill={color}>
+        {blossom(tile * 0.25, tile * 0.22, tile * 0.05, 12)}
+        {blossom(tile * 0.72, tile * 0.6, tile * 0.035, 40)}
+        <Ellipse cx={tile * 0.5} cy={tile * 0.88} rx={tile * 0.03} ry={tile * 0.016} transform={`rotate(30 ${tile * 0.5} ${tile * 0.88})`} />
+      </G>
+    );
+  }
+  if (motif === 'stars') {
+    const star = (fx: number, fy: number, size: number) => (
+      <G transform={`translate(${tile * fx - size / 2} ${tile * fy - size / 2}) scale(${size / 16})`}>
+        <Path d={STAR} />
+      </G>
+    );
+    return (
+      <G fill={color}>
+        {star(0.2, 0.18, tile * 0.07)}
+        {star(0.7, 0.45, tile * 0.045)}
+        {star(0.35, 0.78, tile * 0.03)}
+        <Rect x={tile * 0.85} y={tile * 0.12} width={2} height={2} rx={1} />
+        <Rect x={tile * 0.55} y={tile * 0.92} width={2} height={2} rx={1} />
+        <Rect x={tile * 0.08} y={tile * 0.55} width={1.5} height={1.5} rx={0.75} />
+      </G>
+    );
+  }
+  return null;
+}
+
+export function FeltSurface({ width, height, tile = 184, weaveOpacity = 0.5, suitOpacity = 0.045, motif = 'suits', motifColor = colors.onDark }: FeltSurfaceProps) {
   // Half-drop layout: the right-hand column is offset vertically so the repeat
   // reads as a diagonal lattice instead of a polka-dot grid.
   const glyph = tile * 0.155; // drawn size of one suit
@@ -69,12 +142,16 @@ export function FeltSurface({ width, height, tile = 184, weaveOpacity = 0.5, sui
       <Svg style={styles.fill} width={width} height={height} opacity={suitOpacity}>
         <Defs>
           <Pattern id="suits" width={tile} height={tile} patternUnits="userSpaceOnUse">
-            <G fill={colors.onDark}>
-              <G transform={place(0.25, 0.125)}><Path d={SUITS.spade} /></G>
-              <G transform={place(0.75, 0.375)}><Path d={SUITS.heart} /></G>
-              <G transform={place(0.25, 0.625)}><Path d={SUITS.diamond} /></G>
-              <G transform={place(0.75, 0.875)}><Path d={SUITS.club} /></G>
-            </G>
+            {motif === 'suits' ? (
+              <G fill={motifColor}>
+                <G transform={place(0.25, 0.125)}><Path d={SUITS.spade} /></G>
+                <G transform={place(0.75, 0.375)}><Path d={SUITS.heart} /></G>
+                <G transform={place(0.25, 0.625)}><Path d={SUITS.diamond} /></G>
+                <G transform={place(0.75, 0.875)}><Path d={SUITS.club} /></G>
+              </G>
+            ) : (
+              <MotifTile motif={motif} tile={tile} color={motifColor} />
+            )}
           </Pattern>
         </Defs>
         <Rect x={0} y={0} width={width} height={height} fill="url(#suits)" />

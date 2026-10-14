@@ -3267,10 +3267,14 @@ export function TableScreen({ navigation, route }: Props) {
 
       <View style={[styles.tableArea, { height: stageH }]} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
         {/* felt oval: matte surface, top-lit rail edge, inner shadow at the rail */}
+        {/* A store felt runs corner to corner into its accent hue; the
+            classic table keeps its plain top-lit shading. */}
         <LinearGradient
-          colors={[feltPalette.light, feltPalette.base, feltPalette.deep]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
+          colors={feltPalette.accent
+            ? [feltPalette.light, feltPalette.base, feltPalette.accent, feltPalette.deep]
+            : [feltPalette.light, feltPalette.base, feltPalette.deep]}
+          start={feltPalette.accent ? { x: 0.1, y: 0 } : { x: 0.5, y: 0 }}
+          end={feltPalette.accent ? { x: 0.9, y: 1 } : { x: 0.5, y: 1 }}
           style={[styles.feltOval, shadows.raised]}
           pointerEvents="none"
         >
@@ -3278,10 +3282,16 @@ export function TableScreen({ navigation, route }: Props) {
               The oval is inset on every side of the table area and its rail
               border sits inside that, so the cloth fills what's left (see
               `feltInnerW`). */}
-          <FeltSurface width={clothOval.width} height={clothOval.height} />
+          <FeltSurface
+            width={clothOval.width}
+            height={clothOval.height}
+            motif={feltPalette.motif}
+            motifColor={feltPalette.motifColor}
+            {...(feltPalette.motifOpacity !== undefined ? { suitOpacity: feltPalette.motifOpacity } : {})}
+          />
           <View style={styles.railHighlight} pointerEvents="none" />
           <View style={styles.feltInner} pointerEvents="none" />
-          <View style={styles.feltGlow} pointerEvents="none" />
+          <View style={[styles.feltGlow, feltPalette.glow ? { backgroundColor: feltPalette.glow, opacity: 0.16 } : null]} pointerEvents="none" />
         </LinearGradient>
 
         {/* Community cards + pot, in the lane between the seat arc and

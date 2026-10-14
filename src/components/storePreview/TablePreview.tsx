@@ -40,7 +40,9 @@ export function TablePreview({ item, width }: StorePreviewProps) {
   const cardSize = Math.max(18 * scale, Math.min(44 * scale, clothWidth / 6.8));
   const cardHeight = cardSize * CARD_RATIO;
   const palette = FELT_PALETTES[item.id];
-  const gradientColors = [palette.light, palette.base, palette.deep] as const;
+  const gradientColors = palette.accent
+    ? ([palette.light, palette.base, palette.accent, palette.deep] as const)
+    : ([palette.light, palette.base, palette.deep] as const);
 
   if (tableWidth <= 0) return null;
 
@@ -53,8 +55,8 @@ export function TablePreview({ item, width }: StorePreviewProps) {
       <View style={[styles.tableArea, { width: tableWidth, height: tableHeight }]}>
         <LinearGradient
           colors={gradientColors}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
+          start={palette.accent ? { x: 0.1, y: 0 } : { x: 0.5, y: 0 }}
+          end={palette.accent ? { x: 0.9, y: 1 } : { x: 0.5, y: 1 }}
           style={[
             styles.feltOval,
             shadows.raised,
@@ -69,7 +71,13 @@ export function TablePreview({ item, width }: StorePreviewProps) {
           ]}
           pointerEvents="none"
         >
-          <FeltSurface width={clothWidth} height={clothHeight} />
+          <FeltSurface
+            width={clothWidth}
+            height={clothHeight}
+            motif={palette.motif}
+            motifColor={palette.motifColor}
+            {...(palette.motifOpacity !== undefined ? { suitOpacity: palette.motifOpacity } : {})}
+          />
           <View
             style={[
               styles.railHighlight,
@@ -98,6 +106,7 @@ export function TablePreview({ item, width }: StorePreviewProps) {
                 height: glowSize,
                 borderRadius: glowSize / 2,
               },
+              palette.glow ? { backgroundColor: palette.glow, opacity: 0.16 } : null,
             ]}
             pointerEvents="none"
           />

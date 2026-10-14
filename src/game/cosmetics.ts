@@ -37,11 +37,26 @@ export {
  * tested without one.
  */
 
+/** What is printed into a felt's cloth, faintly, under the play. */
+export type FeltMotif = 'suits' | 'lattice' | 'waves' | 'petals' | 'stars';
+
 export interface FeltPalette {
   /** The lit face of the cloth, the darker body, and the shadowed edge. */
   light: string;
   base: string;
   deep: string;
+  /*
+   * The rest is what makes a bought felt more than a recolour. Every store
+   * felt used to be the classic table in another hue, the same top-to-bottom
+   * shading and the same suit watermark, so paying for one bought a tint.
+   */
+  /** A second hue the cloth runs into, corner to corner. */
+  accent?: string;
+  /** The pool of light in the middle of the table. */
+  glow?: string;
+  motif?: FeltMotif;
+  motifColor?: string;
+  motifOpacity?: number;
 }
 
 export interface ChipPalette {
@@ -663,20 +678,30 @@ export const FELT_PALETTES: Record<string, FeltPalette> = {
     base: colors.felt,
     deep: colors.feltDeep,
   },
+  // Casino green under a warm lamp, with a fine gold lattice in the cloth.
   'table-emerald': {
-    light: '#2E6B4F', base: '#17533A', deep: '#0C3B28',
+    light: '#2E7A55', base: '#17533A', deep: '#0A3324',
+    accent: '#1F6B4A', glow: '#F2D28B', motif: 'lattice', motifColor: '#E8C46A', motifOpacity: 0.1,
   },
+  // Teal water running into a sunset pink, with rolling waves.
   'table-miami': {
-    light: '#1BA3B8', base: '#0E7E92', deep: '#07566A',
+    light: '#1FB5C6', base: '#0E7E92', deep: '#0A4F6B',
+    accent: '#B8457E', glow: '#FFD3A8', motif: 'waves', motifColor: '#E9FBFF', motifOpacity: 0.11,
   },
+  // Deep velvet with a gilded diamond weave.
   'table-velvet': {
-    light: '#5B2E8C', base: '#44206B', deep: '#2C1247',
+    light: '#6A35A3', base: '#44206B', deep: '#220D3A',
+    accent: '#7A1F5C', glow: '#D9A7FF', motif: 'lattice', motifColor: '#E2B95A', motifOpacity: 0.12,
   },
+  // Blossom pink into plum, with falling petals.
   'table-sakura': {
-    light: '#9C4472', base: '#7A2F58', deep: '#541C3B',
+    light: '#B5568A', base: '#7A2F58', deep: '#4A1838',
+    accent: '#6B3FA0', glow: '#FFD1E6', motif: 'petals', motifColor: '#FFE3F0', motifOpacity: 0.15,
   },
+  // Midnight blue under moonlight, scattered with stars.
   'table-lunar': {
-    light: '#2A3550', base: '#1B2238', deep: '#0F1423',
+    light: '#2C3A63', base: '#1B2238', deep: '#0A0E1C',
+    accent: '#3B2A6B', glow: '#C4B5FD', motif: 'stars', motifColor: '#E6E9FF', motifOpacity: 0.16,
   },
 };
 

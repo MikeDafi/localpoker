@@ -66,7 +66,9 @@ describe('cosmetic palettes', () => {
   it('gives every colour as a real hex, so nothing renders transparent', () => {
     const hex = /^#[0-9A-Fa-f]{6}$/;
     for (const [id, felt] of Object.entries(FELT_PALETTES)) {
-      for (const [slot, value] of Object.entries(felt)) {
+      for (const slot of ['light', 'base', 'deep', 'accent', 'glow', 'motifColor'] as const) {
+        const value = felt[slot];
+        if (value === undefined) continue;
         expect(hex.test(value), `${id}.${slot} is ${value}`).toBe(true);
       }
     }
@@ -77,9 +79,13 @@ describe('cosmetic palettes', () => {
     }
   });
 
-  it('keeps felt palettes limited to cloth colours', () => {
+  it('keeps the classic felt plain and gives every store felt its own look', () => {
+    expect(Object.keys(FELT_PALETTES[CLASSIC_FELT]).sort()).toEqual(['base', 'deep', 'light']);
     for (const [id, felt] of Object.entries(FELT_PALETTES)) {
-      expect(Object.keys(felt).sort(), id).toEqual(['base', 'deep', 'light']);
+      if (id === CLASSIC_FELT) continue;
+      expect(felt.accent, id).toBeDefined();
+      expect(felt.motif, id).toBeDefined();
+      expect(felt.motifOpacity ?? 0, id).toBeLessThan(0.2);
     }
   });
 });
