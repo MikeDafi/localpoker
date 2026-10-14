@@ -142,8 +142,14 @@ export function CardFaceContent({
  */
 export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, corners, back }: PlayingCardProps) {
   const g = useMemo(() => faceGeometry(size), [size]);
-  const cardOpacity = dimmed ? 0.55 : 1;
   const cardRadius = g.w * 0.085;
+  /*
+   * A dimmed card is shaded, not see-through. At 55% opacity the felt showed
+   * through it, and on a dark cloth a board card outside the winning five
+   * read as a ghost, which players took for the card having gone missing.
+   */
+  const cardOpacity = 1;
+  const scrim = dimmed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dimScrim, { borderRadius: cardRadius }]} /> : null;
 
   if (faceDown || rank == null || suit == null) {
     // One shared back at every size: an opponent's 18pt card is the same
@@ -151,6 +157,7 @@ export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, co
     return (
       <View style={[styles.card, { width: g.w, height: g.h, borderRadius: cardRadius, opacity: cardOpacity }, shadows.soft, style]}>
         <CardBack size={size} variant={back} />
+        {scrim}
       </View>
     );
   }
@@ -160,6 +167,7 @@ export function PlayingCard({ rank, suit, faceDown, size = 56, dimmed, style, co
       <Svg width={g.w} height={g.h}>
         <CardFaceContent rank={rank} suit={suit} size={size} corners={corners} />
       </Svg>
+      {scrim}
     </View>
   );
 }
@@ -206,6 +214,7 @@ function CourtFigure({
 }
 
 const styles = StyleSheet.create({
+  dimScrim: { backgroundColor: 'rgba(8,12,20,0.42)' },
   card: {
     /*
      * The SVG already owns the card shape. A fixed native clip is too round

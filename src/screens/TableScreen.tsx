@@ -3767,6 +3767,14 @@ export function TableScreen({ navigation, route }: Props) {
                 cards keep. */}
             </ScrollView>
             <View style={styles.nextRow}>
+              {/*
+                * Not while you are the one being waited on. "Waiting for
+                * players" under your own Rebuy button was two answers to one
+                * question: the only player the table is waiting for is you,
+                * and the Rebuy button is how you answer. The back arrow is
+                * still there for leaving instead.
+                */}
+              {!mustRebuy ? (
               <WiiButton
                 label={
                   /*
@@ -3800,6 +3808,7 @@ export function TableScreen({ navigation, route }: Props) {
                 disabled={consentRequired ? iAmReady : !!roomCode && !isOnlineHost}
                 onPress={askForNextHand}
               />
+              ) : null}
               {/*
                 * Only while the hand is still yours to hide.
                 *
