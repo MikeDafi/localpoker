@@ -67,9 +67,12 @@ function AnimatedPalInner({
       cancelAnimation(breath);
       cancelAnimation(bob);
       cancelAnimation(sway);
-      breath.value = 1;
-      bob.value = 0;
-      sway.value = 0;
+      // Paused mid breath (the table pauses them during a showdown), settle
+      // rather than snap, or every avatar visibly jumps at once.
+      const settle = reduceMotion ? 0 : 280;
+      breath.value = settle ? withTiming(1, { duration: settle }) : 1;
+      bob.value = settle ? withTiming(0, { duration: settle }) : 0;
+      sway.value = settle ? withTiming(0, { duration: settle }) : 0;
       return;
     }
 

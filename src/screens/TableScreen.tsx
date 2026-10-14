@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { AppState, InteractionManager, View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, FadeInUp, FadeOut, Easing } from 'react-native-reanimated';
@@ -355,6 +355,7 @@ export function TableScreen({ navigation, route }: Props) {
     }
   });
   const stateRef = useRef(state);
+  const hydratedKey = useRef('');
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -441,6 +442,15 @@ export function TableScreen({ navigation, route }: Props) {
      * copes with an absent view by giving that player no hole cards, which is
      * exactly right: they are watching, not playing.
      */
+    /*
+     * Only when the hand itself changed. The room is one listener, so a
+     * presence flag, a vote or a reaction arrives as a whole new room with a
+     * public state identical to the last one, and rebuilding the game from it
+     * redrew the entire table for nothing.
+     */
+    const key = JSON.stringify([room.publicState, privateView ?? null]);
+    if (key === hydratedKey.current) return;
+    hydratedKey.current = key;
     setState(hydrateGameState(room.publicState, privateView));
   }, [firebaseOnline, isOnlineHost, privateView, room?.publicState, roomCode]);
 
@@ -1890,7 +1900,9 @@ export function TableScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!shouldSaveLocalState) return undefined;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
+    // After the frame work, not in the middle of it: serialising the game
+    // and writing it out used to land mid-deal.
+    saveTimer.current = setTimeout(() => InteractionManager.runAfterInteractions(() => {
       if (skipNextTableSave.current) return;
       saveGame({
         stateJson: JSON.stringify(state),
@@ -1902,7 +1914,7 @@ export function TableScreen({ navigation, route }: Props) {
         turnStartedAt,
         ...(tournamentStartedAt !== null ? { tournamentStartedAt } : {}),
       });
-    }, 600);
+    }), 600);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
@@ -3452,7 +3464,7 @@ export function TableScreen({ navigation, route }: Props) {
                 won={verdictShown && !multiRunVerdict && felt.winners.some((w) => w.playerId === p.id && w.amount > 0)}
                 lost={seatLost(p)}
                 reaction={reactionFor(p.id)}
-                idleMotion={settings.avatarIdleMotion && !animsOff}
+                idleMotion={settings.avatarIdleMotion && !animsOff && !handOver}
                 emote={visibleEmote(p.id)}
                 dealKey={`${state.handNumber}`}
                 dealAnimate={dealAnimate}
@@ -3479,7 +3491,7 @@ export function TableScreen({ navigation, route }: Props) {
               won={humanWon && !multiRunVerdict}
               lost={seatLost(human)}
               reaction={reactionFor(human.id)}
-              idleMotion={settings.avatarIdleMotion && !animsOff}
+              idleMotion={settings.avatarIdleMotion && !animsOff && !handOver}
               emote={visibleEmote(human.id)}
             />
           </Pressable>
