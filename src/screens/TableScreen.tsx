@@ -1150,6 +1150,13 @@ export function TableScreen({ navigation, route }: Props) {
     setRevealProgress(startReveal());
     setShowdownHold(0);
     setLocalCardExposure([false, false]);
+    /*
+     * Here as well as in startNext, which only the dealing device runs. A guest
+     * who once tapped the flip button kept 'show' for the rest of the session,
+     * and 'show' switches off the per-card opening, so a single card they
+     * showed later reached everyone else but stayed face down in their hand.
+     */
+    setReveal('auto');
     setRunoutRunIndex(0);
     setRunVotes({});
     setRunVoteClosed(false);

@@ -13,7 +13,19 @@
     },
     "production": {
       "distribution": "store",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBwMmeL8f6GWmrCmtMroN5TnWN3r9IcFQY",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "localpoker.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_DATABASE_URL": "https://localpoker-default-rtdb.firebaseio.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "localpoker",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "localpoker.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "424192282180",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:424192282180:web:509f6c7f8ea1cc84ccb611",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "424192282180-5jlusnuvf3crsbd76fo1docdfv4pl96t.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "424192282180-ger9910u0phsrgvnvf2n2ndln2mf1guu.apps.googleusercontent.com",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://6d1752915673286d912dd703cb720a14@o4512156340912128.ingest.us.sentry.io/4512156361293824"
+      }
     }
   },
   "submit": {
