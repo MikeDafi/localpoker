@@ -1,16 +1,15 @@
 import React, { useEffect, useId, useMemo, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   SharedValue,
-  useAnimatedProps,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { ClipPath, Defs, G, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, ClipPath, Defs, G, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { CardFaceContent, PlayingCard } from './PlayingCard';
 import {
   CardBackLattice,
@@ -21,34 +20,7 @@ import {
 } from './CardBack';
 import { motion, easings, colors, radii } from '../theme/theme';
 import type { Suit } from '../game/cardFace';
-import type { Affine } from '../game/peelFold';
-import {
-  circlePoly,
-  clipToFlat,
-  creaseFor,
-  creaseSegment,
-  foldParts,
-  foldShadow,
-  pathFromPoly,
-  reflectMatrix,
-  roundRectPoly,
-  sideOf,
-} from '../game/peelFold';
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedLine = Animated.createAnimatedComponent(Line);
-const AnimatedSvgText = Animated.createAnimatedComponent(SvgText);
-/**
- * `matrix` is a real prop on the native group, `G.setNativeProps` looks for it
- * first and skips its transform parser when it finds it, but react-native-svg
- * only declares it on that method's signature, not on `GProps`. Widening the
- * type here is what lets the fold be driven by numbers instead of a string the
- * library cannot read back.
- */
-type MatrixProp = { matrix?: Affine };
-const AnimatedG = Animated.createAnimatedComponent(
-  G as unknown as React.ComponentType<React.ComponentProps<typeof G> & MatrixProp>,
-);
+import { creaseFor, creaseSegment, reflectMatrix, type Crease } from '../game/peelFold';
 
 /**
  * The shared state of a peel.
@@ -76,15 +48,6 @@ export interface PeelControl {
 export const PEEL_TIMING = { open: 260, hold: 520, close: 170, flip: 420 };
 
 const THROW_MS = motion.dealCard;
-/**
- * How far outside the card the peel is allowed to draw.
- *
- * The lifted corner swings away from the card and the curl casts a shadow
- * past it, so the drawing surface has to be bigger than the thing being
- * drawn. Measured against the card rather than fixed, so it holds at every
- * size a card is rendered at.
- */
-const PEEL_PAD_RATIO = 0.5;
 
 export interface PeekCardProps {
   rank: number;
@@ -107,6 +70,92 @@ export interface PeekCardProps {
 }
 
 /**
+ * The back of your own card, drawn once.
+ *
+ * Not the shared `CardBack`: that one strokes a rim round the printed area,
+ * which the peel never showed, and swapping it in made your cards look lighter
+ * than they always have.
+ */
+const PeelBack = React.memo(function PeelBack({ size, variant }: { size: number; variant?: CardBackVariant }) {
+  const back = cardBackGeometry(size);
+  const theme = cardBackTheme(variant);
+  const h = back.h;
+  const id = useId();
+  return (
+    <Svg width={size} height={h}>
+      <Defs>
+        <LinearGradient id={`${id}-back`} x1={0} y1={0} x2={size} y2={h} gradientUnits="userSpaceOnUse">
+          <Stop offset="0" stopColor={theme.gradient[0]} />
+          <Stop offset="0.5" stopColor={theme.gradient[1]} />
+          <Stop offset="1" stopColor={theme.gradient[2]} />
+        </LinearGradient>
+        <ClipPath id={`${id}-card`}>
+          <Rect x={back.print.x} y={back.print.y} width={back.print.w} height={back.print.h} rx={back.print.radius} />
+        </ClipPath>
+        <CardBackLattice id={`${id}-lattice`} size={size} color={theme.line} />
+      </Defs>
+      <Rect
+        x={0.5}
+        y={0.5}
+        width={size - 1}
+        height={h - 1}
+        rx={back.radius}
+        fill={colors.cardFace}
+        stroke="#E2E8EE"
+        strokeWidth={1}
+      />
+      <G clipPath={`url(#${id}-card)`}>
+        <Rect x={0} y={0} width={size} height={h} fill={`url(#${id}-back)`} />
+        <Rect x={0} y={0} width={size} height={h} fill={`url(#${id}-lattice)`} />
+        <CardBackRosette size={size} color={theme.line} />
+        <Rect
+          x={back.panel.x}
+          y={back.panel.y}
+          width={back.panel.w}
+          height={back.panel.h}
+          rx={back.panel.radius}
+          fill="none"
+          stroke={theme.panel}
+          strokeWidth={back.panel.stroke}
+          strokeLinejoin="round"
+        />
+        <Circle
+          cx={back.emblem.cx}
+          cy={back.emblem.cy}
+          r={back.emblem.r}
+          fill={theme.emblemFill}
+          stroke={theme.emblemStroke}
+          strokeWidth={back.emblem.stroke}
+        />
+        <SvgText
+          x={back.emblem.cx}
+          y={back.emblem.baseline}
+          fontSize={back.emblem.fontSize}
+          fill={theme.mark}
+          textAnchor="middle"
+        >
+          {theme.glyph}
+        </SvgText>
+      </G>
+    </Svg>
+  );
+});
+
+/**
+ * Crease space to card space, as a 4x4 for a view's transform.
+ *
+ * x runs along the crease and y away from it into the paper still lying flat,
+ * starting `offset` from the crease; `span` is how far x reaches either way.
+ */
+function creaseMatrix(c: Crease, offset: number, span: number): number[] {
+  'worklet';
+  const tx = -c.ny;
+  const ty = c.nx;
+  return [tx, ty, 0, 0, c.nx, c.ny, 0, 0, 0, 0, 1, 0,
+    (c.d + offset) * c.nx - span * tx, (c.d + offset) * c.ny - span * ty, 0, 1];
+}
+
+/**
  * A hole card you lift to look at.
  *
  * The card is dealt face up, lays itself down after a beat, and from then on is
@@ -126,8 +175,8 @@ export interface PeekCardProps {
  * strip, and a side folds inwards, all out of one drag. The version this
  * replaced could only ever fold one fixed corner, at 45°.
  *
- * RN cannot clip a view to a diagonal, so the whole card is drawn as SVG while
- * peeling. `peelFold` owns the geometry and is unit-tested; this file is the
+ * The diagonal cut is a rotated view that clips its contents, see `crease`
+ * below. `peelFold` owns the geometry and is unit-tested; this file is the
  * drawing and the feel.
  */
 function PeekCardInner({
@@ -145,9 +194,7 @@ function PeekCardInner({
   variant,
 }: PeekCardProps) {
   const h = size * 1.42;
-  const PEEL_PAD = Math.round(size * PEEL_PAD_RATIO);
   const back = useMemo(() => cardBackGeometry(size), [size]);
-  const backTheme = cardBackTheme(variant);
   // Gradient ids share one namespace across the whole document, so each card
   // needs its own, and it must be *stable*. Deriving it from the card's size
   // looked like cheap insurance and was the opposite: the hole cards shrink
@@ -213,48 +260,65 @@ function PeekCardInner({
   }, [forceOpen, showToTable, animate, delay, showOnDealMs, turn, flip]);
 
   /**
-   * Everything the fold needs to draw, worked out once per frame.
+   * The fold, done by moving pictures rather than redrawing them.
    *
-   * The shapes all derive from the same crease, so computing it separately
-   * inside each animated prop would repeat the whole clip eight times a frame,
-   * and, worse, would let the pieces disagree by a rounding error and show
-   * hairline gaps along the bend.
+   * This used to redraw every shape of the card in SVG on every frame of a
+   * peel, around twenty paths, gradients, clips and a tiled pattern per card,
+   * on the CPU. Measured in the simulator that was about 40% of a core while a
+   * finger was down, and it was the stutter you felt when anything else was
+   * happening at the table.
+   *
+   * A fold is two pictures and a straight line. The part still on the table is
+   * the card back cut along the crease; the lifted part is the card face,
+   * swung over the crease, cut along the same line. Both pictures are drawn
+   * once. The cut is a view whose edge lies on the crease and clips what is
+   * inside it, and the swing is a transform, so a peel only moves layers the
+   * GPU already holds.
+   *
+   * Every view below uses its top-left corner as the transform origin, so the
+   * matrices read as plain card coordinates.
    */
-  const frame = useDerivedValue(() => {
-    const c = creaseFor(
-      { x: peel.anchorX.value, y: peel.anchorY.value },
-      peel.dirX.value,
-      peel.dirY.value,
-      peel.fold.value,
-    );
-    const { flat, flap } = foldParts(size, h, c);
-    const seg = creaseSegment(size, h, c);
-
+  const crease = useDerivedValue(() =>
+    creaseFor({ x: peel.anchorX.value, y: peel.anchorY.value }, peel.dirX.value, peel.dirY.value, peel.fold.value),
+  );
+  // Long enough that the clipping view always covers the whole card on its side
+  // of the crease, wherever along it the card sits.
+  const span = Math.ceil(Math.sqrt(size * size + h * h)) * 2;
+  // Crease space to card space: x runs along the crease, y away from it into
+  // the paper still lying flat. `offset` slides the band off the crease.
+  const flatSide = useAnimatedStyle(() => ({ transform: [{ matrix: creaseMatrix(crease.value, 0, span) }] }));
+  const shadeBand = useAnimatedStyle(() => ({ transform: [{ matrix: creaseMatrix(crease.value, -size * 0.3, span) }] }));
+  // And back again, so what sits inside the clip is laid out on the card.
+  const cardFrame = useAnimatedStyle(() => {
+    const c = crease.value;
+    return { transform: [{ matrix: [-c.ny, c.nx, 0, 0, c.nx, c.ny, 0, 0, 0, 0, 1, 0, span, -c.d, 0, 1] }] };
+  });
+  const shadeStyle = useAnimatedStyle(() => ({ opacity: peel.fold.value > 0 ? 1 : 0 }));
+  // The lifted paper, swung over the bend. See reflectMatrix for why it is a
+  // turn rather than a mirror.
+  const flapStyle = useAnimatedStyle(() => {
+    const lifted = peel.fold.value > 0;
+    const m = reflectMatrix(crease.value, lifted, size);
     return {
-      flat: pathFromPoly(flat),
-      flap: pathFromPoly(flap),
-      // The card's own face, folded. Everything printed on the part you lifted
-      // rides up with it and lands mirrored about the bend.
-      lifted: peel.fold.value > 0,
-      mirror: reflectMatrix(c, peel.fold.value > 0, size),
-      panel: pathFromPoly(
-        clipToFlat(roundRectPoly(back.panel.x, back.panel.y, back.panel.w, back.panel.h, back.panel.radius), c),
-      ),
-      emblem: pathFromPoly(clipToFlat(circlePoly(back.emblem.cx, back.emblem.cy, back.emblem.r), c)),
-      shade0: pathFromPoly(foldShadow(size, h, c, size * 0.3)),
-      creaseX1: seg ? seg[0].x : 0,
-      creaseY1: seg ? seg[0].y : 0,
-      creaseX2: seg ? seg[1].x : 0,
-      creaseY2: seg ? seg[1].y : 0,
-      creaseOn: seg && peel.fold.value > 1 ? 1 : 0,
-      // The back's suit mark is type, so it cannot be cut into pieces the way
-      // the drawn shapes can. It fades over the window in which the crease
-      // sweeps across it, which is close enough to ink disappearing round a
-      // fold.
-      markOpacity: Math.max(
-        0,
-        Math.min(1, sideOf({ x: back.emblem.cx, y: back.emblem.cy }, c) / back.emblem.r),
-      ),
+      opacity: lifted ? 1 : 0,
+      transform: [{ matrix: [m[0], m[1], 0, 0, m[2], m[3], 0, 0, 0, 0, 1, 0, m[4], m[5], 0, 1] }],
+    };
+  });
+  // The bend catches the light along its whole length.
+  const creaseWidth = Math.max(1, size * 0.022);
+  const creaseLineStyle = useAnimatedStyle(() => {
+    const seg = peel.fold.value > 1 ? creaseSegment(size, h, crease.value) : null;
+    if (!seg) return { opacity: 0, width: 0 };
+    const dx = seg[1].x - seg[0].x;
+    const dy = seg[1].y - seg[0].y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const half = creaseWidth / 2;
+    return {
+      opacity: 1,
+      width: len,
+      transform: [{ matrix: [ux, uy, 0, 0, -uy, ux, 0, 0, 0, 0, 1, 0, seg[0].x + half * uy, seg[0].y - half * ux, 0, 1] }],
     };
   });
 
@@ -301,38 +365,6 @@ function PeekCardInner({
     transform: [{ perspective: 900 }, { rotateY: `${(turn.value - 1) * 180}deg` }],
   }));
 
-  const flatProps = useAnimatedProps(() => ({ d: frame.value.flat }));
-  const flapProps = useAnimatedProps(() => ({ d: frame.value.flap }));
-  const panelProps = useAnimatedProps(() => ({ d: frame.value.panel }));
-  const emblemProps = useAnimatedProps(() => ({ d: frame.value.emblem }));
-  const shade0 = useAnimatedProps(() => ({ d: frame.value.shade0 }));
-  const creaseProps = useAnimatedProps(() => ({
-    x1: frame.value.creaseX1,
-    y1: frame.value.creaseY1,
-    x2: frame.value.creaseX2,
-    y2: frame.value.creaseY2,
-    opacity: frame.value.creaseOn,
-  }));
-  const markProps = useAnimatedProps(() => ({ opacity: frame.value.markOpacity }));
-  /**
-   * The fold's transform, and nothing at all while nothing is folded.
-   *
-   * `matrix`, not `transform`, and that is the whole fix for a stream of parse
-   * errors while peeling. react-native-svg animates a group through
-   * `setNativeProps`, and `G`'s implementation runs its JavaScript transform
-   * parser on every frame, which cannot read the only spelling the native side
-   * accepts. Handed a `matrix` prop instead, it skips the parser entirely and
-   * passes the six numbers straight through.
-   *
-   * Still omitted while nothing is lifted, so a card can mount without setting
-   * it at all. Nothing is drawn through it then anyway, because the flap is
-   * empty.
-   */
-  const mirrorProps = useAnimatedProps(() =>
-    frame.value.lifted ? { matrix: frame.value.mirror } : {},
-  );
-  const clipProps = useAnimatedProps(() => ({ d: frame.value.flap }));
-  const flatClipProps = useAnimatedProps(() => ({ d: frame.value.flat }));
 
   return (
     <Animated.View style={[{ width: size, height: h }, throwStyle, flipStyle]}>
@@ -343,183 +375,52 @@ function PeekCardInner({
         </Animated.View>
 
         <Animated.View style={[styles.layer, { width: size, height: h }, peelStyle]}>
-          {/*
-            * The canvas is bigger than the card, because the flap is not.
-            *
-            * A peeled corner swings up and away from the card, well outside
-            * its own rectangle, and an Svg sized to the card clipped it off
-            * square: the lifted corner came back cut along a hard straight
-            * edge, which reads as a rendering fault rather than a card.
-            *
-            * Shifting the viewBox origin by the same padding keeps every
-            * path coordinate meaning what it meant before, so none of the
-            * geometry below had to move; the canvas simply has room around
-            * it now, and the view is offset to put the card back where it
-            * was.
-            */}
-          <Svg
-            width={size + PEEL_PAD * 2}
-            height={h + PEEL_PAD * 2}
-            viewBox={`${-PEEL_PAD} ${-PEEL_PAD} ${size + PEEL_PAD * 2} ${h + PEEL_PAD * 2}`}
-            style={{ position: 'absolute', left: -PEEL_PAD, top: -PEEL_PAD }}
+          {/* The paper still on the table: the back, cut along the crease. */}
+          <Animated.View style={[styles.pinned, { width: span * 2, height: span, overflow: 'hidden' }, flatSide]}>
+            <Animated.View style={[styles.pinned, { width: size, height: h }, cardFrame]}>
+              <PeelBack size={size} variant={variant} />
+            </Animated.View>
+          </Animated.View>
+          {/* Shadow on the table, where the card no longer is. */}
+          <Animated.View style={[styles.pinned, { width: size, height: h, overflow: 'hidden' }, shadeStyle]}>
+            <Animated.View style={[styles.pinned, styles.shade, { width: span * 2, height: size * 0.3 }, shadeBand]} />
+          </Animated.View>
+          {/* The lifted piece, turned over, trimmed to the printed area. */}
+          <View
+            style={[styles.pinned, {
+              left: back.print.x,
+              top: back.print.y,
+              width: back.print.w,
+              height: back.print.h,
+              borderRadius: back.print.radius,
+              overflow: 'hidden',
+            }]}
           >
-            <Defs>
-              <LinearGradient
-                id={`${gradId}-back`}
-                x1={0}
-                y1={0}
-                x2={size}
-                y2={h}
-                gradientUnits="userSpaceOnUse"
-              >
-                <Stop offset="0" stopColor={backTheme.gradient[0]} />
-                <Stop offset="0.5" stopColor={backTheme.gradient[1]} />
-                <Stop offset="1" stopColor={backTheme.gradient[2]} />
-              </LinearGradient>
-              {/* The lifted piece is card stock seen from the front and tilted
-                  toward the light, so it is paper-white and brightest furthest
-                  from the bend. */}
-              <LinearGradient
-                id={`${gradId}-face`}
-                x1={0}
-                y1={0}
-                x2={size}
-                y2={h}
-                gradientUnits="userSpaceOnUse"
-              >
-                <Stop offset="0" stopColor="#FFFFFF" />
-                <Stop offset="0.6" stopColor="#F4F7FA" />
-                <Stop offset="1" stopColor="#DFE6ED" />
-              </LinearGradient>
-              {/* The card's own outline. Every shape the fold draws is built
-                  from a plain rectangle, a polygon has no notion of a rounded
-                  corner, so without this the back of your own cards came out
-                  square while the opponents', drawn straight from `CardBack`,
-                  were rounded. */}
-              <ClipPath id={`${gradId}-card`}>
-                <Rect
-                  x={back.print.x}
-                  y={back.print.y}
-                  width={back.print.w}
-                  height={back.print.h}
-                  rx={back.print.radius}
-                />
-              </ClipPath>
-              {/* The flap is card stock seen from the front, so it is clipped to
-                  the whole card rather than to the printed area. */}
-              <ClipPath id={`${gradId}-stock`}>
-                <Rect x={0} y={0} width={size} height={h} rx={back.radius} />
-              </ClipPath>
-              <ClipPath id={`${gradId}-flap`}>
-                <AnimatedPath animatedProps={clipProps} />
-              </ClipPath>
-              {/* The paper still lying on the table. The stock underneath has
-                  to be clipped to this, or it paints the whole card rectangle
-                  and a lifted corner shows white board where the felt should
-                  be, which read as the card sitting on a paper mat. */}
-              <ClipPath id={`${gradId}-flat`}>
-                <AnimatedPath animatedProps={flatClipProps} />
-              </ClipPath>
-              <CardBackLattice
-                id={`${gradId}-lattice`}
-                size={size}
-                color={backTheme.line}
+            <View style={[styles.pinned, { left: -back.print.x, top: -back.print.y, width: size, height: h }]}>
+              <Animated.View style={[styles.pinned, { width: span * 2, height: span, overflow: 'hidden' }, flatSide]}>
+                <Animated.View style={[styles.pinned, { width: size, height: h }, cardFrame]}>
+                  <Animated.View style={[styles.pinned, { width: size, height: h }, flapStyle]}>
+                    <Svg width={size} height={h}>
+                      <Defs>
+                        {/* Card stock seen from the front and tilted toward the
+                            light, so brightest furthest from the bend. */}
+                        <LinearGradient id={`${gradId}-face`} x1={0} y1={0} x2={size} y2={h} gradientUnits="userSpaceOnUse">
+                          <Stop offset="0" stopColor="#FFFFFF" />
+                          <Stop offset="0.6" stopColor="#F4F7FA" />
+                          <Stop offset="1" stopColor="#DFE6ED" />
+                        </LinearGradient>
+                      </Defs>
+                      <Rect x={0} y={0} width={size} height={h} fill={`url(#${gradId}-face)`} />
+                      <CardFaceContent rank={rank} suit={suit} size={size} paper={false} corners={4} />
+                    </Svg>
+                  </Animated.View>
+                </Animated.View>
+              </Animated.View>
+              <Animated.View
+                style={[styles.pinned, styles.crease, { height: creaseWidth, borderRadius: creaseWidth / 2 }, creaseLineStyle]}
               />
-            </Defs>
-
-            {/* The white board the design is printed on. Without it a
-                face-down card ran its colour to the edge and did not read as
-                the same object as the same card turned face up.
-
-                Clipped to the paper that is still flat: unclipped it filled
-                the card's whole rectangle, so peeling a corner revealed a
-                white slab where the table should show through, and the lifted
-                piece appeared to be sitting on a second card. */}
-            <G clipPath={`url(#${gradId}-flat)`}>
-              <Rect
-                x={0.5}
-                y={0.5}
-                width={size - 1}
-                height={h - 1}
-                rx={back.radius}
-                fill={colors.cardFace}
-                stroke="#E2E8EE"
-                strokeWidth={1}
-              />
-            </G>
-            <G clipPath={`url(#${gradId}-card)`}>
-            {/* The part still lying flat, with the back's printing cut by the
-                same crease that cuts the card. */}
-            <AnimatedPath
-              animatedProps={flatProps}
-              fill={`url(#${gradId}-back)`}
-              stroke={backTheme.rim}
-              strokeWidth={back.rim}
-              strokeLinejoin="round"
-            />
-            {/* The engraving, cut by the same crease as the colour under it.
-                Reusing `flatProps` rather than clipping means the lattice can
-                never disagree with the fold about where the paper ends. */}
-            <AnimatedPath animatedProps={flatProps} fill={`url(#${gradId}-lattice)`} />
-            <G clipPath={`url(#${gradId}-flat)`}>
-              <CardBackRosette size={size} color={backTheme.line} />
-            </G>
-            <AnimatedPath
-              animatedProps={panelProps}
-              fill="none"
-              stroke={backTheme.panel}
-              strokeWidth={back.panel.stroke}
-              strokeLinejoin="round"
-            />
-            <AnimatedPath
-              animatedProps={emblemProps}
-              fill={backTheme.emblemFill}
-              stroke={backTheme.emblemStroke}
-              strokeWidth={back.emblem.stroke}
-            />
-            <AnimatedSvgText
-              animatedProps={markProps}
-              x={back.emblem.cx}
-              y={back.emblem.baseline}
-              fontSize={back.emblem.fontSize}
-              fill={backTheme.mark}
-              textAnchor="middle"
-            >
-              {backTheme.glyph}
-            </AnimatedSvgText>
-
-            {/* Shadow on the table, where the card no longer is.
-
-                One soft shape rather than three stacked translucent copies:
-                each copy ended at a hard edge, so the "gradient" was really
-                three visible steps and read as printed lines across the card
-                rather than as a shadow. */}
-            <AnimatedPath animatedProps={shade0} fill="#000000" fillOpacity={0.14} />
-
-            {/* The lifted piece, turned over. */}
-            <AnimatedPath animatedProps={flapProps} fill={`url(#${gradId}-face)`} />
-            {/* The card's own face, folded back over the bend and trimmed to
-                the lifted paper. This is the whole point of modelling the peel
-                as a fold: the pips, the index and the court figure all ride up
-                on the corner you lifted, because they are printed on it. */}
-            <G clipPath={`url(#${gradId}-flap)`}>
-              <AnimatedG animatedProps={mirrorProps}>
-                <CardFaceContent rank={rank} suit={suit} size={size} paper={false} corners={4} />
-              </AnimatedG>
-            </G>
-
-            {/* The bend catches the light along its whole length. Drawn last, over
-                the folded artwork, because the highlight is on the near edge of
-                the paper and nothing printed on the card is in front of it. */}
-            <AnimatedLine
-              animatedProps={creaseProps}
-              stroke="rgba(255,255,255,0.7)"
-              strokeWidth={Math.max(1, size * 0.022)}
-              strokeLinecap="round"
-            />
-
-            </G>
-          </Svg>
+            </View>
+          </View>
         </Animated.View>
       </Animated.View>
     </Animated.View>
@@ -542,4 +443,7 @@ export const PeekCard = React.memo(PeekCardInner);
 
 const styles = StyleSheet.create({
   layer: { position: 'absolute', top: 0, left: 0, borderRadius: radii.sm },
+  pinned: { position: 'absolute', top: 0, left: 0, transformOrigin: [0, 0, 0] },
+  shade: { backgroundColor: 'rgba(0,0,0,0.14)' },
+  crease: { backgroundColor: 'rgba(255,255,255,0.7)' },
 });
