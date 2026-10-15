@@ -403,6 +403,34 @@ describe('room writes are keyed by auth.uid', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('never lets an older state of the same hand land after a newer one', async () => {
+    readValues.set('localpoker/rooms/ROOM12', {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 3,
+      players: { [AUTH_UID]: { id: AUTH_UID, name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true } },
+      publicState: { handNumber: 7 },
+    });
+    const { publishHostGameState } = await import('../roomSync');
+    const base = { ...baseGameState(), handNumber: 7 };
+    const river = { ...base, street: 'river' as const, log: [...base.log, 'a', 'b'] as never };
+    const turn = { ...base, street: 'turn' as const, log: [...base.log, 'a'] as never };
+
+    // Asked for together, as a guest's call and a shown card can be.
+    const results = await Promise.all([
+      publishHostGameState('ROOM12', river as never),
+      publishHostGameState('ROOM12', turn as never),
+    ]);
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    const tables = writes
+      .filter((w) => w.path === '' && (w.value as Record<string, unknown>)['localpoker/rooms/ROOM12/publicState'])
+      .map((w) => ((w.value as Record<string, { street: string }>)['localpoker/rooms/ROOM12/publicState']).street);
+    expect(tables).toEqual(['river']);
+  });
+
   it('stamps actions with the auth uid even if the caller supplies another id', async () => {
     const { pushAction } = await import('../roomSync');
 

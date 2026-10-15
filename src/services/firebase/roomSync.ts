@@ -1330,7 +1330,36 @@ const buildHostGame = (room: RoomState, seed: string): GameState | null => {
   return startHand(createGame(gameConfigFromSettings(settings, players.length), players, seed));
 };
 
-export const publishHostGameState = async (code: string, state: GameState): Promise<Result> => {
+/*
+ * Publishes go out one at a time, and never older than the last.
+ *
+ * Each publish reads the room before writing, so two started close together
+ * (a guest's call and the host's own check, or a card being shown just as the
+ * river is dealt) could land in either order. When the older one landed
+ * second, every guest's board went back a street: the river vanished, and came
+ * back with the next update. Chaining keeps the writes in the order they were
+ * asked for, and the freshness check drops a caller that hands over a state
+ * from earlier in the same hand.
+ */
+const publishChains = new Map<string, Promise<unknown>>();
+const lastPublished = new Map<string, GameState>();
+
+export const publishHostGameState = (code: string, state: GameState): Promise<Result> => {
+  const key = cleanKey(code) ?? code;
+  const run = (publishChains.get(key) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => {
+      const last = lastPublished.get(key);
+      // Already superseded: what the table shows is newer, so this is a no-op
+      // rather than a failure the caller should warn about.
+      if (last && !atLeastAsFresh(state, last)) return { ok: true };
+      return publishHostGameStateNow(code, state);
+    });
+  publishChains.set(key, run);
+  return run;
+};
+
+const publishHostGameStateNow = async (code: string, state: GameState): Promise<Result> => {
   const db = getConfiguredDb();
   const roomCode = cleanKey(code);
   if (!db || !roomCode) {
@@ -1410,6 +1439,7 @@ export const publishHostGameState = async (code: string, state: GameState): Prom
       table[`${roomPath(roomCode)}/runVotes`] = null;
     }
     await updateRoot(db, table);
+    lastPublished.set(roomCode, state);
     setCachedHostGame(roomCode, state);
 
     // Clear the view of anyone not holding cards this hand, rather than
@@ -1497,6 +1527,7 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
     await registerDisconnect(db, roomCode, hostId, true);
     // A new game in a room that has hosted one before starts again at hand 1.
     setCachedHostGame(roomCode, state, true);
+    lastPublished.set(roomCode, state);
     return { ok: true, state, publicState };
   } catch (error) {
     reportFirebaseError('start-room-game', error);
