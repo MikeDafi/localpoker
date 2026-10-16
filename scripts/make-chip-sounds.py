@@ -117,66 +117,70 @@ def build(hits: list[tuple[int, float, float]], cutoff: float, peak: float) -> l
         start = int(onset * RATE / 1000)
         for i, s in enumerate(voice):
             mixed[start + i] += s * gain
-    mixed = low_pass(mixed, cutoff)
+    mixed = low_pass(low_pass(mixed, cutoff), cutoff)
     loudest = max(abs(s) for s in mixed) or 1.0
     return [s * (peak / loudest) for s in mixed]
 
 
-# Toss is the existing liked cue: one small handful, then a larger handful for a raise.
-TOSS_CALL_HITS = [(0, 1.00, 0.95), (23, 1.18, 0.55), (58, 0.92, 0.42)]
+# Every hit is pitched well down from the recording. The source rings at about
+# 5.3kHz, a small, thin click, and six of those 20 to 40ms apart is a 30Hz
+# rhythm of a high note: what a player heard was a buzz, "like a fly", not
+# money. Pitched to roughly 0.6 the ring sits near 3kHz, where clay chips
+# actually clack, and each hit gets longer, the way a heavier chip is.
+#
+# The hits are also spaced like chips landing rather than like a rattle, 45ms
+# and more apart and drifting wider as the pile settles, and there are fewer
+# of them. Below about 40ms the ear stops hearing separate chips and hears a
+# tone, which was the other half of the buzz.
+TOSS_CALL_HITS = [(0, 0.62, 0.95), (58, 0.70, 0.55), (131, 0.58, 0.38)]
 TOSS_RAISE_HITS = [
-    (0, 0.94, 0.95),
-    (19, 1.14, 0.62),
-    (47, 1.02, 0.78),
-    (86, 0.88, 0.70),
-    (119, 1.22, 0.48),
-    (162, 0.97, 0.55),
+    (0, 0.60, 0.95),
+    (52, 0.68, 0.70),
+    (109, 0.57, 0.62),
+    (178, 0.72, 0.45),
+    (262, 0.63, 0.30),
 ]
 
 # Splash has more chips and a longer scatter, with lower filtering so it reads as cloth.
 SPLASH_CALL_HITS = [
-    (0, 0.86, 0.88),
-    (17, 1.28, 0.46),
-    (45, 0.98, 0.68),
-    (83, 1.36, 0.32),
-    (139, 0.78, 0.46),
-    (214, 1.12, 0.28),
+    (0, 0.56, 0.88),
+    (47, 0.71, 0.50),
+    (103, 0.60, 0.62),
+    (176, 0.75, 0.32),
+    (262, 0.54, 0.26),
 ]
 SPLASH_RAISE_HITS = [
-    (0, 0.80, 0.95),
-    (15, 1.31, 0.52),
-    (39, 0.91, 0.68),
-    (70, 1.20, 0.45),
-    (108, 0.84, 0.58),
-    (153, 1.39, 0.31),
-    (205, 0.97, 0.46),
-    (267, 0.73, 0.36),
-    (329, 1.14, 0.25),
+    (0, 0.54, 0.95),
+    (45, 0.72, 0.56),
+    (98, 0.60, 0.68),
+    (160, 0.76, 0.45),
+    (231, 0.56, 0.50),
+    (315, 0.70, 0.32),
+    (410, 0.58, 0.22),
 ]
 
 # Riffle is a compact stack landing: tighter timing, less pitch spread and a crisp attack.
-RIFFLE_CALL_HITS = [(0, 1.04, 0.90), (18, 0.99, 0.64), (36, 1.07, 0.56), (55, 0.96, 0.42)]
+RIFFLE_CALL_HITS = [(0, 0.68, 0.90), (44, 0.64, 0.62), (90, 0.70, 0.48)]
 RIFFLE_RAISE_HITS = [
-    (0, 0.98, 0.92),
-    (16, 1.05, 0.72),
-    (32, 1.00, 0.66),
-    (49, 1.08, 0.58),
-    (67, 0.95, 0.46),
-    (88, 1.03, 0.38),
+    (0, 0.66, 0.92),
+    (42, 0.70, 0.70),
+    (86, 0.63, 0.62),
+    (133, 0.69, 0.50),
+    (185, 0.65, 0.36),
 ]
 
 STYLE_SPECS = {
     "toss": {
-        "call": (TOSS_CALL_HITS, 2100, 0.42),
-        "raise": (TOSS_RAISE_HITS, 1850, 0.46),
+        "call": (TOSS_CALL_HITS, 3400, 0.42),
+        "raise": (TOSS_RAISE_HITS, 3200, 0.46),
     },
     "splash": {
-        "call": (SPLASH_CALL_HITS, 1700, 0.38),
-        "raise": (SPLASH_RAISE_HITS, 1550, 0.39),
+        "call": (SPLASH_CALL_HITS, 2800, 0.38),
+        "raise": (SPLASH_RAISE_HITS, 2700, 0.40),
     },
     "riffle": {
-        "call": (RIFFLE_CALL_HITS, 2550, 0.34),
-        "raise": (RIFFLE_RAISE_HITS, 2450, 0.37),
+        "call": (RIFFLE_CALL_HITS, 3800, 0.36),
+        "raise": (RIFFLE_RAISE_HITS, 3600, 0.39),
     },
 }
 
