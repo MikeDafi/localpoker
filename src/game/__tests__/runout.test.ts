@@ -13,6 +13,7 @@ import {
   runoutRunLabel,
   runoutStreet,
   RUNOUT_BEAT_MS,
+  RUNOUT_RIVER_MS,
   RUNOUT_HOLD_MS,
   RUNOUT_LEAD_MS,
   RUNOUT_RESULT_MS,
@@ -106,7 +107,8 @@ describe('run-out pacing', () => {
     const [flop, turn, river] = runoutPlan(0, 5);
     expect(flop!.delayMs).toBe(RUNOUT_LEAD_MS);
     expect(turn!.delayMs).toBe(RUNOUT_BEAT_MS);
-    expect(river!.delayMs).toBe(RUNOUT_BEAT_MS);
+    expect(river!.delayMs).toBe(RUNOUT_RIVER_MS);
+    expect(RUNOUT_RIVER_MS).toBeGreaterThan(RUNOUT_BEAT_MS);
     expect(turn!.delayMs).toBeGreaterThan(flop!.delayMs);
   });
 

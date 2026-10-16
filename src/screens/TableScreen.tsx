@@ -161,6 +161,16 @@ const BLINDS_UP_BANNER_MS = 3000;
 /** A pause after the betting closes, before the next street is dealt. */
 const STREET_BEAT_MS = 900;
 
+/*
+ * Longer before the turn and the river.
+ *
+ * Every street used to land 900ms after the betting closed, the turn and
+ * the river as briskly as the flop, so the hand ran away from the table. A
+ * single card is the one people lean in for, so it gets the longer wait.
+ */
+const STREET_SUSPENSE_MS = 1500;
+const streetBeatMs = (boardLength: number): number => (boardLength >= 4 ? STREET_SUSPENSE_MS : STREET_BEAT_MS);
+
 /** Clear air between an action's cue and the cue for whoever is next. */
 const ACTION_CUE_SPACING_MS = 420;
 
@@ -549,6 +559,22 @@ export function TableScreen({ navigation, route }: Props) {
    * is played out street by street.
    */
   const [revealedBoard, setRevealedBoard] = useState(state.board.length);
+  /*
+   * Fast-forward, for a hand you have folded out of at a table of bots.
+   *
+   * Watching bots play out a hand you are not in is the dull part of playing
+   * alone. Asking to skip plays the rest of the hand at once, silently, and
+   * lands straight on its result. Keyed by hand, so it never carries over.
+   */
+  const [skipHand, setSkipHand] = useState<number | null>(null);
+  const skipping = skipHand === state.handNumber;
+  /*
+   * The wait before the next board of a run-out, shown as a countdown.
+   *
+   * Between runs the table holds the finished board for several seconds and
+   * nothing on screen said why, so it looked stuck.
+   */
+  const [runHold, setRunHold] = useState<{ key: string; seconds: number } | null>(null);
   const [runoutRunIndex, setRunoutRunIndex] = useState(0);
   const [runVotes, setRunVotes] = useState<Record<string, RunCount>>({});
   const [runVoteClosed, setRunVoteClosed] = useState(false);
@@ -849,7 +875,7 @@ export function TableScreen({ navigation, route }: Props) {
     if (Object.keys(bets).length === 0) return;
     setClosingHold({ hand: state.handNumber, bets });
     if (closingTimer.current) clearTimeout(closingTimer.current);
-    closingTimer.current = setTimeout(() => setClosingHold(null), STREET_BEAT_MS);
+    closingTimer.current = setTimeout(() => setClosingHold(null), streetBeatMs(state.board.length));
   }, [state, animsOff]);
   const seatBet = (p: { id: string; currentBet: number }, called: boolean) => {
     const held = closingBets?.[p.id];
@@ -1856,7 +1882,7 @@ export function TableScreen({ navigation, route }: Props) {
     if (runVotingActive) return undefined;
     const action = runoutAction({
       handOver,
-      animationsOff: animsOff,
+      animationsOff: animsOff || skipping,
       revealed: revealedBoard,
       boardLength: activeRunBoardLength,
       resultsOpen,
@@ -1878,12 +1904,12 @@ export function TableScreen({ navigation, route }: Props) {
          * what had just happened. Only when cards are being ADDED: a new hand
          * resets this to zero and should not be made to wait for it.
          */
-        if (action.revealed < revealedBoard || animsOff) {
+        if (action.revealed < revealedBoard || animsOff || skipping) {
           setRevealedBoard(action.revealed);
           return undefined;
         }
         const revealed = action.revealed;
-        const beat = setTimeout(() => setRevealedBoard(revealed), STREET_BEAT_MS);
+        const beat = setTimeout(() => setRevealedBoard(revealed), streetBeatMs(revealed));
         return () => clearTimeout(beat);
       }
       case 'settle':
@@ -1898,7 +1924,11 @@ export function TableScreen({ navigation, route }: Props) {
         return () => clearTimeout(timer);
       }
       case 'result': {
+        if (activeRunIndex < runCount - 1) {
+          setRunHold({ key: `${state.handNumber}:${activeRunIndex}`, seconds: Math.round(action.delayMs / 1000) });
+        }
         const timer = setTimeout(() => {
+          setRunHold(null);
           if (activeRunIndex < runCount - 1) {
             setRunoutRunIndex((currentRun) => currentRun + 1);
             setRevealedBoard(runResetBoardLength);
@@ -1921,6 +1951,8 @@ export function TableScreen({ navigation, route }: Props) {
     runCount,
     runResetBoardLength,
     runVotingActive,
+    skipping,
+    state.handNumber,
     tabledHand,
   ]);
 
@@ -2086,15 +2118,23 @@ export function TableScreen({ navigation, route }: Props) {
     const actor = state.players[state.currentPlayerIndex];
     if (roomCode && firebaseOnline) return;
     if (!actor || actor.id === human.id || !actor.isBot) return;
+    // Not before the street it is acting on is on the felt. The engine deals
+    // the moment betting closes, the felt holds the card back for a beat, and
+    // a bot timed from the engine would bet into a board nobody can see yet.
+    if (!animsOff && !skipping && revealedBoard < state.board.length) return;
     /*
      * Measured from the last action rather than fixed, so a bet is left on
      * the felt long enough to be read before the next player answers it. A
      * check or a fold keeps the short beat; the table should not dawdle over
      * nothing happening.
      */
-    const delayMs = botSpeedMs + actionReadDelayMs(animsOff, lastAction.current);
+    const delayMs = skipping ? 30 : botSpeedMs + actionReadDelayMs(animsOff, lastAction.current);
     botTimer.current = setTimeout(() => {
       const decision = decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
+      if (skipping) {
+        step(decision.action, decision.amount, actor.id);
+        return;
+      }
       actionSound(decision.action, decision.amount, actor.id);
       // Occasionally a bot reacts, so the table feels alive both ways.
       const emoteRoll = randomFloat(`${String(seed)}:emote:${state.handNumber}:${actor.id}:${state.log.length}`);
@@ -2109,7 +2149,7 @@ export function TableScreen({ navigation, route }: Props) {
     return () => {
       if (botTimer.current) clearTimeout(botTimer.current);
     };
-  }, [state, isShowdown, step, botDiff, settings.difficulty, botSpeedMs, animsOff, showEmote, seed]);
+  }, [state, isShowdown, step, botDiff, settings.difficulty, botSpeedMs, animsOff, showEmote, seed, revealedBoard, skipping]);
 
   // Record stats + award coins once per hand at showdown.
   useEffect(() => {
@@ -4037,9 +4077,30 @@ export function TableScreen({ navigation, route }: Props) {
                 <Text style={styles.resultLine} numberOfLines={1}>{runWinnersLine(run)}</Text>
               </View>
             ))}
+            {runHold ? (
+              <TurnTimer
+                seconds={runHold.seconds}
+                active
+                resetKey={`run-hold-${runHold.key}`}
+                label={`Run ${activeRunIndex + 2} of ${runCount} in`}
+              />
+            ) : null}
             {human.folded && !isShowdown && (
               <Text style={styles.foldedNote}>You folded this hand</Text>
             )}
+            {/* Bots only: online, the other players are people, and their
+                hand is theirs to play at their own pace. */}
+            {human.folded && !handOver && !skipping && !(roomCode && firebaseOnline) ? (
+              <View style={{ marginTop: spacing.sm }}>
+                <WiiButton
+                  label="⏩  Skip to the end"
+                  variant="blue"
+                  size="md"
+                  fullWidth
+                  onPress={() => { sound.play('tap'); setSkipHand(state.handNumber); }}
+                />
+              </View>
+            ) : null}
           </View>
         )}
       </View>

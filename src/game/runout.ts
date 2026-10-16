@@ -27,8 +27,17 @@ export const RUNOUT_STOPS = [3, 4, 5] as const;
  */
 export const RUNOUT_LEAD_MS = 700;
 
-/** Pause before each later street, long enough to read the board first. */
-export const RUNOUT_BEAT_MS = 1100;
+/**
+ * Pause before the turn, long enough to read the board first.
+ *
+ * Was 1100ms, and the run-out felt like a slot machine paying out rather
+ * than a card everybody at the table is waiting on. The wait is the point
+ * of being all in.
+ */
+export const RUNOUT_BEAT_MS = 1700;
+
+/** And longer again before the river, the card that settles it. */
+export const RUNOUT_RIVER_MS = 2200;
 
 /**
  * Pause between the river landing and the result appearing.
@@ -118,7 +127,8 @@ export function runoutRunLabel(runIndex: number, runCount: number): string | nul
 }
 
 export function runoutStepDelay(stop: number): number {
-  return stop <= 3 ? RUNOUT_LEAD_MS : RUNOUT_BEAT_MS;
+  if (stop <= 3) return RUNOUT_LEAD_MS;
+  return stop >= 5 ? RUNOUT_RIVER_MS : RUNOUT_BEAT_MS;
 }
 
 /**
