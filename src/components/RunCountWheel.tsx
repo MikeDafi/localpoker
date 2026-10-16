@@ -17,12 +17,11 @@ export interface RunCountWheelProps {
 /**
  * A dial for how many times to run the board.
  *
- * Scrolling is the answer, rather than scrolling and then confirming. The vote
- * can already be changed until everybody has answered, and the row of buttons
- * this replaces committed on a single tap, so asking for a second tap would
- * add a step to the one control on screen that is against a clock.
+ * The wheel only picks; the table's Confirm button sends the vote. Committing
+ * on scroll locked in whatever a stray flick landed on, so the vote clock is a
+ * minute long to leave room for the second tap.
  *
- * Only a real drag commits. Spinning from 1 to 4 passes over 2 and 3 without
+ * Only a real drag reports a change. Spinning from 1 to 4 passes over 2 and 3 without
  * voting for either, because the commit happens when the wheel comes to rest.
  */
 export function RunCountWheel({ value, enabled, onChange }: RunCountWheelProps) {

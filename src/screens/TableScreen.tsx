@@ -172,7 +172,12 @@ const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 const BOT_FOLD_EMOTES: Emote[] = [{ type: 'emoji', value: '😤' }, { type: 'text', value: 'Fold.' }, { type: 'emoji', value: '🙄' }];
 const BOT_AGGRO_EMOTES: Emote[] = [{ type: 'emoji', value: '😎' }, { type: 'text', value: 'All in!' }, { type: 'emoji', value: '🔥' }];
 const BOT_NEUTRAL_EMOTES: Emote[] = [{ type: 'emoji', value: '🤔' }, { type: 'emoji', value: '👍' }, { type: 'text', value: 'Hmm…' }];
-const RUN_VOTE_MS = 8000;
+/*
+ * A minute to settle the run count. Spinning the wheel used to cast the vote
+ * on the first click, so one stray flick locked in a count; now the wheel only
+ * picks and Confirm sends it, which needs time to think.
+ */
+const RUN_VOTE_MS = 60_000;
 
 interface RenderedChipFlight {
   id: number;
@@ -545,6 +550,8 @@ export function TableScreen({ navigation, route }: Props) {
   const [runoutRunIndex, setRunoutRunIndex] = useState(0);
   const [runVotes, setRunVotes] = useState<Record<string, RunCount>>({});
   const [runVoteClosed, setRunVoteClosed] = useState(false);
+  /** The count on the wheel before Confirm sends it. */
+  const [runDraft, setRunDraft] = useState<RunCount>(1);
   /**
    * Whether this hand's betting closed before the board was complete, so the
    * hands were turned face up and the rest of the board run out underneath them.
@@ -1176,6 +1183,7 @@ export function TableScreen({ navigation, route }: Props) {
     setRunoutRunIndex(0);
     setRunVotes({});
     setRunVoteClosed(false);
+    setRunDraft(1);
   }, [felt.handNumber]);
 
   /** Whether a hand is still unbeaten by anything already face up. */
@@ -3633,11 +3641,22 @@ export function TableScreen({ navigation, route }: Props) {
                 <Text style={styles.runVoteNote}>Lowest vote wins. No answer means 1.</Text>
               </View>
               <RunCountWheel
-                value={humanRunVote?.choice ?? 1}
+                value={humanRunVote?.choice ?? runDraft}
                 enabled={runVoteCanAnswer}
-                onChange={chooseRunCount}
+                onChange={setRunDraft}
               />
             </View>
+            {runVoteCanAnswer && (
+              <View style={{ marginTop: spacing.sm }}>
+                <WiiButton
+                  label={`Confirm \u00b7 run it ${runDraft === 1 ? 'once' : `${runDraft} times`}`}
+                  variant="gold"
+                  size="md"
+                  fullWidth
+                  onPress={() => chooseRunCount(runDraft)}
+                />
+              </View>
+            )}
             {!runVoteCanAnswer && (
               <Text style={styles.foldedNote}>Waiting for the other all-in players…</Text>
             )}
@@ -4130,6 +4149,17 @@ function TableMenu({
           >
             <Text style={styles.menuRowLabel}>Sound</Text>
             <MenuValue text={settings.soundEnabled ? 'On' : 'Off'} on={settings.soundEnabled} />
+          </Pressable>
+          {/* Whether tapping a player opens their stats. Device-only too. */}
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => onChange({ showLiveStats: !settings.showLiveStats })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.showLiveStats }}
+            accessibilityLabel="Player stats"
+          >
+            <Text style={styles.menuRowLabel}>Player stats</Text>
+            <MenuValue text={settings.showLiveStats ? 'On' : 'Off'} on={settings.showLiveStats} />
           </Pressable>
 
           {isHost ? (

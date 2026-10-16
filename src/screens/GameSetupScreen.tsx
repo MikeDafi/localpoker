@@ -165,6 +165,21 @@ export function GameSetupScreen({ navigation, route }: Props) {
             >
               <Text style={styles.soundToggleText}>{local.soundEnabled ? '🔊 Sound on' : '🔇 Sound off'}</Text>
             </Pressable>
+            {/* Whether tapping a player opens their stats. This phone's
+                choice too, saved the same way as Sound. */}
+            <Pressable
+              onPress={() => {
+                const next = !local.showLiveStats;
+                setLocal((prev) => ({ ...prev, showLiveStats: next }));
+                updateSettings({ showLiveStats: next });
+              }}
+              style={[styles.soundToggle, local.showLiveStats && styles.soundToggleOn]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: local.showLiveStats }}
+              accessibilityLabel="Player stats"
+            >
+              <Text style={styles.soundToggleText}>{local.showLiveStats ? '📊 Stats on' : '📊 Stats off'}</Text>
+            </Pressable>
           </View>
 
           {/* The action buttons stay before the stakes chip because changing
