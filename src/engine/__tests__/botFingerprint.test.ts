@@ -6,12 +6,16 @@ import type { GameConfig, GameState } from '../types';
 /**
  * Pins every easy, medium and hard decision over a fixed set of hands.
  *
- * The expert bot was rebuilt around range-aware equity, MDF defence and a
- * push/fold chart, and all of that sits behind its own branch. The lower
- * difficulties are tuned against measurements recorded in the other bot tests,
- * so a change that leaks into their path would quietly invalidate those
- * numbers. A digest of the whole decision stream catches any leak at all,
- * including one that only shifts a single bet size by a chip.
+ * The lower difficulties are tuned against measurements recorded in the other
+ * bot tests, so a change that leaks into their path would quietly invalidate
+ * those numbers. A digest of the whole decision stream catches any leak at
+ * all, including one that only shifts a single bet size by a chip.
+ *
+ * Since every level started reading the betting, they share expert's preflop
+ * ranges, range-aware equity and reads (`rangePreflop`, `rangeEquity.ts`,
+ * `handReads.ts`), so a change there moves these digests as well as expert.
+ * That is the point: re-record them only when the change is meant to reach
+ * the lower levels, and say so where the digest is recorded.
  *
  * The fixtures mix table sizes, a short-stacked table (where expert switches to
  * push/fold) and a hero who bets a fixed size, so the call, raise and fold
@@ -79,11 +83,15 @@ function digest(difficulty: Difficulty): string {
 
 describe('easy, medium and hard decisions are unchanged', () => {
   it.each([
-    ['easy', '290:8896cba3'],
-    // Re-recorded when medium and hard moved to the balanced bluff frequency
-    // (scripts/bot-bluff-share.mts: river bets about a quarter bluffs, as GTO).
-    ['medium', '249:89c0c78'],
-    ['hard', '227:578bb93'],
+    // All three re-recorded when every level started reading the betting:
+    // range-aware equity with per-level read trust, position-aware preflop
+    // ranges, stack-to-pot ratio in commitment, and (medium and hard) one
+    // texture-based size and one stack cap for value and bluffs, with bluffs
+    // only from air. The decision counts were 290, 249 and 227: hands over
+    // the same deals now end sooner.
+    ['easy', '273:e7a023b6'],
+    ['medium', '192:c8b2f05b'],
+    ['hard', '175:2fa7f5f2'],
   ] as const)('%s matches its recorded fingerprint', (difficulty, expected) => {
     expect(digest(difficulty)).toBe(expected);
   }, 120_000);

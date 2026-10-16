@@ -7,9 +7,11 @@ import type { BotDecision, GameConfig, GameState } from '../types';
 /**
  * Behaviour tests for the expert bot, played through real hands.
  *
- * Each one pins a weakness the old expert had against a sound opponent, with
- * `hard` as the control: hard still estimates equity against random cards,
- * which is exactly what the old expert did.
+ * Each one pins a weakness the old expert had against a sound opponent. Where
+ * a control is needed it is `easy`: every level now reads the betting, and
+ * easy trusts its reads so little (0.2) that it plays close to what equity
+ * against random cards says, which is exactly what the old expert did. Hard
+ * used to be the control, until it learned to read too.
  */
 
 const config: GameConfig = { smallBlind: 5, bigBlind: 10, startingStack: 1000, maxPlayers: 6, turnTimerSec: 30 };
@@ -80,9 +82,10 @@ describe('expert: big bets narrow the range', () => {
   it('folds one pair to a three-barrel river overbet far more often than random-hand equity does', () => {
     setBotEntropy('test:overbet');
     const expert = foldsToRiverOverbet('expert', 150);
-    const control = foldsToRiverOverbet('hard', 150);
+    const control = foldsToRiverOverbet('easy', 150);
 
-    // Measured over 300 hands: hard folds ~40% of these pairs, expert ~67%.
+    // Measured over 300 hands: random-hand equity (the old hard) folded ~40%
+    // of these pairs, expert ~67%; easy, the control now, folds a few percent.
     // Against random cards top pair looks like a 70% favourite; against a
     // balanced 2x pot range it is a bluff-catcher that beats only the 40% that
     // are bluffs.
