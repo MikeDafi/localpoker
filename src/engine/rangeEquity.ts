@@ -129,6 +129,51 @@ export function buildComboTable(known: readonly Card[], board: readonly Card[]):
   return { first: Int8Array.from(first), second: Int8Array.from(second), strength, preflop, scores, sortedScores: sorted };
 }
 
+/**
+ * The combo table for a board, built once per board and shared by every bot.
+ *
+ * Building a table is most of what a range-aware decision costs: an
+ * evaluation of every remaining combo, and on the river each one is a 21-way
+ * seven-card evaluation. Built per decision, as the expert first did, that is
+ * paid again by every bot at the table and again each time the action comes
+ * back round. Built from the board alone, one table serves the whole street;
+ * each bot then removes the combos its own hole cards make impossible by
+ * zeroing their weight, see `withoutCards`, and `boardStrength` and
+ * `rangeEquity` skip them too.
+ *
+ * Ranking every combo on the board without regard to our own cards is also
+ * how an opponent sees it, which is what the table's strengths are used for:
+ * modelling what they would bet and call with.
+ *
+ * A handful of entries is enough: a table only ever plays one board at a
+ * time, and the oldest is evicted first.
+ */
+const TABLE_CACHE_SIZE = 4;
+const tableCache = new Map<string, ComboTable>();
+
+export function boardComboTable(board: readonly Card[]): ComboTable {
+  const key = board.map((c) => `${c.rank}${c.suit}`).join(',');
+  const cached = tableCache.get(key);
+  if (cached) return cached;
+  const table = buildComboTable(board, board);
+  tableCache.set(key, table);
+  if (tableCache.size > TABLE_CACHE_SIZE) {
+    const oldest = tableCache.keys().next().value;
+    if (oldest !== undefined) tableCache.delete(oldest);
+  }
+  return table;
+}
+
+/** Zero the weight of every combo holding one of `cards`, in place, and return `weights`. */
+export function withoutCards(weights: Float64Array, table: ComboTable, cards: readonly Card[]): Float64Array {
+  const blocked = new Uint8Array(52);
+  for (const card of cards) blocked[cardIndex(card)] = 1;
+  for (let k = 0; k < weights.length; k += 1) {
+    if (blocked[table.first[k]] || blocked[table.second[k]]) weights[k] = 0;
+  }
+  return weights;
+}
+
 function nextUp(score: number): number {
   // Scores are integers, so "strictly greater" is anything at or above +1.
   return score + 1;
@@ -145,13 +190,32 @@ function lowerBound(sorted: Float64Array, value: number): number {
   return lo;
 }
 
-/** Where our own hand ranks among every combo on this board, on the same scale. */
+/**
+ * Where our own hand ranks among every combo on this board, on the same scale.
+ *
+ * Combos holding one of our cards are left out, so a shared board table (see
+ * `boardComboTable`) ranks exactly as one built without our cards would. A
+ * linear pass over a thousand-odd scores costs nothing next to the one
+ * evaluation it needs.
+ */
 export function boardStrength(holeCards: readonly Card[], board: readonly Card[], table: ComboTable): number {
-  const count = table.sortedScores.length;
-  if (board.length < 3 || holeCards.length !== 2 || count === 0) return 0;
+  if (board.length < 3 || holeCards.length !== 2 || table.scores.length === 0) return 0;
   const mine = evaluateHand([...holeCards, ...board]).score;
-  const below = lowerBound(table.sortedScores, mine);
-  const ties = lowerBound(table.sortedScores, nextUp(mine)) - below;
+  const a = cardIndex(holeCards[0]);
+  const b = cardIndex(holeCards[1]);
+  let below = 0;
+  let ties = 0;
+  let count = 0;
+  for (let k = 0; k < table.scores.length; k += 1) {
+    const x = table.first[k];
+    const y = table.second[k];
+    if (x === a || x === b || y === a || y === b) continue;
+    count += 1;
+    const s = table.scores[k];
+    if (s < mine) below += 1;
+    else if (s === mine) ties += 1;
+  }
+  if (count === 0) return 0;
   return Math.max((below + ties / 2) / count, drawStrength(holeCards, board));
 }
 
@@ -337,11 +401,16 @@ export function rangeEquity(
   const cdfs = weights.map(cumulative);
   const random = mulberry32(seed);
   const used = new Uint8Array(52);
+  // Our own cards start every trial taken, so a shared board table's combos
+  // that hold them can never be dealt to an opponent even if their weight was
+  // not zeroed. With a table built without our cards this changes nothing.
+  const start = new Uint8Array(52);
+  for (const card of holeCards) start[cardIndex(card)] = 1;
   const opponentCards: number[] = new Array<number>(opponents * 2);
   let equity = 0;
 
   for (let trial = 0; trial < sims; trial += 1) {
-    used.fill(0);
+    used.set(start);
 
     for (let o = 0; o < opponents; o += 1) {
       const cdf = cdfs[o];
