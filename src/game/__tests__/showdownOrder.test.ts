@@ -83,6 +83,15 @@ describe('showdownOrder', () => {
 });
 
 describe('who is forced to show', () => {
+  it('forces a losing hand that went all in', () => {
+    // Called all in on a river that was checked to them: no claim, no win,
+    // and still tabled, because the caller is owed a look at it.
+    const players = [seat('a'), seat('b', { allIn: true }), seat('c')];
+    const order = showdownOrder({ players, dealerIndex: 0, lastAggressorIndex: null, winnerIds: ['c'] });
+    expect(canMuck(order, 'b')).toBe(false);
+    expect(canMuck(order, 'a')).toBe(true);
+  });
+
   it('forces the first to act, because they made the claim', () => {
     const o = showdownOrder({ players: table(), dealerIndex: 0, lastAggressorIndex: 2, winnerIds: [] });
     expect(o.mustShow).toEqual(['c']);

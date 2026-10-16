@@ -16,12 +16,15 @@
  * - Everyone else may muck, in turn, having seen what is already shown.
  * - A hand that **wins** has to be tabled. You cannot be paid for a hand
  *   nobody saw.
+ * - A hand that went **all in** is tabled. Once every chip is in there is
+ *   nothing left to protect, and the player who called it is owed a look.
  */
 
 export interface ShowdownSeat {
   id: string;
   folded?: boolean;
   sittingOut?: boolean;
+  allIn?: boolean;
   holeCards: readonly unknown[];
 }
 
@@ -101,7 +104,8 @@ export function showdownOrder(input: ShowdownOrderInput): ShowdownOrder {
    * saw, and the aggressor is still forced, because they bet and have to
    * show for it. Everyone else may muck.
    */
-  const mustShow = order.filter((id, i) => (aggressor !== null && i === 0) || winners.has(id));
+  const allIn = new Set(live.filter((p) => p.allIn).map((p) => p.id));
+  const mustShow = order.filter((id, i) => (aggressor !== null && i === 0) || winners.has(id) || allIn.has(id));
   return { order, mustShow };
 }
 
