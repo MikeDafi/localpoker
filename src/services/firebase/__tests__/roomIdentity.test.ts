@@ -612,7 +612,7 @@ describe('room writes are keyed by auth.uid', () => {
     const hand = { ...baseGameState(), handNumber: 7 };
 
     await publishHostGameState('ROOM88', hand as never);
-    await publishHostGameState('ROOM88', { ...hand, pot: hand.pot + 20 } as never);
+    await publishHostGameState('ROOM88', { ...hand, log: [...hand.log, hand.log[0]] } as never);
     expect(viewWrites()).toBe(1);
 
     await publishHostGameState('ROOM88', { ...baseGameState(), handNumber: 8 } as never);

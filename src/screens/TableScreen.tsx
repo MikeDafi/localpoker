@@ -1954,7 +1954,10 @@ export function TableScreen({ navigation, route }: Props) {
     if (!shouldSaveLocalState) return undefined;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     // After the frame work, not in the middle of it: serialising the game
-    // and writing it out used to land mid-deal.
+    // and writing it out used to land mid-deal. Two seconds of quiet rather
+    // than 600 ms, because at 600 ms a fast table rewrote the whole game
+    // after nearly every action; leaving the app or the table still saves
+    // straight away, so a crash costs at most the last couple of seconds.
     saveTimer.current = setTimeout(() => InteractionManager.runAfterInteractions(() => {
       if (skipNextTableSave.current) return;
       saveGame({
@@ -1967,7 +1970,7 @@ export function TableScreen({ navigation, route }: Props) {
         turnStartedAt,
         ...(tournamentStartedAt !== null ? { tournamentStartedAt } : {}),
       });
-    }), 600);
+    }), 2000);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };

@@ -382,6 +382,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAppReduceMotion(settings.reduceMotion || settings.animationSpeed === 'off');
   }, [settings.reduceMotion, settings.animationSpeed]);
 
+  /** The social lists as last written to storage, to skip identical writes. */
+  const savedSocial = useRef<{ blocked?: string; friends?: string }>({});
   const persist = useCallback((key: string, value: unknown) => {
     AsyncStorage.setItem(key, JSON.stringify(value)).catch((error) => {
       reportStorageError('persist', key, error);
@@ -594,13 +596,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       seenFriendRequestAlerts.current = alertKeys;
 
+      /*
+       * Saved and set only when they changed. Every social update, a friend's
+       * presence dot included, rewrote both lists to storage and handed every
+       * screen reading them a new array to redraw for.
+       */
       const nextBlocked = snapshot.blocked.map(blockedFromRecord);
-      persist(BLOCKS_KEY, nextBlocked);
-      setBlockedUsers(nextBlocked);
+      const blockedKey = JSON.stringify(nextBlocked);
+      if (blockedKey !== savedSocial.current.blocked) {
+        savedSocial.current.blocked = blockedKey;
+        persist(BLOCKS_KEY, nextBlocked);
+        setBlockedUsers(nextBlocked);
+      }
       setFriends((prev) => {
         const next = mergeSocialFriends(prev, snapshot);
-        persist(FRIENDS_KEY, next);
-        return next;
+        const friendsKey = JSON.stringify(next);
+        if (friendsKey !== savedSocial.current.friends) {
+          savedSocial.current.friends = friendsKey;
+          persist(FRIENDS_KEY, next);
+        }
+        return friendsKey === JSON.stringify(prev) ? prev : next;
       });
     });
     // The subscription belongs to one account, so it has to be torn down and

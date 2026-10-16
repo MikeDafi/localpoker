@@ -348,6 +348,12 @@ const settingsFromJson = (settingsJson: string): GameSettings => {
  */
 export const subscribeOpenRooms = (
   onRooms: (rooms: { friends: RoomSummary[]; public: RoomSummary[] }) => void,
+  /*
+   * False for a caller that only wants its own invites. The invite banner
+   * listens for the whole session, at the table included, and was downloading
+   * every public room anyone opened anywhere to read none of them.
+   */
+  options: { includePublic?: boolean } = {},
 ): (() => void) => {
   const db = getConfiguredDb();
   if (!db) {
@@ -380,10 +386,12 @@ export const subscribeOpenRooms = (
   const read = (snapshot: { val: () => unknown }): RoomSummary[] =>
     Object.values((snapshot.val() as Record<string, RoomSummary>) ?? {}).filter(joinable);
 
-  const unsubPublic = onValue(ref(db, 'localpoker/publicRooms'), (snapshot) => {
-    publicRooms = read(snapshot);
-    emit();
-  }, () => { publicRooms = []; emit(); });
+  const unsubPublic = options.includePublic === false
+    ? () => {}
+    : onValue(ref(db, 'localpoker/publicRooms'), (snapshot) => {
+      publicRooms = read(snapshot);
+      emit();
+    }, () => { publicRooms = []; emit(); });
 
   let unsubInvites: (() => void) | null = null;
   void authedPlayerId().then((uid) => {

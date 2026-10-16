@@ -61,7 +61,7 @@ export function InviteBanner({
       if (!fresh) return;
       seen.current.add(fresh.code);
       setOffer(fresh);
-    });
+    }, { includePublic: false });
   }, [enabled]);
 
   /*

@@ -236,6 +236,46 @@ const seekThenFireVoice = (name: SoundName, voice: SoundVoice): void => {
   }
 };
 
+function createPool(name: SoundName, audio: AudioModule, localSources: Record<SoundName, number>): SoundVoice[] | undefined {
+  try {
+    playerPools[name] = Array.from({ length: voiceCountFor(name) }, () => ({
+      player: audio.createAudioPlayer(localSources[name]),
+      rearming: false,
+    }));
+  } catch (error) {
+    reportSoundError('create-audio-player', error, name);
+  }
+  return playerPools[name];
+}
+
+/*
+ * Only what the table is about to play is loaded at launch.
+ *
+ * Every sound used to get its players up front, 56 native players before the
+ * splash screen went, and 34 of them were never played: resting sounds, the
+ * unstyled chip cues nothing asks for any more, and the two chip styles not
+ * chosen. Those now load the first time something plays them.
+ */
+const UNSTYLED_CHIP_SOUNDS = new Set<SoundName>(['chip', 'chipCall', 'chipRaise']);
+function loadsAtStart(name: SoundName): boolean {
+  if (RESTING_SOUNDS.has(name) || UNSTYLED_CHIP_SOUNDS.has(name)) return false;
+  if (name.startsWith('chipCall-') || name.startsWith('chipRaise-')) {
+    return name === resolveChipSoundName('call', chipSound) || name === resolveChipSoundName('raise', chipSound);
+  }
+  return true;
+}
+
+function poolFor(name: SoundName): SoundVoice[] | undefined {
+  const existing = playerPools[name];
+  if (existing) return existing;
+  try {
+    return createPool(name, getAudioModule(), getSources());
+  } catch (error) {
+    reportSoundError('load-audio', error);
+    return undefined;
+  }
+}
+
 function init() {
   if (initialized) return;
   initialized = true;
@@ -249,14 +289,7 @@ function init() {
     return;
   }
   (Object.keys(localSources) as SoundName[]).forEach((name) => {
-    try {
-      playerPools[name] = Array.from({ length: voiceCountFor(name) }, () => ({
-        player: audio.createAudioPlayer(localSources[name]),
-        rearming: false,
-      }));
-    } catch (error) {
-      reportSoundError('create-audio-player', error, name);
-    }
+    if (loadsAtStart(name)) createPool(name, audio, localSources);
   });
   /*
    * Mix, do not take the audio session over, and stay quiet on silent.
@@ -298,7 +331,7 @@ export const sound = {
   play(name: SoundName) {
     if (!enabled || RESTING_SOUNDS.has(name) || !appIsActive()) return;
     init();
-    const pool = playerPools[name];
+    const pool = poolFor(name);
     if (!pool?.length) return;
     const armedVoice = pool.find(isArmedVoice);
     if (armedVoice) fireArmedVoice(name, armedVoice);
