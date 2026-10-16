@@ -158,6 +158,13 @@ export function HoleCards({
     Array.isArray(value) ? value[index] === true : value === true;
   const showToTableAll = typeof showToTable === 'boolean' ? showToTable : cards.every((_, i) => flagAt(showToTable, i));
   const locked = cards.every((_, i) => flagAt(forceOpen, i) || (showToTableAll && flagAt(showToTable, i)));
+  // The table hands `forceOpen` over as a fresh array on every render, so the
+  // effect below keys on what it says rather than on the array itself.
+  // Keying on the array snapped the peel shut under a still-held thumb every
+  // time anyone else at the table acted.
+  const forceOpenKey = cards.map((_, i) => (flagAt(forceOpen, i) ? '1' : '0')).join('');
+  // A finger is on the cards. Nothing but the finger lifting closes a peel.
+  const holding = useSharedValue(0);
 
   const tick = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -170,6 +177,9 @@ export function HoleCards({
   const notifyPeek = useCallback(() => onPeekRef.current?.(), []);
 
   useEffect(() => {
+    // Mid-peel the finger owns the fold, crease and all. Only the hand being
+    // turned over to the table may take it away.
+    if (holding.value === 1 && !showToTableAll) return;
     // The cards change size when the hand ends, which moves where a fold could
     // start from; reset the pinned point so the programmatic peel below and any
     // fold left over from a previous hand are expressed in the current card's
@@ -197,7 +207,7 @@ export function HoleCards({
     }
     // Anything else means nobody is looking, so the hand is not on show.
     peel.fold.value = withTiming(0, { duration: motion.fast });
-  }, [showToTableAll, forceOpen, size, h, peel]);
+  }, [showToTableAll, forceOpenKey, size, h, peel, holding]);
 
   const gesture = useMemo(
     () =>
@@ -205,6 +215,7 @@ export function HoleCards({
         .minDistance(0)
         .onBegin((e) => {
           if (locked) return;
+          holding.value = 1;
           ticked.value = 0;
           // Which card is under the finger, so the grab is resolved in that
           // card's own coordinates, then applied to all of them.
@@ -286,6 +297,7 @@ export function HoleCards({
           }
         })
         .onFinalize(() => {
+          holding.value = 0;
           if (locked) return;
           if (ticked.value === 1) runOnJS(notifyPeek)();
           // Snap flat again: a hand is only exposed while you are actively
@@ -298,7 +310,7 @@ export function HoleCards({
             overshootClamping: true,
           });
         }),
-    [locked, count, step, size, h, peel, ticked, grabbed, grabX, grabY, tick, notifyPeek],
+    [locked, count, step, size, h, peel, ticked, grabbed, grabX, grabY, holding, tick, notifyPeek],
   );
 
   return (

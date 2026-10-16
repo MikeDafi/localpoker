@@ -385,18 +385,13 @@ function PeekCardInner({
           <Animated.View style={[styles.pinned, { width: size, height: h, overflow: 'hidden' }, shadeStyle]}>
             <Animated.View style={[styles.pinned, styles.shade, { width: span * 2, height: size * 0.3 }, shadeBand]} />
           </Animated.View>
-          {/* The lifted piece, turned over, trimmed to the printed area. */}
-          <View
-            style={[styles.pinned, {
-              left: back.print.x,
-              top: back.print.y,
-              width: back.print.w,
-              height: back.print.h,
-              borderRadius: back.print.radius,
-              overflow: 'hidden',
-            }]}
-          >
-            <View style={[styles.pinned, { left: -back.print.x, top: -back.print.y, width: size, height: h }]}>
+          {/* The lifted piece, turned over. Not boxed in: the crease cut and
+              the card's own outline are its whole shape, so a corner pulled
+              far enough swings out past the card's edge the way real stock
+              does. It used to be trimmed to the printed area, which stopped
+              every peel dead at the white border. */}
+          <View style={[styles.pinned, { width: size, height: h }]}>
+            <View style={[styles.pinned, { width: size, height: h }]}>
               <Animated.View style={[styles.pinned, { width: span * 2, height: span, overflow: 'hidden' }, flatSide]}>
                 <Animated.View style={[styles.pinned, { width: size, height: h }, cardFrame]}>
                   <Animated.View style={[styles.pinned, { width: size, height: h }, flapStyle]}>
@@ -410,7 +405,16 @@ function PeekCardInner({
                           <Stop offset="1" stopColor="#DFE6ED" />
                         </LinearGradient>
                       </Defs>
-                      <Rect x={0} y={0} width={size} height={h} fill={`url(#${gradId}-face)`} />
+                      <Rect
+                        x={0.5}
+                        y={0.5}
+                        width={size - 1}
+                        height={h - 1}
+                        rx={back.radius}
+                        fill={`url(#${gradId}-face)`}
+                        stroke="#E2E8EE"
+                        strokeWidth={1}
+                      />
                       <CardFaceContent rank={rank} suit={suit} size={size} paper={false} corners={4} />
                     </Svg>
                   </Animated.View>
