@@ -1426,7 +1426,30 @@ export function TableScreen({ navigation, route }: Props) {
     doHumanAction(action, amount);
   };
 
+  /*
+   * One action per turn from this phone.
+   *
+   * Online, the buttons stay up until the host's next update arrives, and on a
+   * slow connection that is long enough to tap again. Each extra tap was a
+   * second action racing the first for the same sequence number, which the
+   * rules refuse, so spamming Check ended in "permission denied". The turn a
+   * send went out on is remembered, and the bar sits dimmed until play moves.
+   */
+  const sentTurnRef = useRef<string | null>(null);
+  const [sentTurn, setSentTurn] = useState<string | null>(null);
+  const actionSending = !!roomCode && firebaseOnline && sentTurn === turnKey;
+
   const doHumanAction = (action: PlayerAction, amount?: number) => {
+    const online = !!roomCode && firebaseOnline;
+    if (online && sentTurnRef.current === turnKey) return;
+    if (online) {
+      sentTurnRef.current = turnKey;
+      setSentTurn(turnKey);
+    }
+    const unsend = () => {
+      sentTurnRef.current = null;
+      setSentTurn(null);
+    };
     if (settings.hapticsEnabled) {
       Haptics.impactAsync(action === 'fold' ? Haptics.ImpactFeedbackStyle.Rigid : Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -1444,6 +1467,7 @@ export function TableScreen({ navigation, route }: Props) {
 
     if (roomCode && firebaseOnline) {
       const warnFailed = (reason: string) => {
+        unsend();
         /*
          * Only offer to retry something that retrying could fix.
          *
@@ -1482,6 +1506,14 @@ export function TableScreen({ navigation, route }: Props) {
         .then((result) => {
           if (result.ok) {
             markActionStats();
+            // The host refusing an action changes nothing on the table, so
+            // the turn never moves. Give the buttons back rather than leave
+            // them dimmed until the clock runs out.
+            setTimeout(() => {
+              if (sentTurnRef.current !== turnKey) return;
+              sentTurnRef.current = null;
+              setSentTurn(null);
+            }, 8000);
             return;
           }
           // A refused write means the tap did nothing. Without this the table
@@ -3887,7 +3919,9 @@ export function TableScreen({ navigation, route }: Props) {
               onExpire={onTimerExpire}
               warn
             />
-            <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
+            <View style={actionSending ? { opacity: 0.5 } : null} pointerEvents={actionSending ? 'none' : 'auto'}>
+              <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
+            </View>
           </View>
         ) : (
           <View style={styles.waiting}>

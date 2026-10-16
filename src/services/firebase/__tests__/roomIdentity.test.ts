@@ -559,6 +559,41 @@ describe('room writes are keyed by auth.uid', () => {
     expect(delivered).toEqual([1, 2, 3]);
   });
 
+  it('does not report a room update that only added an action', async () => {
+    const { subscribeRoom } = await import('../roomSync');
+    const seen: unknown[] = [];
+    subscribeRoom('ROOM55', (room) => seen.push(room));
+    const emitRoom = valueHandlers[valueHandlers.length - 1]!;
+    const room = { hostId: 'someoneelse', status: 'lobby', players: {} };
+    emitRoom({ exists: () => true, val: () => ({ ...room, actions: { a: { seq: 1 } } }) } as never);
+    emitRoom({ exists: () => true, val: () => ({ ...room, actions: { a: { seq: 1 }, b: { seq: 2 } } }) } as never);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toHaveProperty('actions');
+    emitRoom({ exists: () => true, val: () => ({ ...room, status: 'playing' }) } as never);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('clears last hand\'s actions when it publishes a new hand, and only then', async () => {
+    const room = {
+      code: 'ROOM77',
+      hostId: AUTH_UID,
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 3,
+      players: { [AUTH_UID]: { id: AUTH_UID, name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true } },
+      publicState: { handNumber: 7 },
+    };
+    readValues.set('localpoker/rooms/ROOM77', room);
+    const { publishHostGameState } = await import('../roomSync');
+    const clearedActions = () => writes.some((w) => w.path === '' && Object.prototype.hasOwnProperty.call(w.value as object, 'localpoker/rooms/ROOM77/actions'));
+
+    await publishHostGameState('ROOM77', { ...baseGameState(), handNumber: 7 } as never);
+    expect(clearedActions()).toBe(false);
+
+    await publishHostGameState('ROOM77', { ...baseGameState(), handNumber: 8 } as never);
+    expect(clearedActions()).toBe(true);
+  });
+
   it('closes the table when a guest leaves while the host is mid-reconcile', async () => {
     const { subscribeRoom, TOO_FEW_PLAYERS_REASON } = await import('../roomSync');
     const both = { hostId: AUTH_UID, status: 'playing', players: { [AUTH_UID]: { connected: true }, other: { connected: true } } };

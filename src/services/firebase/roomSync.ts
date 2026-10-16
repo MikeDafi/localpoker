@@ -1153,11 +1153,28 @@ export const subscribeRoom = (
     return noop;
   }
 
+  /*
+   * The room without its action queue, and only when that changed.
+   *
+   * Every check, bet and fold lands in the room's action list, so this fired
+   * on every phone for every action and each one redrew the whole table, on
+   * top of the redraw the host's update brings a moment later. Nobody reading
+   * the room uses the queue (the host has its own subscription for it), so it
+   * is dropped here and an update that only touched the queue is skipped.
+   */
+  let lastKey: string | null = null;
   try {
     return onValue(
       ref(db, roomPath(roomCode)),
       (snapshot) => {
-        const nextRoom = snapshot.exists() ? (snapshot.val() as RoomState) : null;
+        let nextRoom: RoomState | null = null;
+        if (snapshot.exists()) {
+          const { actions: _actions, ...rest } = snapshot.val() as RoomState & { actions?: unknown };
+          nextRoom = rest as RoomState;
+        }
+        const key = JSON.stringify(nextRoom);
+        if (key === lastKey) return;
+        lastKey = key;
         cb(nextRoom);
         void reconcileHostPresence(roomCode, nextRoom);
       },
@@ -1437,6 +1454,10 @@ const publishHostGameStateNow = async (code: string, state: GameState): Promise<
       table[`${roomPath(roomCode)}/exposed`] = null;
       table[`${roomPath(roomCode)}/handReady`] = null;
       table[`${roomPath(roomCode)}/runVotes`] = null;
+      // Last hand's actions are spent. Left alone they piled up all night,
+      // 286 of them in one room, and every phone joining or rejoining
+      // downloaded the lot.
+      table[`${roomPath(roomCode)}/actions`] = null;
     }
     await updateRoot(db, table);
     lastPublished.set(roomCode, state);
