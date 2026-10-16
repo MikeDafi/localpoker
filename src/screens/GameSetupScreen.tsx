@@ -243,12 +243,31 @@ export function GameSetupScreen({ navigation, route }: Props) {
                   value={local[field.key]}
                   ownedCosmeticIds={cosmetics.ownedCosmeticIds}
                   compact={compact}
-                  isLast={index === visibleFields.length - 1}
+                  isLast={index === visibleFields.length - 1 && activeSection.id !== 'appearance'}
                   onBooleanChange={handleBooleanChange}
                   onNumberChange={handleNumberChange}
                   onSelectChange={handleSelectChange}
                 />
               ))}
+              {/* Under the look of the table, which is where players went
+                  looking for it. It is this phone's choice rather than the
+                  table's, so it saves straight away like the Sound pill
+                  instead of riding along with the setup. */}
+              {activeSection.id === 'appearance' ? (
+                <SettingRow
+                  field={LIVE_STATS_FIELD}
+                  value={local.showLiveStats}
+                  ownedCosmeticIds={cosmetics.ownedCosmeticIds}
+                  compact={compact}
+                  isLast
+                  onBooleanChange={(_field, next) => {
+                    setLocal((prev) => ({ ...prev, showLiveStats: next }));
+                    updateSettings({ showLiveStats: next });
+                  }}
+                  onNumberChange={handleNumberChange}
+                  onSelectChange={handleSelectChange}
+                />
+              ) : null}
               {activeSection.id === 'table' && schedulePreview ? (
                 <Text style={styles.schedulePreview}>{schedulePreview}</Text>
               ) : null}
@@ -289,6 +308,13 @@ function SectionTab({ section, active, count, onPress }: {
     </Pressable>
   );
 }
+
+const LIVE_STATS_FIELD: SettingField = {
+  key: 'showLiveStats',
+  label: 'Live Stats Button',
+  type: 'toggle',
+  help: 'Shows the stats button at the table, and lets you tap a player to see how they play.',
+};
 
 function SettingRow({
   field,

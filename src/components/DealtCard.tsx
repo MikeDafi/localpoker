@@ -110,6 +110,28 @@ function DealtCardInner({
     return () => sub.remove();
   }, [p, flip]);
 
+  /*
+   * And a card always lands, even if nobody left the app.
+   *
+   * The throw is the only thing that makes a card visible, and it runs once.
+   * Anything that cancels it partway, a re-render handing the card a fresh
+   * animated style mid-flight is enough, left the card at opacity 0, and the
+   * flip has the same weakness halfway, where the card is squashed to no
+   * width at all. The board then showed the third card's gold ring around an
+   * empty slot, for the rest of the hand. Once every animation should have
+   * finished, whatever has not is put where it was going.
+   */
+  useEffect(() => {
+    if (!animate) return undefined;
+    const settleAfter = delay + throwMs + 90 + motion.base + 250;
+    const timer = setTimeout(() => {
+      if (p.value < 1) p.value = 1;
+      const target = faceUpRef.current ? 1 : 0;
+      if (flip.value !== target) flip.value = target;
+    }, settleAfter);
+    return () => clearTimeout(timer);
+  }, [animate, faceUp, delay, throwMs, p, flip]);
+
   const throwStyle = useAnimatedStyle(() => {
     const t = p.value;
     return {

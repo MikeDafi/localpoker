@@ -5,6 +5,8 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, FadeInUp, FadeOut, Easing } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
@@ -573,6 +575,45 @@ export function TableScreen({ navigation, route }: Props) {
   // winners there are, so the hole cards are lifted clear of whatever it
   // actually measures rather than of a guess.
   const [resultH, setResultH] = useState(0);
+  /*
+   * The end-of-hand panel can be swiped down out of the way, to look at the
+   * table it covers, and back up again. Only the result is tucked: Next Hand
+   * stays, and so does the countdown, which keeps running while hidden.
+   */
+  const [resultTucked, setResultTucked] = useState(false);
+  // Whether the result body actually overflows. Only then does it scroll; a
+  // body that scrolls without needing to swallowed the swipe on most of the
+  // panel, so it only worked from the buttons.
+  const [resultBodyH, setResultBodyH] = useState(0);
+  const [resultContentH, setResultContentH] = useState(0);
+  const resultScrolls = resultContentH > resultBodyH + 1;
+  // How far the controls area runs past the bottom of the safe area. On a
+  // full table with several run-out rows the column is taller than the
+  // screen, and the panel, pinned to the bottom of the controls, took Next
+  // Hand down with it.
+  const insets = useSafeAreaInsets();
+  const controlsRef = useRef<View>(null);
+  const [controlsOverflow, setControlsOverflow] = useState(0);
+  const measureControls = useCallback(() => {
+    controlsRef.current?.measureInWindow((_x, y, _w, h) => {
+      const over = Math.max(0, Math.round(y + h - (winH - insets.bottom)));
+      setControlsOverflow((prev) => (prev === over ? prev : over));
+    });
+  }, [winH, insets.bottom]);
+  const resultSwipe = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetY([-14, 14])
+        .failOffsetX([-24, 24])
+        .onEnd((e) => {
+          if (e.translationY > 36) setResultTucked(true);
+          else if (e.translationY < -36) setResultTucked(false);
+        }),
+    [],
+  );
+  // Each hand's result arrives in full.
+  useEffect(() => { setResultTucked(false); }, [state.handNumber]);
   /**
    * What this table has been seen to do, per player.
    *
@@ -3700,7 +3741,7 @@ export function TableScreen({ navigation, route }: Props) {
         </View>
       </View>
 
-      <View style={styles.controls}>
+      <View ref={controlsRef} style={styles.controls} onLayout={measureControls}>
         {isAwaitingOnlineState ? (
           <View style={styles.waiting}>
             <Text style={styles.waitingText}>Syncing live table…</Text>
@@ -3755,11 +3796,21 @@ export function TableScreen({ navigation, route }: Props) {
             </View>
           </Animated.View>
         ) : isShowdown ? (
+          <GestureDetector gesture={resultSwipe}>
           <Animated.View
             entering={FadeInUp.duration(motion.base).easing(Easing.bezier(...easings.out))}
-            style={[styles.resultCard, { maxHeight: winH * 0.46 }]}
-            onLayout={(e) => setResultH(e.nativeEvent.layout.height)}
+            style={[styles.resultCard, { maxHeight: winH * 0.46, bottom: spacing.sm + controlsOverflow }]}
+            onLayout={(e) => { setResultH(e.nativeEvent.layout.height); measureControls(); }}
           >
+            <Pressable
+              onPress={() => setResultTucked((t) => !t)}
+              hitSlop={{ top: 8, bottom: 8, left: 40, right: 40 }}
+              style={styles.resultGrabber}
+              accessibilityRole="button"
+              accessibilityLabel={resultTucked ? 'Show the hand result' : 'Hide the hand result'}
+            >
+              <View style={styles.resultGrabberBar} />
+            </Pressable>
             {/*
               * The result, everything except the buttons, scrolls.
               *
@@ -3771,10 +3822,15 @@ export function TableScreen({ navigation, route }: Props) {
               * the part that must never be the thing that gets cut.
               */}
             <ScrollView
-              style={styles.resultBody}
+              // Hidden rather than removed when tucked, so the countdown in
+              // it keeps running and still deals the next hand.
+              style={[styles.resultBody, resultTucked && { display: 'none' }]}
               contentContainerStyle={styles.resultBodyContent}
               showsVerticalScrollIndicator={false}
               bounces={false}
+              scrollEnabled={resultScrolls}
+              onLayout={(e) => setResultBodyH(e.nativeEvent.layout.height)}
+              onContentSizeChange={(_w, h) => setResultContentH(h)}
             >
             {/* Your cards are not repeated here: they are already on the table
                 in front of you, and reprinting them turned the result card into
@@ -3961,6 +4017,7 @@ export function TableScreen({ navigation, route }: Props) {
               )}
             </View>
           </Animated.View>
+          </GestureDetector>
         ) : legal && isHumanTurn ? (
           <View>
             <TurnTimer
@@ -4242,9 +4299,9 @@ function TableMenu({
             onPress={() => onChange({ showLiveStats: !settings.showLiveStats })}
             accessibilityRole="switch"
             accessibilityState={{ checked: settings.showLiveStats }}
-            accessibilityLabel="Player stats"
+            accessibilityLabel="Live stats button"
           >
-            <Text style={styles.menuRowLabel}>Player stats</Text>
+            <Text style={styles.menuRowLabel}>Live stats button</Text>
             <MenuValue text={settings.showLiveStats ? 'On' : 'Off'} on={settings.showLiveStats} />
           </Pressable>
 
@@ -4490,7 +4547,9 @@ const styles = StyleSheet.create({
   // The safe-area inset already clears the status bar and the island, so the
   // padding on top of it was a second gap for the same hazard and simply
   // pushed the whole table down the screen.
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: 0 },
+  // Over the table, which follows it: on a full table the top of the seat arc
+  // rises into this row and would otherwise draw over the tournament banner.
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: 0, zIndex: 30 },
   iconBtn: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
   topRight: { minWidth: 44, flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   safetyBtn: { width: 44, height: 44, borderRadius: radii.pill, backgroundColor: colors.red, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
@@ -4500,7 +4559,9 @@ const styles = StyleSheet.create({
   potCenterLabel: { ...type.label, color: colors.onDarkMuted },
   potCenterValue: { fontFamily: fonts.bold, fontSize: 26, color: colors.onDark, ...numeric },
   roomPill: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 44, alignItems: 'center' },
-  tournamentPill: { flexShrink: 1, maxWidth: '58%' },
+  // Slimmer than the room pill so it overlaps the top seat's head as little as
+  // possible, and wide enough that the text is never cut short.
+  tournamentPill: { flexShrink: 1, maxWidth: '68%', paddingVertical: 4 },
   roomText: { ...type.label, color: colors.onDarkSoft },
   // The gold win ring must not change the board's geometry, or every card
   // visibly jumps outward the moment a hand is won. The border is therefore
@@ -4677,6 +4738,10 @@ const styles = StyleSheet.create({
   resultBody: { flexShrink: 1 },
   resultBodyContent: { paddingBottom: spacing.xs },
   nextRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // The handle that says the panel can be swiped, and a tap target for
+  // anyone who would rather not swipe.
+  resultGrabber: { alignSelf: 'center', paddingVertical: 4, marginTop: -2, marginBottom: 2 },
+  resultGrabberBar: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceBorder },
   nextBtn: { flex: 1 },
   // 44pt because that is the smallest target iOS considers reachable, and the
   // button is now a circle with no words to widen it.

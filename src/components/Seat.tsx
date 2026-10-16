@@ -153,14 +153,21 @@ function SeatInner({ player, pal, isCurrent, isDealer, isHuman, showCards, shown
   // scaled *down* while hidden, scaling a 18pt card up would just look soft.
   const HOLE_SIZE = 24;
   const HOLE_MIN = 18 / HOLE_SIZE;
+  /*
+   * Face down the cards are only a marker that this player is still in, and
+   * at 18pt, tucked against the head, they covered a good part of the face on
+   * a full table. They sit at 12pt now. A shown or tabled card is sized as it
+   * always was, from the 18pt reference, so showing still reads the same.
+   */
+  const HOLE_FACE_DOWN = 12 / HOLE_SIZE;
   const anyCardShown = !!showCards || shownCards?.some(Boolean) === true;
-  const shown = useSharedValue(anyCardShown ? 1 : HOLE_MIN);
+  const shown = useSharedValue(anyCardShown ? 1 : HOLE_FACE_DOWN);
   useEffect(() => {
-    shown.value = withTiming(anyCardShown ? 1 : HOLE_MIN, {
+    shown.value = withTiming(anyCardShown ? 1 : HOLE_FACE_DOWN, {
       duration: motion.base,
       easing: Easing.bezier(...easings.out),
     });
-  }, [anyCardShown, shown, HOLE_MIN]);
+  }, [anyCardShown, shown, HOLE_FACE_DOWN]);
   const holeStyle = useAnimatedStyle(() => ({ transform: [{ scale: shown.value }] }));
   const cardsToDisplay = displayCards ?? player.holeCards;
   const hasHoleCardsToDisplay = cardsToDisplay.some(Boolean);
@@ -541,7 +548,7 @@ const styles = StyleSheet.create({
   // as goggles/ears rather than as playing cards.
   // Rendered at full size and scaled down (see HOLE_SIZE), so the box is sized
   // for the big cards; the offsets keep the shrunken pair tucked beside the head.
-  cCards: { position: 'absolute', top: 16, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
+  cCards: { position: 'absolute', top: 22, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
   // Seats sit close together on the arc, so shown cards are only lifted a
   // little and tucked down-right: any bigger and neighbouring pods collide.
   cCardsShown: { top: 28, zIndex: 6 },

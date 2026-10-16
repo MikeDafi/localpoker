@@ -272,7 +272,10 @@ export function formatLevelClock(ms: number | null): string {
 }
 
 export function formatTournamentStatus(status: TournamentTableStatus): string {
-  const level = `Level ${status.levelNumber} ${formatBlindLevel(status.level)}`;
+  // No "Level 3": nobody at the table plays differently for knowing the
+  // level's number. The blinds and how soon they rise are what matter, and
+  // dropping it keeps the banner short enough to stay clear of the seats.
+  const level = formatBlindLevel(status.level);
   const hands = status.handsUntilNextLevel;
   const suffix = hands !== null && hands !== undefined
     ? `up in ${hands} ${hands === 1 ? 'hand' : 'hands'}`
