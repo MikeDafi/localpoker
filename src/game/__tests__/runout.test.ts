@@ -385,7 +385,9 @@ describe('the table paces a run-out over time', () => {
   it('takes a few seconds, not a frame and not a minute', () => {
     const played = playOut(shovedPreflop());
     expect(played.elapsed).toBeGreaterThan(2000);
-    expect(played.elapsed).toBeLessThan(6000);
+    // About 6.4s since the turn and the river were given room to breathe;
+    // the ceiling is there to catch a stall, not to keep it brisk.
+    expect(played.elapsed).toBeLessThan(8000);
   });
 
   it('builds to the river with the urgent cue last', () => {
