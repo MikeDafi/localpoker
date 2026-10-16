@@ -131,11 +131,11 @@ describe('what Game Setup is allowed to show', () => {
    * This mirrors the filter in GameSetupScreen so that adding another
    * device-only setting cannot quietly put it back on that screen.
    */
-  const setupKeys = (mode: 'cash' | 'tournament' | 'turbo', isFriends = false) =>
+  const setupKeys = (mode: 'cash' | 'tournament', isFriends = false) =>
     gameSetupSectionsForMode(mode, isFriends).flatMap((s) => s.fields.map((f) => String(f.key)));
 
   it('shows no device-only setting', () => {
-    for (const mode of ['cash', 'tournament', 'turbo'] as const) {
+    for (const mode of ['cash', 'tournament'] as const) {
       for (const deviceOnly of DEVICE_ONLY_SETTINGS) {
         expect(setupKeys(mode), `${deviceOnly} belongs in Settings, not Game Setup`).not.toContain(deviceOnly);
       }
@@ -145,7 +145,7 @@ describe('what Game Setup is allowed to show', () => {
   it('leaves no empty tab behind', () => {
     // Friends held nothing but that one toggle, so filtering the field has to
     // take the section with it rather than leave a tab with nothing in it.
-    for (const mode of ['cash', 'tournament', 'turbo'] as const) {
+    for (const mode of ['cash', 'tournament'] as const) {
       for (const section of gameSetupSectionsForMode(mode)) {
         expect(section.fields.length, `${section.id} is an empty tab`).toBeGreaterThan(0);
       }
@@ -172,7 +172,7 @@ describe('what Game Setup is allowed to show', () => {
    * go up before the first hand.
    */
   it('adds blind schedule controls for tournament modes', () => {
-    for (const mode of ['tournament', 'turbo'] as const) {
+    for (const mode of ['tournament'] as const) {
       const keys = setupKeys(mode);
       expect(keys).toContain('blindLevelLengthHands');
       expect(keys).toContain('ante');
@@ -192,7 +192,7 @@ describe('what Game Setup is allowed to show', () => {
    * in the game rather than the owned ones.
    */
   it('leaves the cosmetics out of the table menu rule list', () => {
-    for (const mode of ['cash', 'tournament', 'turbo'] as const) {
+    for (const mode of ['cash', 'tournament'] as const) {
       const keys = tableMenuRuleFields(mode).map((f) => String(f.key));
       for (const cosmetic of ['feltStyle', 'cardBack', 'chipStyle']) {
         expect(keys, `${cosmetic} is drawn by its own row`).not.toContain(cosmetic);
@@ -203,18 +203,18 @@ describe('what Game Setup is allowed to show', () => {
     }
   });
 
-  it('uses a faster hand schedule for turbo defaults', () => {
+  it('clears the schedule and ante for cash defaults', () => {
     const tournament = settingsForModeDefaults(DEFAULT_GAME_SETTINGS, 'tournament');
-    const turbo = settingsForModeDefaults(DEFAULT_GAME_SETTINGS, 'turbo');
     const cash = settingsForModeDefaults({ ...DEFAULT_GAME_SETTINGS, ante: 10 }, 'cash');
-    expect(tournament.blindLevelLengthHands).toBeGreaterThan(turbo.blindLevelLengthHands);
+    expect(tournament.blindLevelLengthHands).toBe(10);
     expect(cash.blindLevelLengthHands).toBe(0);
     expect(cash.ante).toBe(0);
   });
 
   it('defaults old tournament saves to a playable schedule', () => {
     expect(normalizeSettings({ gameMode: 'tournament' }).blindLevelLengthHands).toBe(10);
-    expect(normalizeSettings({ gameMode: 'turbo' }).blindLevelLengthHands).toBe(4);
+    // Turbo was removed; a setup saved as one comes back as a tournament.
+    expect(normalizeSettings({ gameMode: 'turbo' } as never).gameMode).toBe('tournament');
   });
 
   it('keeps every device-only setting reachable in full Settings', () => {
@@ -309,7 +309,7 @@ describe('blind schedule preview in setup', () => {
   });
 
   it('follows the level length and shows nothing for cash', () => {
-    expect(blindSchedulePreview('turbo', 4)[1].fromHand).toBe(5);
+    expect(blindSchedulePreview('tournament', 4)[1].fromHand).toBe(5);
     expect(blindSchedulePreview('cash', 10)).toEqual([]);
     expect(blindSchedulePreview('tournament', 0)).toEqual([]);
   });

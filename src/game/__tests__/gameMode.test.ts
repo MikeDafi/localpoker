@@ -9,7 +9,7 @@ import {
   tournamentStructureForMode,
   tournamentTableStatus,
 } from '../gameMode';
-import { STANDARD_STRUCTURE, TURBO_STRUCTURE } from '../tournament';
+import { STANDARD_STRUCTURE } from '../tournament';
 
 describe('game modes', () => {
   it('keeps cash as the non-tournament mode', () => {
@@ -18,14 +18,19 @@ describe('game modes', () => {
     expect(tournamentStructureForMode('cash')).toBeNull();
   });
 
-  it('maps the two tournament modes to their tested structures', () => {
+  it('maps the tournament mode to its tested structure', () => {
     expect(tournamentStructureForMode('tournament')).toBe(STANDARD_STRUCTURE);
-    expect(tournamentStructureForMode('turbo')).toBe(TURBO_STRUCTURE);
+  });
+
+  // Turbo was removed. A table or saved setup from before still says it, and
+  // it was a tournament, so it must not quietly turn into a cash game.
+  it('treats a leftover turbo as a tournament', () => {
+    expect(isGameMode('turbo')).toBe(false);
+    expect(tournamentStructureForMode('turbo' as never)).toBe(STANDARD_STRUCTURE);
   });
 
   it('starts tournament hands on the first structure level', () => {
     expect(initialBlindLevelForMode('tournament')).toEqual(STANDARD_STRUCTURE.levels[0]);
-    expect(initialBlindLevelForMode('turbo')).toEqual(TURBO_STRUCTURE.levels[0]);
     expect(initialBlindLevelForMode('cash')).toBeNull();
   });
 });
@@ -47,10 +52,10 @@ describe('tournament table status', () => {
   it('marks a level that arrived mid hand as pending for the next hand', () => {
     const startedAt = 20_000;
     const status = tournamentTableStatus({
-      mode: 'turbo',
+      mode: 'tournament',
       startedAt,
-      now: startedAt + TURBO_STRUCTURE.levelMs,
-      currentBlinds: TURBO_STRUCTURE.levels[0],
+      now: startedAt + STANDARD_STRUCTURE.levelMs,
+      currentBlinds: STANDARD_STRUCTURE.levels[0],
     });
 
     expect(status?.pendingForNextHand).toBe(true);
@@ -66,7 +71,7 @@ describe('tournament table status', () => {
    * only exists in the table's own menu.
    */
   it('never shows a clock on a tournament, even with no level length set', () => {
-    for (const mode of ['tournament', 'turbo'] as const) {
+    for (const mode of ['tournament'] as const) {
       const status = tournamentTableStatus({
         mode,
         startedAt: 1_000,

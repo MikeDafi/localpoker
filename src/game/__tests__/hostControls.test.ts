@@ -70,7 +70,7 @@ describe('mid game host controls', () => {
       const out = pickMidGameSafe({
         feltStyle: 'table-lunar',
         bigBlind: 999_999,
-        gameMode: 'turbo',
+        gameMode: 'tournament',
         numOpponents: 1,
       });
       // The blind goes through now. The seats and the mode do not.

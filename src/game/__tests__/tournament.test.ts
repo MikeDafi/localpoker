@@ -9,7 +9,6 @@ import {
   STANDARD_STRUCTURE,
   STRUCTURES,
   tournamentWinner,
-  TURBO_STRUCTURE,
 } from '../tournament';
 
 const S = STANDARD_STRUCTURE;
@@ -97,11 +96,6 @@ describe('the structures themselves', () => {
     for (const s of Object.values(STRUCTURES)) {
       for (const l of s.levels) expect(l.ante).toBeLessThan(l.bigBlind / 2);
     }
-  });
-
-  it('runs turbo on the same ladder, only faster', () => {
-    expect(TURBO_STRUCTURE.levels).toEqual(STANDARD_STRUCTURE.levels);
-    expect(TURBO_STRUCTURE.levelMs).toBeLessThan(STANDARD_STRUCTURE.levelMs);
   });
 });
 
@@ -194,8 +188,8 @@ describe('levelAtHand', () => {
     expect(byHand.level.ante).toBeGreaterThan(0);
   });
 
-  it('turbo reaches the same level in fewer hands', () => {
-    expect(levelAtHand(TURBO_STRUCTURE, 13, 4).index).toBe(3);
+  it('reaches the same level in fewer hands with shorter levels', () => {
+    expect(levelAtHand(STANDARD_STRUCTURE, 13, 4).index).toBe(3);
     expect(levelAtHand(STANDARD_STRUCTURE, 13, 10).index).toBe(1);
   });
 

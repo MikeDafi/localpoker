@@ -1,6 +1,5 @@
 import {
   STANDARD_STRUCTURE,
-  TURBO_STRUCTURE,
   blindsDue,
   levelAt,
   handsUntilNextLevel,
@@ -10,7 +9,18 @@ import {
   type TournamentStructure,
 } from './tournament';
 
-export type GameMode = 'cash' | 'tournament' | 'turbo';
+export type GameMode = 'cash' | 'tournament';
+
+/**
+ * A mode as stored by an older build, made current.
+ *
+ * There used to be a Turbo Tournament, the same ladder with four-hand levels.
+ * It was dropped, and a table or saved setup that still says "turbo" is a
+ * tournament, not a cash game, so that is what it becomes.
+ */
+export function canonicalGameMode(value: unknown): unknown {
+  return value === 'turbo' ? 'tournament' : value;
+}
 
 /**
  * How many hands a blind level lasts, per mode.
@@ -23,31 +33,20 @@ export type GameMode = 'cash' | 'tournament' | 'turbo';
 export const BLIND_LEVEL_LENGTH_HANDS_BY_MODE: Record<GameMode, number> = {
   cash: 0,
   tournament: 10,
-  turbo: 4,
 };
 
 export function defaultBlindLevelLengthHands(mode: GameMode): number {
   return BLIND_LEVEL_LENGTH_HANDS_BY_MODE[mode];
 }
 
-/*
- * "Turbo" means nothing on its own.
- *
- * It is jargon from live poker, and the hint under it, "Fast levels", only
- * makes sense to somebody who already knows a tournament has levels. Both
- * tournament modes now say they are tournaments and say what the difference
- * between them is, which is how quickly the blinds climb.
- */
 export const GAME_MODE_OPTIONS = [
   { value: 'cash', label: 'Cash', hint: 'Fixed blinds, rebuy any time' },
   { value: 'tournament', label: 'Tournament', hint: 'Blinds climb, bust and you are out' },
-  { value: 'turbo', label: 'Turbo Tournament', hint: 'Same, blinds climb twice as fast' },
 ] satisfies { value: GameMode; label: string; hint: string }[];
 
 export const GAME_MODE_LABELS: Record<GameMode, string> = {
   cash: 'Cash',
   tournament: 'Tournament',
-  turbo: 'Turbo Tournament',
 };
 
 export function isGameMode(value: unknown): value is GameMode {
@@ -64,7 +63,7 @@ export function isGameMode(value: unknown): value is GameMode {
  * returned untouched.
  */
 export function tournamentStructureForMode(mode: GameMode, startSmallBlind?: number): TournamentStructure | null {
-  const structure = mode === 'tournament' ? STANDARD_STRUCTURE : mode === 'turbo' ? TURBO_STRUCTURE : null;
+  const structure = canonicalGameMode(mode) === 'tournament' ? STANDARD_STRUCTURE : null;
   if (!structure) return null;
   const base = structure.levels[0].smallBlind;
   if (typeof startSmallBlind !== 'number' || !Number.isFinite(startSmallBlind) || startSmallBlind < 1) return structure;

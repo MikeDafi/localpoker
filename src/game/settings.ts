@@ -1,5 +1,5 @@
 import type { Difficulty } from '../engine/bot';
-import { GAME_MODE_OPTIONS, isGameMode, settingsForMode as settingsForKnownMode, BLIND_LEVEL_LENGTH_HANDS_BY_MODE as BLIND_LEVEL_LENGTH_HANDS_BY_MODE_SOURCE, type GameMode } from './gameMode';
+import { GAME_MODE_OPTIONS, canonicalGameMode, isGameMode, settingsForMode as settingsForKnownMode, BLIND_LEVEL_LENGTH_HANDS_BY_MODE as BLIND_LEVEL_LENGTH_HANDS_BY_MODE_SOURCE, type GameMode } from './gameMode';
 import {
   CARD_BACK_PALETTES,
   CHIP_PALETTES,
@@ -250,7 +250,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
        * a second row only ever offered a way to set up a table wrong.
        */
       { key: 'smallBlind', label: 'Blinds', type: 'number', min: 1, max: 100000, step: 1, presets: [1, 2, 5, 10, 25, 50, 100, 250, 500], help: 'Small blind / big blind; the big blind is always double. Cash plays these all game. Tournaments start their ladder here.' },
-      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, presets: [0, 1, 2, 5, 10, 25, 50], modes: ['tournament', 'turbo'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
+      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, presets: [0, 1, 2, 5, 10, 25, 50], modes: ['tournament'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
       {
         key: 'blindLevelLengthHands',
         label: 'Level Length',
@@ -259,7 +259,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         max: 100,
         step: 1,
         presets: [3, 5, 8, 10, 15, 20, 30],
-        modes: ['tournament', 'turbo'],
+        modes: ['tournament'],
         /*
          * Shown in setup now, with the schedule it produces under it.
          *
@@ -395,6 +395,7 @@ function isKnownSettingOption(key: keyof GameSettings, value: unknown): boolean 
 export function normalizeSettings(s?: Partial<GameSettings> | null): GameSettings {
   const merged = { ...DEFAULT_GAME_SETTINGS, ...(s ?? {}) } as GameSettings & Record<string, unknown>;
   delete merged.showAvatarNames;
+  merged.gameMode = canonicalGameMode(merged.gameMode) as GameMode;
   if (!isGameMode(merged.gameMode)) merged.gameMode = DEFAULT_GAME_SETTINGS.gameMode;
   if (!isChipSoundStyle(merged.chipSound)) merged.chipSound = DEFAULT_GAME_SETTINGS.chipSound;
   const rawLevelLength = Number((s as Partial<GameSettings> | null | undefined)?.blindLevelLengthHands);

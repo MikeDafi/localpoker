@@ -65,23 +65,8 @@ export const STANDARD_STRUCTURE: TournamentStructure = {
   levels: CLIMB,
 };
 
-/**
- * The same climb at a third of the time.
- *
- * Turbo is the same ladder taken faster rather than a steeper one, because a
- * steeper ladder changes which hands are worth playing and a faster clock
- * only changes how soon.
- */
-export const TURBO_STRUCTURE: TournamentStructure = {
-  id: 'turbo',
-  name: 'Turbo',
-  levelMs: 200 * 1000,
-  levels: CLIMB,
-};
-
 export const STRUCTURES: Record<string, TournamentStructure> = {
   [STANDARD_STRUCTURE.id]: STANDARD_STRUCTURE,
-  [TURBO_STRUCTURE.id]: TURBO_STRUCTURE,
 };
 
 export interface LevelState {

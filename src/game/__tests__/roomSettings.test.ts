@@ -21,9 +21,9 @@ describe('roomSettingsJson', () => {
   });
 
   it('keeps every rule that actually decides how a hand plays', () => {
-    const settings = { ...DEFAULT_GAME_SETTINGS, gameMode: 'turbo' as const, smallBlind: 5, bigBlind: 10, numOpponents: 4 };
+    const settings = { ...DEFAULT_GAME_SETTINGS, gameMode: 'tournament' as const, smallBlind: 5, bigBlind: 10, numOpponents: 4 };
     const shared = JSON.parse(roomSettingsJson(settings));
-    expect(shared.gameMode).toBe('turbo');
+    expect(shared.gameMode).toBe('tournament');
     expect(shared.smallBlind).toBe(5);
     expect(shared.bigBlind).toBe(10);
     expect(shared.numOpponents).toBe(4);
@@ -73,7 +73,7 @@ describe('roomSettingsJson', () => {
   it('gives a guest the table terms and their own preferences', () => {
     const host = {
       ...DEFAULT_GAME_SETTINGS,
-      smallBlind: 25, bigBlind: 50, gameMode: 'turbo' as const,
+      smallBlind: 25, bigBlind: 50, gameMode: 'tournament' as const,
       soundEnabled: false, animationSpeed: 'off' as const, largeText: true,
     };
     const mine = {
@@ -84,7 +84,7 @@ describe('roomSettingsJson', () => {
 
     expect(atTable.smallBlind).toBe(25);
     expect(atTable.bigBlind).toBe(50);
-    expect(atTable.gameMode).toBe('turbo');
+    expect(atTable.gameMode).toBe('tournament');
     expect(atTable.soundEnabled).toBe(true);
     expect(atTable.animationSpeed).toBe('fast');
     expect(atTable.largeText).toBe(false);
@@ -103,7 +103,7 @@ describe('pickDeviceOnly', () => {
 
   it('refuses every term the table agreed to', () => {
     expect(pickDeviceOnly({
-      smallBlind: 1, bigBlind: 2, startingStack: 10, gameMode: 'turbo',
+      smallBlind: 1, bigBlind: 2, startingStack: 10, gameMode: 'tournament',
       turnTimerSec: 60, numOpponents: 1, difficulty: 'easy',
     } as never)).toEqual({});
   });
