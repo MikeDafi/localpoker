@@ -3132,53 +3132,36 @@ export function TableScreen({ navigation, route }: Props) {
    * top of it. The felt says who won now, in gold and red, so the words were
    * the cheapest thing to give up.
    */
-  /**
-   * How far below the lane's top the board sits while a hand is being played.
-   *
-   * A small, fixed inset rather than a centred position, so the row is in the
-   * same place on every street no matter what else on the table changed size.
-   */
-  const BOARD_PIN_TOP = 10;
   const boardTopFor = (_showdown: boolean) => laneTop;
   /*
-   * How tall a board card may be.
+   * One geometry for the whole hand.
    *
-   * Mid-hand it is the lane, less the pot block beneath it. At a showdown the
-   * lane is the wrong measure: the winning hands are placed absolutely rather
-   * than flowing inside it, and the hero's pod shrinks once the bets are
-   * swept, so the real limit is the run from the board's top edge down to
-   * that pod, shared between the two rows in proportion.
+   * The board used to be dealt larger and 10pt lower, then shrink and jump up
+   * the moment hands were laid out under it, and drop back for the next hand.
+   * Players read that as the cards moving for no reason, and the larger
+   * mid-hand row pushed the pot down onto the hero's own pod. It is now
+   * always the size and place it has at a showdown, so laying hands out
+   * underneath moves nothing.
+   *
+   * Its height is therefore the run from the top of the lane down to the
+   * hero's pod, shared in proportion with the row of hands that may be laid
+   * out beneath it.
    */
-  const boardMaxH = layingOut
-    ? Math.max(28 * CARD_ASPECT,
-      (stageH - boardTopFor(true) - heroShowdownH - REVEAL_GAP - CARD_FRAME) / (1 + REVEAL_SHRINK))
-    : Math.max(28 * CARD_ASPECT, laneH - POT_BLOCK_H);
+  const boardMaxH = Math.max(28 * CARD_ASPECT,
+      (stageH - boardTopFor(true) - heroShowdownH - REVEAL_GAP - CARD_FRAME) / (1 + REVEAL_SHRINK));
   /*
    * A touch smaller than a card is dealt at: the showdown board sits above a
    * second row of cards rather than empty felt, and the pair of them read
    * better slightly trimmed than filling the lane edge to edge.
    */
-  const boardShrink = layingOut ? 0.88 : 1;
+  const boardShrink = 0.88;
   /*
    * Where the row's bottom edge lands for a card of a given size, which is
-   * what decides how much cloth it has. Mid-hand the board and the pot are
-   * centred in the lane together; at a showdown the board is pinned to the
-   * top of it with the winning hands beneath.
+   * what decides how much cloth it has. Always the top of the lane.
    */
   const boardRowBottom = (size: number) => {
     const h = size * CARD_ASPECT + CARD_FRAME;
-    if (layingOut) return boardTopFor(true) + h;
-    /*
-     * Pinned, not centred.
-     *
-     * This used to centre the board in the lane, and the lane is measured up
-     * from the hero's pod, so anything that changed the pod's height slid the
-     * board with it. The pod no longer resizes mid hand, but centring would
-     * still move the row for any other reason the lane changed. Putting the
-     * five cards at a fixed offset means laying hands underneath them is the
-     * only thing that ever moves them, which is the one time it should.
-     */
-    return laneTop + BOARD_PIN_TOP + h;
+    return boardTopFor(true) + h;
   };
   const sdCardSize = fitBoardCard({
     cells: BOARD_CELLS,
@@ -3451,7 +3434,6 @@ export function TableScreen({ navigation, route }: Props) {
             // Pinned at the inset the card size is computed from. Centred, the
             // board dropped as soon as the pot pill under it was swept, which
             // is every hand that ends in a fold.
-            !layingOut && { paddingTop: BOARD_PIN_TOP },
           ]}
           pointerEvents="box-none"
         >
