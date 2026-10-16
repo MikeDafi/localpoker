@@ -34,6 +34,7 @@ check knock locally; it downloads nothing.
 """
 
 import struct
+import sys
 import wave
 from pathlib import Path
 
@@ -268,17 +269,16 @@ def chip_path(action: str, style: str) -> Path:
 
 
 def main() -> None:
-    generated = {}
-    for style, actions in STYLE_SPECS.items():
-        for action, (hits, cutoff, peak) in actions.items():
-            samples = build(hits, cutoff, peak)
-            generated[(style, action)] = samples
-            write_wav(chip_path(action, style), samples)
-
-    write_wav(SOUNDS / "chipCall.wav", generated[("toss", "call")])
-    write_wav(SOUNDS / "chipRaise.wav", generated[("toss", "raise")])
+    # The call and raise cues are no longer built here. Stacked copies of one
+    # click read as a buzz however they were arranged, so they are now real
+    # recordings of thrown chips, imported by `import-chip-sounds.py`. Pass
+    # --stacked to rebuild the old versions for comparison.
+    if "--stacked" in sys.argv:
+        for style, actions in STYLE_SPECS.items():
+            for action, (hits, cutoff, peak) in actions.items():
+                write_wav(chip_path(action, style), build(hits, cutoff, peak))
     write_wav(SOUNDS / "check.wav", build_check())
-    print("wrote chipCall variants, chipRaise variants and check.wav")
+    print("wrote check.wav")
 
 
 if __name__ == "__main__":
