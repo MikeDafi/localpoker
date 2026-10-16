@@ -1464,7 +1464,30 @@ const publishHostGameStateNow = async (code: string, state: GameState): Promise<
   }
 };
 
-export const startRoomGame = async (code: string): Promise<StartRoomGameResult> => {
+/*
+ * One start per room at a time.
+ *
+ * A second tap on Start Game ran a second start against a room the first had
+ * already moved to 'playing', and the rules refuse that rewrite, so the host
+ * was told "permission denied" for a game that had in fact started. A tap
+ * while a start is in flight now shares it, and a start for a room that is
+ * already playing hands back the game it is playing.
+ */
+const startsInFlight = new Map<string, Promise<StartRoomGameResult>>();
+
+export const startRoomGame = (code: string): Promise<StartRoomGameResult> => {
+  const roomCode = cleanKey(code);
+  const running = roomCode ? startsInFlight.get(roomCode) : undefined;
+  if (running) return running;
+  const start = startRoomGameOnce(code);
+  if (roomCode) {
+    startsInFlight.set(roomCode, start);
+    void start.finally(() => startsInFlight.delete(roomCode));
+  }
+  return start;
+};
+
+const startRoomGameOnce = async (code: string): Promise<StartRoomGameResult> => {
   const db = getConfiguredDb();
   const roomCode = cleanKey(code);
   if (!db || !roomCode) {
@@ -1488,6 +1511,10 @@ export const startRoomGame = async (code: string): Promise<StartRoomGameResult> 
     }
     if (room.status === 'ended') {
       return { ok: false, reason: 'Room has ended.' };
+    }
+    const running = getCachedHostGame(roomCode);
+    if (room.status === 'playing' && running) {
+      return { ok: true, state: running };
     }
 
     const settings = settingsFromRoom(room);

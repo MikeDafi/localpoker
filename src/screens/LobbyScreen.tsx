@@ -283,9 +283,14 @@ export function LobbyScreen({ navigation, route }: Props) {
     navigation.replace('GameSetup', { mode: 'friends', roomCode });
   };
 
+  // A second tap while the first start is still going does nothing.
+  const startingRef = useRef(false);
   const startGame = async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
     setStatus('Starting hand…');
     const res = await startRoomGame(roomCode);
+    startingRef.current = false;
     if (!res.ok) {
       setStatus(res.reason || 'Could not start the game.');
       showAlert('Could not start', res.reason || 'Try again in a moment.');

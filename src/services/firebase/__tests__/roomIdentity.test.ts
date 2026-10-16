@@ -191,6 +191,34 @@ describe('room writes are keyed by auth.uid', () => {
     expect(sendPush).not.toHaveBeenCalled();
   });
 
+  it('starts the game once when Start Game is tapped twice', async () => {
+    const lobby = {
+      code: 'ROOM12',
+      hostId: AUTH_UID,
+      status: 'lobby',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      players: {
+        [AUTH_UID]: { ...player, id: AUTH_UID, seatIndex: 0 },
+        guest1: { ...player, id: 'guest1', name: 'Guest', isHost: false, seatIndex: 1 },
+      },
+      actionSeq: 0,
+    };
+    readValues.set('localpoker/rooms/ROOM12', lobby);
+    const { startRoomGame } = await import('../roomSync');
+    const statusWrites = () => writes.filter((w) => w.path === '' && (w.value as Record<string, unknown>)['localpoker/rooms/ROOM12/status'] === 'playing').length;
+
+    const [first, second] = await Promise.all([startRoomGame('ROOM12'), startRoomGame('ROOM12')]);
+    expect(first.ok && second.ok).toBe(true);
+    expect(statusWrites()).toBe(1);
+
+    // A later tap, after the room is already playing, is not a restart.
+    readValues.set('localpoker/rooms/ROOM12', { ...lobby, status: 'playing' });
+    const third = await startRoomGame('ROOM12');
+    expect(third.ok).toBe(true);
+    expect(third.state).toBe(first.state);
+    expect(statusWrites()).toBe(1);
+  });
+
   it('re-enters an existing host lobby by seating the host and refreshing discovery', async () => {
     readValues.set('localpoker/rooms/ROOM12', {
       code: 'ROOM12',
