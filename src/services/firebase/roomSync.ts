@@ -1159,8 +1159,9 @@ export const subscribeRoom = (
    * Every check, bet and fold lands in the room's action list, so this fired
    * on every phone for every action and each one redrew the whole table, on
    * top of the redraw the host's update brings a moment later. Nobody reading
-   * the room uses the queue (the host has its own subscription for it), so it
-   * is dropped here and an update that only touched the queue is skipped.
+   * the room uses the queue or its counter (the host has its own subscription
+   * for the queue, and pushAction reads the counter itself), so both are
+   * dropped here and an update that only touched them is skipped.
    */
   let lastKey: string | null = null;
   try {
@@ -1169,7 +1170,7 @@ export const subscribeRoom = (
       (snapshot) => {
         let nextRoom: RoomState | null = null;
         if (snapshot.exists()) {
-          const { actions: _actions, ...rest } = snapshot.val() as RoomState & { actions?: unknown };
+          const { actions: _actions, actionSeq: _actionSeq, ...rest } = snapshot.val() as RoomState & { actions?: unknown };
           nextRoom = rest as RoomState;
         }
         const key = JSON.stringify(nextRoom);
@@ -1360,6 +1361,15 @@ const buildHostGame = (room: RoomState, seed: string): GameState | null => {
  */
 const publishChains = new Map<string, Promise<unknown>>();
 const lastPublished = new Map<string, GameState>();
+/*
+ * What each room's private views last said, without their timestamp.
+ *
+ * Hole cards change once a hand, but every publish rewrote every player's
+ * view, which cost a write per player, a second event and a second redraw on
+ * every phone, and held up the next publish behind it. Views are now written
+ * only when what they say changed.
+ */
+const lastViewsKey = new Map<string, string>();
 
 export const publishHostGameState = (code: string, state: GameState): Promise<Result> => {
   const key = cleanKey(code) ?? code;
@@ -1459,18 +1469,26 @@ const publishHostGameStateNow = async (code: string, state: GameState): Promise<
       // downloaded the lot.
       table[`${roomPath(roomCode)}/actions`] = null;
     }
+    // Cached before the write, so the room event this write raises on the
+    // host already finds the state it describes rather than an older one.
+    setCachedHostGame(roomCode, state);
     await updateRoot(db, table);
     lastPublished.set(roomCode, state);
-    setCachedHostGame(roomCode, state);
 
     // Clear the view of anyone not holding cards this hand, rather than
     // leaving last hand's behind for them to look at.
     const views: Record<string, unknown> = {};
+    const said: Record<string, unknown> = {};
     for (const playerId of Object.keys(room.players ?? {})) {
-      views[viewPath(roomCode, playerId)] = privateViews[playerId] ?? null;
+      const view = privateViews[playerId];
+      views[viewPath(roomCode, playerId)] = view ?? null;
+      said[playerId] = view ? [view.handNumber, view.holeCards] : null;
     }
+    const viewsKey = JSON.stringify(said);
+    if (lastViewsKey.get(roomCode) === viewsKey) return { ok: true };
     try {
       await updateRoot(db, views);
+      lastViewsKey.set(roomCode, viewsKey);
     } catch (error) {
       // The hand is published and playable; someone may be missing their own
       // cards. Worth reporting, not worth failing the publish over.
@@ -1576,6 +1594,7 @@ const startRoomGameOnce = async (code: string): Promise<StartRoomGameResult> => 
     // A new game in a room that has hosted one before starts again at hand 1.
     setCachedHostGame(roomCode, state, true);
     lastPublished.set(roomCode, state);
+    lastViewsKey.delete(roomCode);
     return { ok: true, state, publicState };
   } catch (error) {
     reportFirebaseError('start-room-game', error);

@@ -656,8 +656,21 @@ export function TableScreen({ navigation, route }: Props) {
   const [chipFlights, setChipFlights] = useState<RenderedChipFlight[]>([]);
   const chipMotionFrom = useRef<GameState | null>(null);
   const chipFlightSeq = useRef(0);
+  /*
+   * Flights are cleared together, once the last one lands.
+   *
+   * Removing each as it finished redrew the whole table once per stack, up to
+   * six times in a row as a street's bets swept in, just as the next street
+   * began to deal. A landed stack is already invisible, so it can wait.
+   */
+  const landedFlights = useRef(new Set<number>());
   const removeChipFlight = useCallback((id: number) => {
-    setChipFlights((flights) => flights.filter((flight) => flight.id !== id));
+    landedFlights.current.add(id);
+    setChipFlights((flights) => {
+      // Ids are never reused, so the set is only ever a few numbers per
+      // street, and leaving it uncleared keeps this updater pure.
+      return flights.every((flight) => landedFlights.current.has(flight.id)) ? [] : flights;
+    });
   }, []);
   const [emotes, setEmotes] = useState<Record<string, Emote>>({});
   const emoteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -2386,12 +2399,11 @@ export function TableScreen({ navigation, route }: Props) {
     equippedId: cosmetics.equippedByCategory.cardBacks,
     owned: cosmetics.ownedCosmeticIds,
   });
-  const [tournamentNow, setTournamentNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!tournament || tournamentStartedAt === null) return undefined;
-    const timer = setInterval(() => setTournamentNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [tournament, tournamentStartedAt]);
+  /*
+   * No clock. Levels count hands (see tournamentTableStatus), so a one second
+   * tick here redrew the entire table every second of every tournament and
+   * changed nothing on it.
+   */
   /*
    * The ladder a guest reads is the host's, republished whenever the host
    * changes a rule, rather than whatever this phone joined with.
@@ -2409,7 +2421,7 @@ export function TableScreen({ navigation, route }: Props) {
     () => tournamentTableStatus({
       mode: settings.gameMode,
       startedAt: tournamentStartedAt,
-      now: tournamentNow,
+      now: Date.now(),
       currentBlinds: state.config,
       // The hand about to be played, which is what the ladder counts.
       handNumber: state.handNumber + 1,
@@ -2417,7 +2429,7 @@ export function TableScreen({ navigation, route }: Props) {
       startSmallBlind: ladderRules.smallBlind,
     }),
     [settings.gameMode, ladderRules.blindLevelLengthHands, ladderRules.smallBlind, tournamentStartedAt,
-      state.config, state.handNumber, tournamentNow],
+      state.config, state.handNumber],
   );
   const tournamentStatusText = tournamentStatus ? formatTournamentStatus(tournamentStatus) : null;
 
@@ -2546,18 +2558,34 @@ export function TableScreen({ navigation, route }: Props) {
   const consentClockOn = !!roomCode && firebaseOnline && isShowdown;
   const rosterPlayers = room?.players;
   const rosterPublicPlayers = room?.publicState?.players;
+  /*
+   * What the clock's answer looked like at the last tick it was allowed to
+   * redraw. Ticking redrew the whole table every second of every online
+   * showdown, right through the reveal and the chip sweep, even when the
+   * second that passed changed nothing anybody could see. The tick now
+   * re-asks the same questions and only moves the clock when an answer moved.
+   * Read through a ref so roster updates do not restart the interval.
+   */
+  const consentInputs = useRef<() => string>(() => '');
+  const rosterRef = useRef({ players: rosterPlayers, publicPlayers: rosterPublicPlayers });
+  rosterRef.current = { players: rosterPlayers, publicPlayers: rosterPublicPlayers };
   useEffect(() => {
     if (!consentClockOn) return undefined;
+    let lastSeen = '';
     const timer = setInterval(() => {
       const now = Date.now();
-      setConsentNow(now);
+      const seen = consentInputs.current();
+      if (seen !== lastSeen) {
+        lastSeen = seen;
+        setConsentNow(now);
+      }
       setDisconnectedSince((prev) => {
         // Only the connection times are read off this, so the hand number
         // and ready flags it would otherwise weigh are irrelevant here.
         const next = evaluateNextHandReadiness({
           handNumber: 0,
-          players: rosterPlayers ?? {},
-          publicPlayers: rosterPublicPlayers,
+          players: rosterRef.current.players ?? {},
+          publicPlayers: rosterRef.current.publicPlayers,
           disconnectedSince: prev,
           now,
         }).disconnectedSince;
@@ -2565,7 +2593,9 @@ export function TableScreen({ navigation, route }: Props) {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [consentClockOn, rosterPlayers, rosterPublicPlayers]);
+    // The roster is read when the tick fires, not when the clock starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consentClockOn]);
   /*
    * The next hand needs everybody, not just the host.
    *
@@ -2603,6 +2633,25 @@ export function TableScreen({ navigation, route }: Props) {
     rebuyWaiting: rebuyState.phase === 'waiting',
     now: consentNow,
   });
+  consentInputs.current = () => {
+    const now = Date.now();
+    const readiness = evaluateNextHandReadiness({
+      handNumber: state.handNumber,
+      players: rosterPlayers ?? {},
+      ready: handReady,
+      publicPlayers: rosterPublicPlayers,
+      disconnectedSince,
+      now,
+    });
+    const deal = decideNextHandDeal({
+      readiness,
+      hostId: room?.hostId,
+      hostAskedAt: isOnlineHost ? askedAt : null,
+      rebuyWaiting: rebuyState.phase === 'waiting',
+      now,
+    });
+    return JSON.stringify([readiness, deal]);
+  };
   const waitingOnOthers = authRoomId
     ? nextHandReadiness.waitingPlayers.filter((p) => p.id !== authRoomId)
     : nextHandReadiness.waitingPlayers;
@@ -3317,7 +3366,7 @@ export function TableScreen({ navigation, route }: Props) {
         </View>
       )}
 
-      <View style={[styles.tableArea, { height: stageH }]} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+      <View style={[styles.tableArea, { height: stageH }]} onLayout={(e) => { const { width: w, height: h } = e.nativeEvent.layout; setArea((prev) => (prev.w === w && prev.h === h ? prev : { w, h })); }}>
         {/* felt oval: matte surface, top-lit rail edge, inner shadow at the rail */}
         {/* A store felt runs corner to corner into its accent hue; the
             classic table keeps its plain top-lit shading. */}
@@ -3377,7 +3426,7 @@ export function TableScreen({ navigation, route }: Props) {
               </Text>
             </Animated.View>
           )}
-          <View style={styles.board} onLayout={(e) => setBoardBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y, w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+          <View style={styles.board} onLayout={(e) => { const { x, y, width: w, height: h } = e.nativeEvent.layout; setBoardBox((prev) => (prev.x === x && prev.y === y && prev.w === w && prev.h === h ? prev : { x, y, w, h })); }}>
             {!multiRunVerdict && Array.from({ length: BOARD_CELLS }).map((_, i) => {
               const card = shownBoard[i];
               if (!card) {

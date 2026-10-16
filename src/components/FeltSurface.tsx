@@ -115,7 +115,7 @@ function MotifTile({ motif, tile, color }: { motif: FeltMotif; tile: number; col
   return null;
 }
 
-export function FeltSurface({ width, height, tile = 184, weaveOpacity = 0.5, suitOpacity = 0.045, motif = 'suits', motifColor = colors.onDark }: FeltSurfaceProps) {
+function FeltSurfaceInner({ width, height, tile = 184, weaveOpacity = 0.5, suitOpacity = 0.045, motif = 'suits', motifColor = colors.onDark }: FeltSurfaceProps) {
   // Half-drop layout: the right-hand column is offset vertically so the repeat
   // reads as a diagonal lattice instead of a polka-dot grid.
   const glyph = tile * 0.155; // drawn size of one suit
@@ -163,3 +163,9 @@ export function FeltSurface({ width, height, tile = 184, weaveOpacity = 0.5, sui
 const styles = StyleSheet.create({
   fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 });
+
+/**
+ * Memoised: every prop is a primitive, and the table re-renders far more often
+ * than its cloth changes, which rebuilt the whole SVG pattern each time.
+ */
+export const FeltSurface = React.memo(FeltSurfaceInner);

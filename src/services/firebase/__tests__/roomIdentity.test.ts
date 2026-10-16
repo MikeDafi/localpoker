@@ -594,6 +594,31 @@ describe('room writes are keyed by auth.uid', () => {
     expect(clearedActions()).toBe(true);
   });
 
+  it('writes the private views once per hand, not once per action', async () => {
+    readValues.set('localpoker/rooms/ROOM88', {
+      code: 'ROOM88',
+      hostId: AUTH_UID,
+      status: 'playing',
+      settingsJson: '{"smallBlind":10,"bigBlind":20}',
+      actionSeq: 3,
+      players: {
+        [AUTH_UID]: { id: AUTH_UID, name: 'Host', isHost: true, seatIndex: 0, chips: 1000, connected: true },
+        other: { id: 'other', name: 'Other', isHost: false, seatIndex: 1, chips: 1000, connected: true },
+      },
+      publicState: { handNumber: 7 },
+    });
+    const { publishHostGameState } = await import('../roomSync');
+    const viewWrites = () => writes.filter((w) => w.path === '' && Object.prototype.hasOwnProperty.call(w.value as object, `localpoker/views/ROOM88/${AUTH_UID}`)).length;
+    const hand = { ...baseGameState(), handNumber: 7 };
+
+    await publishHostGameState('ROOM88', hand as never);
+    await publishHostGameState('ROOM88', { ...hand, pot: hand.pot + 20 } as never);
+    expect(viewWrites()).toBe(1);
+
+    await publishHostGameState('ROOM88', { ...baseGameState(), handNumber: 8 } as never);
+    expect(viewWrites()).toBe(2);
+  });
+
   it('closes the table when a guest leaves while the host is mid-reconcile', async () => {
     const { subscribeRoom, TOO_FEW_PLAYERS_REASON } = await import('../roomSync');
     const both = { hostId: AUTH_UID, status: 'playing', players: { [AUTH_UID]: { connected: true }, other: { connected: true } } };

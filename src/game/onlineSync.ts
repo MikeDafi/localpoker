@@ -469,6 +469,12 @@ export function applyConnectionStatusToGameState(
   state: GameState,
   connectedByPlayerId: Record<string, boolean | undefined>,
 ): ConnectionSyncResult {
+  // The usual case, everyone connected and nobody sat out, changes nothing,
+  // and this runs on every room update, so it is answered before copying a
+  // game whose log grows with every action.
+  if (!state.players.some((p) => connectedByPlayerId[p.id] === false || p.sittingOut)) {
+    return { state, changed: false };
+  }
   let next = cloneGameState(state);
   let changed = false;
 
