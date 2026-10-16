@@ -276,6 +276,16 @@ function init() {
   });
 }
 
+/*
+ * Sounds kept but not played, for a lighter table.
+ *
+ * Every button tap clicked, the timer ticked for five seconds, and a result
+ * played its sting and then coins a beat later, so most moments made two or
+ * three noises. These are resting rather than deleted: the files and call
+ * sites stay, and taking a name out of this set brings it back.
+ */
+export const RESTING_SOUNDS: ReadonlySet<SoundName> = new Set<SoundName>(['tap', 'tick', 'coins']);
+
 export const sound = {
   configure(opts: { enabled?: boolean; volume?: number; chipSound?: ChipSoundStyle }) {
     if (typeof opts.enabled === 'boolean') enabled = opts.enabled;
@@ -286,7 +296,7 @@ export const sound = {
     init();
   },
   play(name: SoundName) {
-    if (!enabled || !appIsActive()) return;
+    if (!enabled || RESTING_SOUNDS.has(name) || !appIsActive()) return;
     init();
     const pool = playerPools[name];
     if (!pool?.length) return;
