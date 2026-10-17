@@ -91,7 +91,9 @@ export function TurnTimer({ seconds, active, resetKey, onExpire, label, warn, st
 
 const styles = StyleSheet.create({
   wrap: { gap: 4, marginBottom: 6 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // The gap is for when the timer sits in a centred column and shrinks to its
+  // text, which otherwise jams the label straight into the seconds.
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   label: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDarkSoft },
   secs: { fontFamily: fonts.bold, fontSize: 13, ...numeric },
   track: { height: 4, borderRadius: radii.pill, backgroundColor: colors.surfaceBorder, overflow: 'hidden' },

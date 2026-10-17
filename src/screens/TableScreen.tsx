@@ -964,7 +964,20 @@ export function TableScreen({ navigation, route }: Props) {
 
   // Track when the current turn's countdown began so leaving/resuming carries
   // over the remaining time instead of resetting the timer to full.
-  const turnKey = `${state.handNumber}:${state.street}:${state.currentPlayerIndex}`;
+  /*
+   * Which turn this is, unique even when the action comes back to the same
+   * seat on the same street.
+   *
+   * Hand, street and seat alone repeat whenever somebody raises behind you:
+   * bet, get raised, and it is your turn again with an identical key. Online
+   * that matched the turn you had already sent on, so the bar sat dimmed and
+   * untappable until the 8s send guard expired, and the clock carried on from
+   * the earlier turn instead of starting fresh. Play only returns to a seat
+   * after somebody puts more chips in, so the chips committed this hand tell
+   * the two turns apart.
+   */
+  const committedThisHand = Object.values(state.contributions ?? {}).reduce((sum, chips) => sum + (chips || 0), 0);
+  const turnKey = `${state.handNumber}:${state.street}:${state.currentPlayerIndex}:${committedThisHand}`;
   /*
    * When the current turn's clock started, carried with the turn it belongs to.
    *
@@ -3673,6 +3686,14 @@ export function TableScreen({ navigation, route }: Props) {
            */
           isShowdown && { marginBottom: Math.max(0, Math.min(resultH - 96, 148)) },
         ]}
+        /*
+         * The cards stack above the bottom panel so a peel can lift over it,
+         * which also meant they caught taps aimed at the run-count vote and
+         * started a peel instead of turning the wheel or pressing Confirm.
+         * During the vote every all-in hand is already face up for the run-out,
+         * so there is nothing to peel and the touches belong to the panel.
+         */
+        pointerEvents={runVotingActive ? 'none' : 'auto'}
       >
         {handHint && !human.folded ? (
           <View style={styles.handChipSlot} pointerEvents="none">
@@ -3697,7 +3718,9 @@ export function TableScreen({ navigation, route }: Props) {
             // tall enough to reach it; the panel is compact now and the row
             // lifts clear of it, so there is nothing left to make room for and
             // the cards shrinking just read as the hand being taken away.
-            const cardW = width < 380 ? 76 : 86;
+            // A short phone (SE-sized) gets slightly smaller cards, the only
+            // way to buy the turn clock room without pushing the felt up.
+            const cardW = winH < 700 ? 70 : width < 380 ? 76 : 86;
             // Out of the hand, or at a showdown where the hand is tabled, the
             // card is simply open - there is nothing left to protect. A hand
             // turned up for a run-out is open for the same reason, early.
@@ -4040,27 +4063,31 @@ export function TableScreen({ navigation, route }: Props) {
             </View>
           </Animated.View>
           </GestureDetector>
-        ) : legal && isHumanTurn ? (
+        ) : legal && isHumanTurn && !actionSending ? (
           <View>
             <TurnTimer
               seconds={settings.turnTimerSec}
               active={isHumanTurn}
-              resetKey={`${state.handNumber}:${state.street}:${state.currentPlayerIndex}`}
+              resetKey={turnKey}
               startedAt={turnStartedAt}
               onExpire={onTimerExpire}
               warn
             />
-            <View style={actionSending ? { opacity: 0.5 } : null} pointerEvents={actionSending ? 'none' : 'auto'}>
-              <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
-            </View>
+            <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
           </View>
         ) : (
           <View style={styles.waiting}>
-            {current && !isShowdown && actorCanAct ? (
+            {/*
+              * Once your action is sent the bar goes away rather than sitting
+              * there dimmed: a greyed-out Raise reads as "you can't", when
+              * the truth is "you already did". The clock goes with it, since
+              * it is still your seat's clock until the host moves play on.
+              */}
+            {current && !isShowdown && actorCanAct && !actionSending ? (
               <TurnTimer
                 seconds={settings.turnTimerSec}
                 active
-                resetKey={`${state.handNumber}:${state.street}:${state.currentPlayerIndex}`}
+                resetKey={turnKey}
                 startedAt={turnStartedAt}
                 onExpire={onTimerExpire}
                 label={`${currentActorName}'s turn`}
@@ -4069,7 +4096,9 @@ export function TableScreen({ navigation, route }: Props) {
             <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText, !!rebuyMessage && styles.rebuyNotice]}>
               {humanEliminated
                 ? 'You are out of the tournament.'
-                : rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
+                : actionSending
+                  ? 'Sent. Waiting for the table…'
+                  : rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
             </Text>
             {finishedRuns.map((run, runIndex) => (
               <View key={`live-run-${runIndex}`} style={styles.runResultRow}>
@@ -4679,7 +4708,9 @@ const styles = StyleSheet.create({
   cardSlot: { borderRadius: radii.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', backgroundColor: 'rgba(0,0,0,0.22)' },
   // A peeled card swings well outside its own bounds, so this row has to sit
   // above the controls or the action bar paints over the lifted corner.
-  humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.sm, minHeight: 142, zIndex: 41 },
+  // The bottom margin is clearance for the turn clock. At `sm` the cards sat
+  // close enough to "Your turn" on a small phone to read as covering it.
+  humanCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginBottom: spacing.lg, minHeight: 142, zIndex: 41 },
   humanCards: { flexDirection: 'row', position: 'relative' },
   gearFab: { marginBottom: spacing.sm, alignSelf: 'flex-end', width: 36, height: 36, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, alignItems: 'center', justifyContent: 'center' },
   menuBackdrop: { flex: 1, backgroundColor: 'rgba(8,10,18,0.74)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
@@ -4759,11 +4790,13 @@ const styles = StyleSheet.create({
   resultCard: { position: 'absolute', left: 0, right: 0, bottom: spacing.sm, marginHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.surfaceBorder, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, zIndex: 40, ...shadows.panel },
   resultHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   resultTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.onDark, textAlign: 'center' },
-  resultLine: { fontFamily: fonts.medium, fontSize: 12.5, color: colors.onDarkSoft, textAlign: 'center', marginTop: 1, ...numeric },
-  runResultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 1 },
+  // Who won what is the line people actually read at the end of a hand, so
+  // it is sized to be read at a glance rather than squinted at.
+  resultLine: { fontFamily: fonts.medium, fontSize: 15, color: colors.onDarkSoft, textAlign: 'center', marginTop: 2, ...numeric },
+  runResultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },
   runResultTag: {
     fontFamily: fonts.bold,
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 0.4,
     color: colors.gold,
     borderWidth: 1,
