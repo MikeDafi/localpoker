@@ -1,7 +1,7 @@
 # Reply to App Review, 2.3.6 rejection
 
-Draft. **Not sent.** This goes to Apple in Michael's name, so he sends it, not
-the agent.
+**Sent 2026-10-17** at Michael's request, posted in his signed-in App Store
+Connect session. Awaiting Apple's answer in the same thread.
 
 Paste into the "Reply to App Review" box on the submission at
 `/apps/6815726621/distribution/reviewsubmissions/details/accce2e5-b961-4bbb-8dff-8b6195b6e857`.
