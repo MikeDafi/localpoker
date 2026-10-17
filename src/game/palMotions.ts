@@ -140,6 +140,70 @@ const MOTION_LIST: readonly PalMotion[] = [
       ],
     },
   },
+  /*
+   * Two more free ones beside the wave, both friendly for the same reason the
+   * wave is: a table where the only thing you can do for free is say hello
+   * has nothing to say once the cards are in the air.
+   */
+  {
+    id: palMotionCosmeticId('thumbs-up'),
+    motionId: 'thumbs-up',
+    name: 'Thumbs Up',
+    price: 0,
+    description: 'Nice hand. Nice call. Nice everything.',
+    emoji: '👍',
+    swatches: ['#86EFAC', '#15803D', '#DCFCE7'],
+    face: 'happy',
+    frames: [
+      { duration: 160, translateY: -0.09, scale: 1.07, easing: 'out' },
+      { duration: 260, translateY: -0.06, scale: 1.05, easing: 'sine' },
+      { duration: 220, translateY: 0, scale: 1, easing: 'sine' },
+    ],
+    accent: {
+      emoji: '👍',
+      x: 0.27,
+      y: -0.14,
+      scale: 0.38,
+      frames: [
+        { duration: 110, opacity: 1, translateY: 0.06, scale: 0.8, easing: 'out' },
+        { duration: 170, translateY: -0.06, scale: 1.18, rotate: -8, easing: 'out' },
+        { duration: 280, translateY: -0.04, scale: 1.1, rotate: 0, easing: 'sine' },
+        { duration: 140, opacity: 0, translateY: 0, scale: 1, rotate: 0, easing: 'linear' },
+      ],
+    },
+  },
+  {
+    id: palMotionCosmeticId('gg'),
+    motionId: 'gg',
+    name: 'Good Game',
+    price: 0,
+    description: 'A handshake across the felt. GG.',
+    emoji: '🤝',
+    swatches: ['#FCD34D', '#B45309', '#FEF3C7'],
+    face: 'happy',
+    frames: [
+      // A nod rather than a wave: two dips forward, which reads as a bow at
+      // seat size where a sideways sway would read as the wave again.
+      { duration: 170, translateY: 0.06, scale: 0.97, easing: 'sine' },
+      { duration: 170, translateY: -0.02, scale: 1.02, easing: 'sine' },
+      { duration: 170, translateY: 0.06, scale: 0.97, easing: 'sine' },
+      { duration: 230, translateY: 0, scale: 1, easing: 'sine' },
+    ],
+    accent: {
+      emoji: '🤝',
+      x: 0.0,
+      y: 0.3,
+      scale: 0.38,
+      frames: [
+        { duration: 110, opacity: 1, scale: 1.08, easing: 'out' },
+        { duration: 150, translateY: -0.03, easing: 'sine' },
+        { duration: 150, translateY: 0.02, easing: 'sine' },
+        { duration: 150, translateY: -0.03, easing: 'sine' },
+        { duration: 150, translateY: 0, scale: 1, easing: 'sine' },
+        { duration: 120, opacity: 0, easing: 'linear' },
+      ],
+    },
+  },
   {
     id: palMotionCosmeticId('cry'),
     motionId: 'cry',

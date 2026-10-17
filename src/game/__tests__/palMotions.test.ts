@@ -19,6 +19,8 @@ import {
 const motions = Object.values(PAL_MOTIONS);
 const CATALOGUE_MOTION_IDS = [
   'wave',
+  'thumbs-up',
+  'gg',
   'cry',
   'shrug',
   'facepalm',
@@ -30,6 +32,8 @@ const CATALOGUE_MOTION_IDS = [
   'slow-clap',
 ] as const;
 const ADDED_MOTION_IDS = [
+  'thumbs-up',
+  'gg',
   'facepalm',
   'think',
   'fist-pump',
@@ -72,8 +76,8 @@ function hasSeatReadableMotion(motion: PalMotion): boolean {
 }
 
 describe('the motions themselves', () => {
-  it('ships exactly ten motions in catalogue order', () => {
-    expect(motions).toHaveLength(10);
+  it('ships exactly twelve motions in catalogue order', () => {
+    expect(motions).toHaveLength(12);
     expect(motions.map((motion) => motion.motionId)).toEqual(CATALOGUE_MOTION_IDS);
   });
 
@@ -257,12 +261,12 @@ describe('which motions a player can send', () => {
 
   it('adds the bought ones and nothing else', () => {
     const owned = resolvePalMotions({ owned: ['pal-motion-cry', 'gif-abc', 'chips-candy'] });
-    expect(owned.map((motion) => motion.motionId)).toEqual(['wave', 'cry']);
+    expect(owned.map((motion) => motion.motionId)).toEqual(['wave', 'thumbs-up', 'gg', 'cry']);
   });
 
   it('keeps catalogue order, so unlocking one does not reshuffle the tray', () => {
     const owned = resolvePalMotions({ owned: ['pal-motion-shrug', 'pal-motion-cry'] });
-    expect(owned.map((motion) => motion.motionId)).toEqual(['wave', 'cry', 'shrug']);
+    expect(owned.map((motion) => motion.motionId)).toEqual(['wave', 'thumbs-up', 'gg', 'cry', 'shrug']);
   });
 });
 

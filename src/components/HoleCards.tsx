@@ -63,6 +63,17 @@ export interface HoleCardsProps {
 const PEEL_HALF = 0.5;
 
 /**
+ * How much of the top of the card a peel must leave flat.
+ *
+ * A little less than `PEEL_HALF`. A peel may still only *start* in the bottom
+ * half, but stopping the crease dead on the midline felt stingy: lifting to
+ * 0.44 of the way down uncovers about an eighth more card, enough to read the
+ * index comfortably, while the top corner stays down so a whole hand never
+ * lies open by accident.
+ */
+const PEEL_KEEP_TOP = 0.44;
+
+/**
  * The least a peel has to point upwards, as the sine of its angle.
  *
  * A pull straight left or right folds along a vertical crease, which crosses
@@ -95,7 +106,7 @@ function reachFor(size: number, h: number, anchor: { x: number; y: number }, dx:
   'worklet';
   const cap = Math.min(
     foldExtent(size, h, anchor, dx, dy) * PEEL_FRACTION,
-    foldLimit(size, h, anchor, dx, dy, h * PEEL_HALF),
+    foldLimit(size, h, anchor, dx, dy, h * PEEL_KEEP_TOP),
   );
   return cap / PEEL_OVERSHOOT;
 }

@@ -439,10 +439,11 @@ describe('reaction emote ownership', () => {
       + Object.keys(PAL_MOTIONS).length;
     const free = FREE_REACTION_COSMETIC_IDS.length;
 
-    expect(total).toBe(121);
-    expect(free).toBe(30);
+    expect(total).toBe(123);
+    // Thumbs Up and Good Game joined the wave as free gestures.
+    expect(free).toBe(32);
     expect(free / total).toBeGreaterThan(0.23);
-    expect(free / total).toBeLessThan(0.26);
+    expect(free / total).toBeLessThan(0.27);
     expect(FREE_EMOTE_COSMETIC_IDS).toEqual([
       ...FREE_EMOJI_COSMETIC_IDS,
       ...FREE_STICKER_COSMETIC_IDS,

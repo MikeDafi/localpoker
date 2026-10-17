@@ -559,12 +559,12 @@ export function foldExtent(w: number, h: number, anchor: Pt, dirX: number, dirY:
  *
  * `foldExtent` measures how far the card reaches in the direction being pulled,
  * and a drag of exactly that would put the crease across the card's middle and
- * fold it clean in half. Just under three-quarters of it lifts a piece big
- * enough to print the value on, including on a side fold, whose flap is only
+ * fold it clean in half. Four-fifths of it lifts a piece big enough to read
+ * the value on comfortably, including on a side fold, whose flap is only
  * half as wide as the drag is long, and which is therefore what sets this
  * number.
  */
-export const PEEL_FRACTION = 0.72;
+export const PEEL_FRACTION = 0.8;
 
 /**
  * Which card of a row a touch is over.
