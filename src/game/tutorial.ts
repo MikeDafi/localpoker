@@ -205,7 +205,7 @@ export const TUTORIAL_COPY: Record<TutorialStep, { title: string; body: string; 
   },
   friends: {
     title: 'Add a friend',
-    body: 'Type a friend’s name here and tap Add. They accept, and you can invite them to your tables. Nothing is sent while you practise.',
+    body: 'Type a friend’s name here and tap Add. They accept, and you can invite them to your tables. Nothing is sent during the tutorial.',
     next: 'Next: find a game',
   },
   join: {

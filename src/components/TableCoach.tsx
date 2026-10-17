@@ -3,6 +3,9 @@ import { CoachMark, useCoachTarget } from './CoachMark';
 import { useTutorialFlow } from './useTutorialFlow';
 import { TUTORIAL_COPY, tutorialScreenFor, type TutorialEvent } from '../game/tutorial';
 
+/** Clears the back and stats buttons along the top of the table. */
+const TOP_BAR_CLEARANCE = 64;
+
 /**
  * The tutorial's half of the table, kept out of TableScreen.
  *
@@ -41,6 +44,12 @@ export function useTableCoach(enabled: boolean) {
         title={copy.title}
         body={copy.body}
         target={target}
+        // Only the peel can open its card right beside the control. The chat
+        // button and the betting bar sit beside and below the hole cards,
+        // which draw above anything placed over them, so those cards pin to
+        // the top of the felt where they cover seats rather than controls.
+        pinned={step !== 'peel'}
+        edgeOffset={TOP_BAR_CLEARANCE}
         hint={betting && !actionsShown ? 'Your buttons appear down here when it is your turn.' : undefined}
         nextLabel={copy.next}
         onNext={copy.next ? flow.next : undefined}

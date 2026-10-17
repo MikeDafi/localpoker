@@ -8,6 +8,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WiiButton } from './WiiButton';
 import { colors, fonts, radii, shadows, spacing } from '../theme/theme';
 import { getAppReduceMotion, subscribeAppReduceMotion } from '../theme/motionPreference';
@@ -68,6 +69,8 @@ export interface CoachMarkProps {
    * more controls on both sides of it that the card would otherwise cover.
    */
   pinned?: boolean;
+  /** How far in from the edge an unanchored card sits, to clear a header. */
+  edgeOffset?: number;
   /** Shown under the body, for when the control is not on screen yet. */
   hint?: string;
   nextLabel?: string;
@@ -86,8 +89,12 @@ const GAP = 14;
  * touch, and the card sits on whichever side of the control has more room.
  * Skip is on every card, because a tutorial nobody can leave is a trap.
  */
-export function CoachMark({ title, body, target, placement = 'top', pinned, hint, nextLabel, onNext, onSkip }: CoachMarkProps) {
+export function CoachMark({ title, body, target, placement = 'top', pinned, edgeOffset = spacing.lg, hint, nextLabel, onNext, onSkip }: CoachMarkProps) {
   const rootRef = useRef<View | null>(null);
+  // The overlay fills the screen's safe area view, and an absolute child is
+  // placed from its edge rather than inside its padding, so the insets are
+  // added back by hand or a pinned card slides under the notch.
+  const insets = useSafeAreaInsets();
   const [frame, setFrame] = useState<CoachRect | null>(null);
   const measureRoot = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -118,14 +125,14 @@ export function CoachMark({ title, body, target, placement = 'top', pinned, hint
       ? { bottom: frame.height - local.y + GAP }
       : { top: local.y + local.height + GAP }
     : placement === 'bottom'
-      ? { bottom: spacing.lg }
-      : { top: spacing.lg };
+      ? { bottom: insets.bottom + edgeOffset }
+      : { top: insets.top + edgeOffset };
   const arrowLeft = pointing && local && frame
     ? Math.max(spacing.lg, Math.min(frame.width - spacing.lg * 3, local.x + local.width / 2 - spacing.md - 7))
     : null;
 
   return (
-    <View ref={rootRef} style={StyleSheet.absoluteFill} pointerEvents="box-none" onLayout={measureRoot}>
+    <View ref={rootRef} style={[StyleSheet.absoluteFill, styles.layer]} pointerEvents="box-none" onLayout={measureRoot}>
       {local ? (
         <Animated.View
           pointerEvents="none"
@@ -173,6 +180,7 @@ export function CoachMark({ title, body, target, placement = 'top', pinned, hint
 }
 
 const styles = StyleSheet.create({
+  layer: { zIndex: 50, elevation: 50 },
   ring: {
     position: 'absolute',
     borderWidth: 3,
