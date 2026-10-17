@@ -6,7 +6,10 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { WiiChannelTile } from '../components/WiiChannelTile';
 import { AnimatedPal } from '../components/AnimatedPal';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
-import { FriendsIcon, BotIcon, StatsIcon, ProfileIcon, CartIcon , SettingsIcon, PaletteIcon } from '../components/Icons';
+import { SettingsIcon } from '../components/Icons';
+import {
+  PlayWithFriendsTileIcon, QuickPlayTileIcon, MyPalTileIcon, FriendsTileIcon, StatsTileIcon, StoreTileIcon,
+} from '../components/HomeTileIcons';
 import { colors, fonts, radii, shadows, spacing, easings } from '../theme/theme';
 import { useApp } from '../state/AppContext';
 import { isResumable } from '../game/savedGame';
@@ -57,12 +60,12 @@ export function HomeScreen({ navigation }: Props) {
   const tileW = Math.floor((width - pagePad * 2 - gap * (cols - 1)) / cols);
 
   const tiles = [
-    { key: 'friends', title: 'Play with Friends', subtitle: 'Private room', accent: colors.blue, icon: <FriendsIcon />, onPress: () => navigation.navigate('CreateJoin') },
-    { key: 'quick', title: 'Quick Play', subtitle: 'vs. computer', accent: colors.teal, icon: <BotIcon />, onPress: () => navigation.navigate('GameSetup', { mode: 'quick' }) },
-    { key: 'pal', title: 'My Pal', subtitle: 'Customize', accent: colors.accent, icon: <PaletteIcon />, onPress: () => navigation.navigate('PalDesigner') },
-    { key: 'friendsList', title: 'Friends', subtitle: 'Your crew', accent: colors.accentPink, icon: <ProfileIcon />, onPress: () => navigation.navigate('Friends') },
-    { key: 'stats', title: 'My Stats', subtitle: 'Track your game', accent: colors.indigo, icon: <StatsIcon />, onPress: () => navigation.navigate('Stats') },
-    { key: 'store', title: 'Store', subtitle: 'Coins & style', accent: colors.gold, icon: <CartIcon />, onPress: () => navigation.navigate('Store') },
+    { key: 'friends', title: 'Play with Friends', subtitle: 'Private room', accent: colors.blue, icon: <PlayWithFriendsTileIcon />, onPress: () => navigation.navigate('CreateJoin') },
+    { key: 'quick', title: 'Quick Play', subtitle: 'vs. computer', accent: colors.teal, icon: <QuickPlayTileIcon />, onPress: () => navigation.navigate('GameSetup', { mode: 'quick' }) },
+    { key: 'pal', title: 'My Pal', subtitle: 'Customize', accent: colors.accent, icon: <MyPalTileIcon />, onPress: () => navigation.navigate('PalDesigner') },
+    { key: 'friendsList', title: 'Friends', subtitle: 'Your crew', accent: colors.accentPink, icon: <FriendsTileIcon />, onPress: () => navigation.navigate('Friends') },
+    { key: 'stats', title: 'My Stats', subtitle: 'Track your game', accent: colors.indigo, icon: <StatsTileIcon />, onPress: () => navigation.navigate('Stats') },
+    { key: 'store', title: 'Store', subtitle: 'Coins & style', accent: colors.gold, icon: <StoreTileIcon />, onPress: () => navigation.navigate('Store') },
   ];
 
   const rows = Math.ceil(tiles.length / cols);
