@@ -9,6 +9,9 @@ import { WiiPanel } from '../components/WiiPanel';
 import { WiiButton } from '../components/WiiButton';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
+import { CoachMark, useCoachTarget } from '../components/CoachMark';
+import { useTutorialFlow } from '../components/useTutorialFlow';
+import { TUTORIAL_COPY } from '../game/tutorial';
 import { FriendsIcon, ProfileIcon } from '../components/Icons';
 import { palFromSeed } from '../avatar/palConfig';
 import { colors, fonts, radii, shadows, spacing, easings } from '../theme/theme';
@@ -41,6 +44,9 @@ export function FriendsScreen({ navigation }: Props) {
   const [addingFriend, setAddingFriend] = useState(false);
   const [matches, setMatches] = useState<DirectoryMatch[]>([]);
   const [searching, setSearching] = useState(false);
+  const tutorial = useTutorialFlow();
+  const coaching = tutorial.step === 'friends';
+  const addTarget = useCoachTarget(coaching);
 
   const { onlineFriends, offlineFriends } = useMemo(() => {
     const online = friends.filter((friend) => friend.online && friend.friendshipStatus === 'accepted');
@@ -92,6 +98,16 @@ export function FriendsScreen({ navigation }: Props) {
     const trimmed = (nameOverride ?? friendText).trim();
     if (!trimmed) {
       setInputError("Enter your friend's name.");
+      return;
+    }
+    if (coaching) {
+      // A practice run must not send a real request to a real person.
+      sound.play('select');
+      setFriendText('');
+      setMatches([]);
+      setInputError(null);
+      Keyboard.dismiss();
+      showAlert('Practice request', `Nothing was sent. For real, this asks ${trimmed} to join your crew, and they show up here once they accept.`);
       return;
     }
     setAddingFriend(true);
@@ -190,7 +206,7 @@ export function FriendsScreen({ navigation }: Props) {
               </View>
             </View>
 
-            <View style={styles.addRow}>
+            <View style={styles.addRow} {...addTarget.props}>
               <TextInput
                 value={friendText}
                 onChangeText={handleChangeFriendText}
@@ -299,6 +315,16 @@ export function FriendsScreen({ navigation }: Props) {
           </Animated.View>
         ) : null}
       </ScrollView>
+      {coaching ? (
+        <CoachMark
+          title={TUTORIAL_COPY.friends.title}
+          body={TUTORIAL_COPY.friends.body}
+          target={addTarget.rect}
+          nextLabel={TUTORIAL_COPY.friends.next}
+          onNext={tutorial.next}
+          onSkip={tutorial.skip}
+        />
+      ) : null}
     </ScreenBackground>
   );
 }

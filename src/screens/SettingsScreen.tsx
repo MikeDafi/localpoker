@@ -30,6 +30,7 @@ import {
 import { RootStackParamList } from '../navigation/types';
 import { sound } from '../services/sound';
 import { useApp } from '../state/AppContext';
+import { useTutorialFlow } from '../components/useTutorialFlow';
 import { colors, fonts, radii, shadows, spacing } from '../theme/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -66,6 +67,7 @@ export function SettingsScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
   const compact = width < 430;
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const tutorial = useTutorialFlow();
 
   const appSections = useMemo(
     () =>
@@ -137,6 +139,7 @@ export function SettingsScreen({ navigation }: Props) {
           name={auth.handle ?? profile.name}
           coins={profile.coins}
           onLogout={logout}
+          onReplayTutorial={tutorial.replay}
           onResetStats={confirmResetStats}
           onDeleteAccount={confirmDeleteAccount}
           deletingAccount={deletingAccount}
@@ -318,6 +321,7 @@ function AccountSection({
   name,
   coins,
   onLogout,
+  onReplayTutorial,
   onResetStats,
   onDeleteAccount,
   deletingAccount,
@@ -326,6 +330,7 @@ function AccountSection({
   name: string;
   coins: number;
   onLogout: () => void;
+  onReplayTutorial: () => void;
   onResetStats: () => void;
   onDeleteAccount: () => void;
   deletingAccount: boolean;
@@ -348,6 +353,7 @@ function AccountSection({
         </View>
 
         <View style={styles.accountActions}>
+          <WiiButton label="Replay tutorial" variant="blue" size="md" fullWidth onPress={onReplayTutorial} />
           <WiiButton label="Log out" variant="white" size="md" fullWidth onPress={onLogout} />
           <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onResetStats} />
           <WiiButton

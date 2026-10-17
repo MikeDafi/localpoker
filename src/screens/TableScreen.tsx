@@ -8,6 +8,8 @@ import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenBackground } from '../components/ScreenBackground';
+import { useTableCoach } from '../components/TableCoach';
+import { tutorialBotDecision } from '../game/tutorial';
 import { ShowdownReveal } from '../components/ShowdownReveal';
 import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
 import { SEAT_GAP, podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
@@ -248,6 +250,12 @@ export function TableScreen({ navigation, route }: Props) {
   const pendingRef = useRef<Partial<GameSettings>>({});
   const seed = resuming && savedGame ? savedGame.seed : route.params.seed;
   const roomCode = resuming && savedGame ? savedGame.roomCode : route.params.roomCode;
+  /*
+   * The first-run tutorial's practice table: offline, scripted bots, never
+   * saved and never counted. See `src/game/tutorial.ts`.
+   */
+  const tutorial = !!route.params.tutorial && !roomCode && !resuming;
+  const coach = useTableCoach(tutorial);
   const tournament = isTournamentMode(settings.gameMode);
   const [localTournamentStartedAt] = useState(() =>
     resuming && savedGame?.tournamentStartedAt && isTournamentMode(savedGame.settings.gameMode)
@@ -1509,6 +1517,7 @@ export function TableScreen({ navigation, route }: Props) {
   }, []);
 
   const onHumanAction = (action: PlayerAction, amount?: number) => {
+    coach.note(action);
     if (action === 'fold' && settings.confirmFoldWhenCheckAvailable && legal?.actions.includes('check')) {
       showAlert('Fold this hand?', 'You can check for free. Are you sure you want to fold?', [
         { text: 'Cancel', style: 'cancel' },
@@ -1785,6 +1794,8 @@ export function TableScreen({ navigation, route }: Props) {
   }, [turnTimeouts, handOver, roomCode, firebaseOnline, isOnlineHost, human.id]);
 
   const onTimerExpire = useCallback(() => {    if (handOver) return;
+    // Nobody is timed out of a lesson for stopping to read it.
+    if (tutorial) return;
     const actor = state.players[state.currentPlayerIndex];
     if (!actor) return;
     /*
@@ -2002,7 +2013,8 @@ export function TableScreen({ navigation, route }: Props) {
     return () => clearTimeout(timer);
   }, [current?.id, isHumanTurn, handOver]);
 
-  const shouldSaveLocalState = !roomCode || !firebaseOnline || isOnlineHost;
+  // A practice hand is not a game to come back to.
+  const shouldSaveLocalState = !tutorial && (!roomCode || !firebaseOnline || isOnlineHost);
 
   // Persist the active game for resume-after-leaving. Debounced to avoid disk
   // thrash (state changes many times/sec during bot sequences). Full state is
@@ -2143,7 +2155,9 @@ export function TableScreen({ navigation, route }: Props) {
      */
     const delayMs = skipping ? 30 : botSpeedMs + actionReadDelayMs(animsOff, lastAction.current);
     botTimer.current = setTimeout(() => {
-      const decision = decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
+      const decision = tutorial
+        ? tutorialBotDecision(state, actor.id)
+        : decideAction(state, actor.id, botDiff[actor.id] ?? settings.difficulty);
       if (skipping) {
         step(decision.action, decision.amount, actor.id);
         return;
@@ -2168,6 +2182,9 @@ export function TableScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!isShowdown || recorded.current) return undefined;
     recorded.current = true;
+    // Practice hands earn nothing and count for nothing, so the tutorial
+    // leaves no history that would read as an experienced player.
+    if (tutorial) return undefined;
     const endingStack = state.players.find((p) => p.id === human.id)?.chips ?? 0;
     const winAmt = state.winners.find((w) => w.playerId === human.id)?.amount ?? 0;
     const contributed = state.contributions[human.id] ?? 0;
@@ -2394,6 +2411,11 @@ export function TableScreen({ navigation, route }: Props) {
    */
   const promptBack = () => {
     sound.play('tap');
+    if (tutorial) {
+      // Leaving the practice table is skipping the tutorial.
+      coach.skip();
+      return;
+    }
     if (!roomCode || !firebaseOnline) {
       // Nothing to hold open: a bots game is saved either way, so going back
       // needs no decision.
@@ -3710,7 +3732,7 @@ export function TableScreen({ navigation, route }: Props) {
             </View>
           </View>
         ) : null}
-        <View style={styles.humanCards}>
+        <View style={styles.humanCards} {...coach.cardsTarget}>
           {(() => {
             // The hand you actually read, and the target of the peel gesture,
             // so it stays the same size from deal to showdown. It used to
@@ -3743,7 +3765,7 @@ export function TableScreen({ navigation, route }: Props) {
                 // thrown down from the middle of the felt, which sits above this row
                 fromY={-(tableH * 0.5 + 40)}
                 back={cardBack}
-                onPeek={() => sound.play('tap')}
+                onPeek={() => { sound.play('tap'); coach.note('peeked'); }}
               />
             );
           })()}
@@ -3782,7 +3804,13 @@ export function TableScreen({ navigation, route }: Props) {
               <Text style={styles.exposeFabText}>Show</Text>
             </Pressable>
           )}
-          <EmoteBar onEmote={sendEmote} ownedCosmeticIds={cosmetics.ownedCosmeticIds} pal={profile.pal} />
+          {coach.active ? (
+            <View {...coach.reactTarget}>
+              <EmoteBar onEmote={(emote) => { sendEmote(emote); coach.note('reacted'); }} ownedCosmeticIds={cosmetics.ownedCosmeticIds} pal={profile.pal} />
+            </View>
+          ) : (
+            <EmoteBar onEmote={sendEmote} ownedCosmeticIds={cosmetics.ownedCosmeticIds} pal={profile.pal} />
+          )}
         </View>
       </View>
 
@@ -4073,7 +4101,10 @@ export function TableScreen({ navigation, route }: Props) {
               onExpire={onTimerExpire}
               warn
             />
-            <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
+            {/* A plain wrapper, so the tutorial can measure the bar it points at. */}
+            <View {...coach.actionsTarget}>
+              <ActionBar legal={legal} potSize={wageringPot} step={state.config.bigBlind} onAction={onHumanAction} />
+            </View>
           </View>
         ) : (
           <View style={styles.waiting}>
@@ -4177,6 +4208,7 @@ export function TableScreen({ navigation, route }: Props) {
           }
         }}
       />
+      {coach.overlay(!!legal && isHumanTurn && !isAwaitingOnlineState && !runVotingActive && !isShowdown)}
     </ScreenBackground>
   );
 }

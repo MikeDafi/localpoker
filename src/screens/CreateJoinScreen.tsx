@@ -10,6 +10,9 @@ import { WiiPanel } from '../components/WiiPanel';
 import { WiiButton } from '../components/WiiButton';
 import { AdBanner } from '../components/AdBanner';
 import { AnimatedPal } from '../components/AnimatedPal';
+import { CoachMark, useCoachTarget } from '../components/CoachMark';
+import { useTutorialFlow } from '../components/useTutorialFlow';
+import { TUTORIAL_COPY, TUTORIAL_SAMPLE_ROOMS, TUTORIAL_SAMPLE_SEATS } from '../game/tutorial';
 import { palFromSeed } from '../avatar/palConfig';
 import { isRoomCodeTaken, subscribeOpenRooms, getRoomListingInfo } from '../services/firebase/roomSync';
 import { CODE_LENGTH, filterToCodeAlphabet, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
@@ -21,6 +24,16 @@ import { RootStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateJoin'>;
 
 export function CreateJoinScreen({ navigation }: Props) {
+  /*
+   * In the tutorial's last step the friends list shows sample tables, so a
+   * new player sees what a friend's open game looks like before they have a
+   * friend. Swapped in at render and nowhere else: the samples are never
+   * fetched for, joined or written, and the real lists come back the moment
+   * the step ends.
+   */
+  const tutorial = useTutorialFlow();
+  const coaching = tutorial.step === 'join';
+  const listTarget = useCoachTarget(coaching);
   // Browsing for a table is the common arrival, hosting is the deliberate one.
   const [mode, setMode] = useState<'create' | 'join'>('join');
   const [joinCode, setJoinCode] = useState('');
@@ -79,6 +92,10 @@ export function CreateJoinScreen({ navigation }: Props) {
 
   const joinListed = (summary: RoomSummary) => {
     Haptics.selectionAsync();
+    if (coaching) {
+      showAlert('Sample table', `${summary.hostName.replace('Sample: ', '')}'s table is only a sample. A real one takes you to its lobby, where you wait for the host to deal.`);
+      return;
+    }
     navigation.navigate('Lobby', { roomCode: summary.code, host: false });
   };
 
@@ -117,15 +134,18 @@ export function CreateJoinScreen({ navigation }: Props) {
             {/* Browsing sits under the code box: a code is the certain way in,
                 the lists are for when you do not have one. Friends first,
                 because a table with someone you know is the one you want. */}
+            <View {...listTarget.props}>
             <RoomList
               title="Friends' tables"
-              hint="Private tables your friends opened."
-              rooms={liveRooms.friends}
-              seats={seats}
+              hint={coaching ? 'Sample tables, for the tutorial only.' : 'Private tables your friends opened.'}
+              rooms={coaching ? TUTORIAL_SAMPLE_ROOMS : liveRooms.friends}
+              seats={coaching ? TUTORIAL_SAMPLE_SEATS : seats}
               tone="friends"
+              sample={coaching}
               onJoin={joinListed}
               emptyText="No friends have a table open right now."
             />
+            </View>
             <RoomList
               title="Public tables"
               hint="Open to anyone."
@@ -138,6 +158,16 @@ export function CreateJoinScreen({ navigation }: Props) {
           </>
         <AdBanner />
       </ScrollView>
+      {coaching ? (
+        <CoachMark
+          title={TUTORIAL_COPY.join.title}
+          body={TUTORIAL_COPY.join.body}
+          target={listTarget.rect}
+          nextLabel={TUTORIAL_COPY.join.next}
+          onNext={tutorial.next}
+          onSkip={tutorial.skip}
+        />
+      ) : null}
     </ScreenBackground>
   );
 }
@@ -150,14 +180,16 @@ export function CreateJoinScreen({ navigation }: Props) {
  * so the two differ by accent colour and by a badge rather than by position
  * alone.
  */
-function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats }: {
+function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats, sample }: {
   title: string;
   hint: string;
-  rooms: RoomSummary[];
+  rooms: readonly RoomSummary[];
   tone: 'friends' | 'public';
+  /** Badge the rows as samples, so a tutorial table is never mistaken for a real one. */
+  sample?: boolean;
   onJoin: (room: RoomSummary) => void;
   emptyText: string;
-  seats: Record<string, { id: string; name: string; palSeed?: string; palJson?: string }[]>;
+  seats: Readonly<Record<string, readonly { id: string; name: string; palSeed?: string; palJson?: string }[]>>;
 }) {
   const accent = tone === 'friends' ? colors.blue : colors.felt;
   return (
@@ -177,7 +209,7 @@ function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats }: {
               <View style={styles.roomTitleRow}>
                 <Text style={styles.friendName} numberOfLines={1}>{room.hostName || 'Someone'}</Text>
                 <View style={[styles.roomBadge, { backgroundColor: accent }]}>
-                  <Text style={styles.roomBadgeText}>{tone === 'friends' ? 'FRIEND' : 'PUBLIC'}</Text>
+                  <Text style={styles.roomBadgeText}>{sample ? 'SAMPLE' : tone === 'friends' ? 'FRIEND' : 'PUBLIC'}</Text>
                 </View>
               </View>
               {/* Faces, so you can see who is already there rather than

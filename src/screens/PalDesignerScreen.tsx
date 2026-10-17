@@ -36,6 +36,9 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { WiiPanel } from '../components/WiiPanel';
 import { WiiButton } from '../components/WiiButton';
 import { AdBanner } from '../components/AdBanner';
+import { CoachMark, useCoachTarget } from '../components/CoachMark';
+import { useTutorialFlow } from '../components/useTutorialFlow';
+import { TUTORIAL_COPY } from '../game/tutorial';
 import { RootStackParamList } from '../navigation/types';
 import { useApp } from '../state/AppContext';
 import { sound } from '../services/sound';
@@ -100,6 +103,9 @@ export function PalDesignerScreen({ navigation }: Props) {
   const [activeGroup, setActiveGroup] = useState<FeatureGroup>('Face');
   const { width } = useWindowDimensions();
   const compactPreview = width < 370;
+  const tutorial = useTutorialFlow();
+  const coaching = tutorial.step === 'pal';
+  const tabsTarget = useCoachTarget(coaching);
 
   const visibleSpecs = useMemo(
     () => EDITABLE_FEATURE_SPECS.filter((spec) => spec.group === activeGroup),
@@ -140,8 +146,10 @@ export function PalDesignerScreen({ navigation }: Props) {
 
   const handleSave = useCallback(() => {
     setPal(normalizePal(pal));
-    navigation.goBack();
-  }, [navigation, pal, setPal]);
+    // In the tutorial, saving is also how they move on.
+    if (coaching) tutorial.next();
+    else navigation.goBack();
+  }, [navigation, pal, setPal, coaching, tutorial]);
 
   return (
     <ScreenBackground variant="menu">
@@ -182,7 +190,7 @@ export function PalDesignerScreen({ navigation }: Props) {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(95).duration(360).easing(Easing.bezier(...easings.out))}>
-          <View style={styles.groupTabs}>
+          <View style={styles.groupTabs} {...tabsTarget.props}>
             {GROUPS.map((group) => {
               const active = group === activeGroup;
               return (
@@ -267,6 +275,20 @@ export function PalDesignerScreen({ navigation }: Props) {
           <WiiButton label="Save" onPress={handleSave} variant="blue" size="lg" fullWidth />
         </View>
       </View>
+      {coaching ? (
+        // Pinned over the bottom dock rather than beside the tabs, which
+        // have the controls they open directly underneath them.
+        <CoachMark
+          title={TUTORIAL_COPY.pal.title}
+          body={TUTORIAL_COPY.pal.body}
+          target={tabsTarget.rect}
+          placement="bottom"
+          pinned
+          nextLabel={TUTORIAL_COPY.pal.next}
+          onNext={handleSave}
+          onSkip={tutorial.skip}
+        />
+      ) : null}
     </ScreenBackground>
   );
 }

@@ -25,6 +25,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { captureError, initTelemetry } from './src/services/telemetry';
 import { configureNotificationHandler, useNotificationTaps } from './src/services/pushSetup';
 import { RootStackParamList } from './src/navigation/types';
+import { tutorialTableParams } from './src/components/useTutorialFlow';
+import { tutorialScreenFor } from './src/game/tutorial';
 
 import { HomeScreen } from './src/screens/HomeScreen';
 import { CreateJoinScreen } from './src/screens/CreateJoinScreen';
@@ -97,7 +99,16 @@ const navTheme = {
 };
 
 function RootNavigator() {
-  const { auth, ready, ageVerified } = useApp();
+  const { auth, ready, ageVerified, tutorialStep, settings } = useApp();
+  /*
+   * A new player opens on the practice table rather than the menu.
+   *
+   * Only read when the signed in screens first mount, which is the moment
+   * after the age gate and sign in. The params are attached to the Table
+   * screen only while that is so, because initial params are merged into
+   * every later visit to the same screen.
+   */
+  const tutorialTable = !!tutorialStep && tutorialScreenFor(tutorialStep) === 'Table';
   // Only route a tap once the navigator can actually accept one, and only for
   // a signed-in player: a notification for someone who just signed out should
   // open the app, not jump to a room they can no longer join.
@@ -114,6 +125,7 @@ function RootNavigator() {
       onJoin={(code) => navigationRef.navigate('Lobby', { roomCode: code, host: false })}
     />
     <Stack.Navigator
+      initialRouteName={tutorialTable ? 'Table' : 'Home'}
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
@@ -134,7 +146,12 @@ function RootNavigator() {
           <Stack.Screen name="PalDesigner" component={PalDesignerScreen} />
           <Stack.Screen name="Store" component={StoreScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="Table" component={TableScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen
+            name="Table"
+            component={TableScreen}
+            options={{ animation: 'fade' }}
+            initialParams={tutorialTable ? tutorialTableParams(settings) : undefined}
+          />
         </>
       )}
     </Stack.Navigator>

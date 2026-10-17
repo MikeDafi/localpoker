@@ -10,6 +10,14 @@ import { friendRequestAlertKeys, freshFriendRequestForAlert } from '../game/frie
 import { absorbTable, pruneHistory, type OpponentHistory } from '../game/opponentHistory';
 import { emptyCosmetics, migrateCosmetics, readCosmetics, type CosmeticsState } from '../game/cosmetics';
 import { randomName } from '../game/playerName';
+import {
+  nextTutorialStep,
+  resolveTutorialStatus,
+  shouldStartTutorial,
+  type TutorialEvent,
+  type TutorialStatus,
+  type TutorialStep,
+} from '../game/tutorial';
 import type { ObservedCounters } from '../game/observedStats';
 import {
   Stats, HandResult, DEFAULT_STATS, applyHandResult, derivedStats as computeDerived, mergeStats,
@@ -173,6 +181,14 @@ export const SAVED_GAME_KEY = '@pokerpals/savedgame';
 const AGE_KEY = '@pokerpals/ageVerified';
 const BLOCKS_KEY = '@pokerpals/blocks';
 const OPPONENT_HISTORY_KEY = '@pokerpals/opponentHistory';
+/**
+ * Whether this device still owes its player the first-run tutorial.
+ *
+ * A device preference like the age gate rather than account data: it is
+ * about whether the person holding the phone has been shown how to play, and
+ * signing into another account does not make them forget.
+ */
+const TUTORIAL_KEY = '@pokerpals/tutorial';
 /*
  * Written by the Store, read by the table.
  *
@@ -291,6 +307,14 @@ interface AppContextValue {
   resetStats: () => void;
   saveGame: (g: SavedGame) => void;
   clearSavedGame: () => void;
+  /** The tutorial step on screen, or null when no tutorial is running. */
+  tutorialStep: TutorialStep | null;
+  /** Report what the player did. Moves the tutorial on only if it was this step's lesson. */
+  noteTutorial: (event: TutorialEvent) => void;
+  /** Start again from the table, from Settings. */
+  startTutorial: () => void;
+  /** Finished or skipped: either way it is never forced on this device again. */
+  finishTutorial: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -306,6 +330,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const savedGameWriteVersion = useRef(0);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  // 'done' until hydrated, so nothing is started before storage has answered.
+  const [tutorialStatus, setTutorialStatus] = useState<TutorialStatus>('done');
+  // Null until the tutorial has moved past its first step or been replayed.
+  const [chosenTutorialStep, setChosenTutorialStep] = useState<TutorialStep | null>(null);
   const activeAccount = useRef<string>(GUEST_ACCOUNT);
   const seenFriendRequestAlerts = useRef<Set<string>>(new Set());
   const friendRequestAlertsPrimed = useRef(false);
@@ -313,13 +341,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [p, s, a, f, st, g, av, b, acct, oh, cos] = await Promise.all([
+        const [p, s, a, f, st, g, av, b, acct, oh, cos, tut] = await Promise.all([
           AsyncStorage.getItem(PROFILE_KEY), AsyncStorage.getItem(STATS_KEY),
           AsyncStorage.getItem(AUTH_KEY), AsyncStorage.getItem(FRIENDS_KEY),
           AsyncStorage.getItem(SETTINGS_KEY), AsyncStorage.getItem(SAVED_GAME_KEY),
           AsyncStorage.getItem(AGE_KEY), AsyncStorage.getItem(BLOCKS_KEY),
           AsyncStorage.getItem(ACTIVE_ACCOUNT_KEY), AsyncStorage.getItem(OPPONENT_HISTORY_KEY),
-          AsyncStorage.getItem(COSMETICS_KEY),
+          AsyncStorage.getItem(COSMETICS_KEY), AsyncStorage.getItem(TUTORIAL_KEY),
         ]);
         activeAccount.current = acct || GUEST_ACCOUNT;
         if (p) { const parsed = JSON.parse(p); setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
@@ -342,6 +370,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (av === 'true') setAgeVerified(true);
         if (b) setBlockedUsers(JSON.parse(b));
         if (oh) setOpponentHistory(JSON.parse(oh));
+        // Read straight from storage rather than from state, which has not
+        // settled yet, so an existing player's history is seen on this launch.
+        const storedProfile = p ? JSON.parse(p) as Partial<Profile> : null;
+        const storedAuth = a ? JSON.parse(a) as Partial<AuthState> : null;
+        const tutorial = resolveTutorialStatus({
+          stored: tut,
+          hadProfile: !!storedProfile,
+          signedIn: !!storedAuth?.loggedIn,
+          handsPlayed: s ? mergeStats(JSON.parse(s)).handsPlayed : 0,
+          xp: storedProfile?.xp ?? 0,
+          hasSavedGame: !!g && g !== 'null',
+        });
+        setTutorialStatus(tutorial);
+        if (tutorial !== tut) {
+          AsyncStorage.setItem(TUTORIAL_KEY, tutorial).catch((error) => {
+            reportStorageError('resolve-tutorial', TUTORIAL_KEY, error);
+          });
+        }
         const readCloset = readCosmetics(cos);
         const migratedCloset = migrateCosmetics(readCloset, { grantLegacyEmojiEmotes: false });
         setCosmeticsState(migratedCloset);
@@ -1075,10 +1121,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [persist]);
 
+  /*
+   * The step on screen. Derived rather than set by an effect when a new
+   * player first signs in, so the navigator already knows to open on the
+   * practice table in the same render that takes it past the sign in screen,
+   * instead of drawing the menu for a frame and then jumping.
+   *
+   * Any play history stops it starting, which matters at sign in: that can
+   * restore an account's stats onto a device that had only seen the age gate.
+   * The stored flag then settles to done on the next launch.
+   */
+  const tutorialStep = chosenTutorialStep ?? (ready && shouldStartTutorial({
+    handsPlayed: stats.handsPlayed,
+    xp: profile.xp,
+    hasSavedGame: !!savedGame,
+    status: tutorialStatus,
+    signedIn: auth.loggedIn,
+    running: false,
+  }) ? 'peel' : null);
+
+  const finishTutorial = useCallback(() => {
+    setChosenTutorialStep(null);
+    setTutorialStatus('done');
+    AsyncStorage.setItem(TUTORIAL_KEY, 'done').catch((error) => {
+      reportStorageError('finish-tutorial', TUTORIAL_KEY, error);
+    });
+  }, []);
+
+  const startTutorial = useCallback(() => setChosenTutorialStep('peel'), []);
+
+  const noteTutorial = useCallback((event: TutorialEvent) => {
+    if (!tutorialStep) return;
+    const next = nextTutorialStep(tutorialStep, event);
+    if (next === 'done') finishTutorial();
+    else if (next !== tutorialStep) setChosenTutorialStep(next);
+  }, [tutorialStep, finishTutorial]);
+
   const value = useMemo(() => ({
     ready, auth, ageVerified, verifyAge, profile, stats, friends: friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, opponentHistory, cosmetics, setCosmetics,
     login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, absorbObservedTable,
-  }), [ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, opponentHistory, absorbObservedTable, cosmetics, setCosmetics]);
+    tutorialStep, noteTutorial, startTutorial, finishTutorial,
+  }), [tutorialStep, noteTutorial, startTutorial, finishTutorial, ready, auth, ageVerified, verifyAge, profile, stats, friendsWithPresence, settings, savedGame, blockedUsers, textScaleTick, login, logout, updateProfile, setPal, addCoins, recordHand, addFriend, acceptFriendRequest, declineFriendRequest, removeFriend, blockUser, reportUser, deleteAccount, isBlocked, updateSettings, resetStats, saveGame, clearSavedGame, opponentHistory, absorbObservedTable, cosmetics, setCosmetics]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

@@ -4,7 +4,7 @@ export type RootStackParamList = {
   Login: undefined;
   Home: undefined;
   GameSetup: { mode: 'quick' | 'friends'; roomCode?: string };
-  Table: { settings: GameSettings; seed: number; roomCode?: string; resume?: boolean };
+  Table: { settings: GameSettings; seed: number; roomCode?: string; resume?: boolean; tutorial?: boolean };
   CreateJoin: undefined;
   Lobby: { roomCode: string; host: boolean; settings?: GameSettings };
   Friends: undefined;

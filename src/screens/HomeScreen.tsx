@@ -15,6 +15,7 @@ import { useApp } from '../state/AppContext';
 import { isResumable } from '../game/savedGame';
 import { isRoomResumeAvailable, sweepMyStaleRooms } from '../services/firebase';
 import { RootStackParamList } from '../navigation/types';
+import { useTutorialFlow } from '../components/useTutorialFlow';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -22,6 +23,8 @@ export function HomeScreen({ navigation }: Props) {
   const { profile, savedGame, clearSavedGame } = useApp();
   const { width } = useWindowDimensions();
   const [gridH, setGridH] = React.useState(0);
+  // Backing out of a tutorial screen lands here with the tutorial unfinished.
+  const tutorial = useTutorialFlow();
 
   // A friends game abandoned for >15s is no longer resumable; clear it.
   React.useEffect(() => {
@@ -90,6 +93,20 @@ export function HomeScreen({ navigation }: Props) {
       <Text style={styles.tagline}>Poker with Friends</Text>
 
       <View style={styles.body}>
+        {tutorial.step ? (
+          <Animated.View entering={FadeInDown.duration(360)}>
+            <View style={[styles.resumeCard, shadows.soft]}>
+              <View style={[styles.resumeDot, { backgroundColor: colors.gold }]} />
+              <Pressable style={{ flex: 1 }} onPress={tutorial.resume} accessibilityRole="button" accessibilityLabel="Continue tutorial">
+                <Text style={styles.resumeTitle}>Continue tutorial</Text>
+                <Text style={styles.resumeSub}>Pick up where you left off</Text>
+              </Pressable>
+              <Pressable onPress={tutorial.skip} hitSlop={8} accessibilityRole="button" accessibilityLabel="Skip tutorial">
+                <Text style={styles.tutorialSkip}>Skip</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        ) : null}
         {savedGame && canResume && (
           <Animated.View entering={FadeInDown.duration(360)}>
             <Pressable
@@ -139,6 +156,7 @@ const styles = StyleSheet.create({
   resumeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.green },
   resumeTitle: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink },
   resumeSub: { fontFamily: fonts.medium, fontSize: 12, color: colors.inkMuted, marginTop: 1 },
+  tutorialSkip: { fontFamily: fonts.semibold, fontSize: 14, color: colors.inkMuted, textDecorationLine: 'underline' },
   resumeArrow: { fontFamily: fonts.bold, fontSize: 26, color: colors.blue },
   bottomBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
 });
