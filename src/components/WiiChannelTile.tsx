@@ -3,8 +3,8 @@ import { Pressable, View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-n
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { colors, radii, shadows, fonts, springs } from '../theme/theme';
-import { accentRamp } from '../theme/color';
+import { colors, radii, fonts, springs } from '../theme/theme';
+import { accentRamp, shade } from '../theme/color';
 import { sound } from '../services/sound';
 
 const AView = Animated.createAnimatedComponent(View);
@@ -12,7 +12,8 @@ const AView = Animated.createAnimatedComponent(View);
 export interface WiiChannelTileProps {
   title: string;
   subtitle?: string;
-  icon?: React.ReactNode;
+  /** Drawn at a size that fills the tile, so it takes a component, not an element. */
+  Icon?: React.ComponentType<{ size?: number }>;
   onPress?: () => void;
   disabled?: boolean;
   accent?: string;
@@ -21,11 +22,16 @@ export interface WiiChannelTileProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** A Wii Menu "channel": glossy white rounded-square tile with a label bar. */
+const LABEL_H = 44;
+
+/**
+ * A Home "channel": the whole tile is the glossy accent badge, with the
+ * illustrated icon blown up to fill it and the label printed on the colour.
+ */
 export function WiiChannelTile({
   title,
   subtitle,
-  icon,
+  Icon,
   onPress,
   disabled,
   accent = colors.blue,
@@ -36,6 +42,7 @@ export function WiiChannelTile({
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const h = height ?? width * 0.92;
+  const iconSize = Math.round(Math.max(48, Math.min(width * 0.6, (h - LABEL_H) * 0.86)));
 
   return (
     <Pressable
@@ -55,53 +62,44 @@ export function WiiChannelTile({
       <AView
         style={[
           styles.tile,
-          { width, height: h, opacity: disabled ? 0.55 : 1 },
-          shadows.panel,
+          { width, height: h, opacity: disabled ? 0.55 : 1, shadowColor: shade(accent, 0.35) },
           animStyle,
         ]}
       >
-        {/* art area */}
-        <LinearGradient
-          colors={['#FFFFFF', '#F2F8FC', '#E4EFF6']}
-          locations={[0, 0.55, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={styles.art}
-        >
-          <View style={[styles.gloss]} pointerEvents="none" />
-          {/* accent glow halo behind the icon */}
-          <View style={[styles.halo, { backgroundColor: accent }]} pointerEvents="none" />
-          {/* glossy icon badge */}
-          <View style={[styles.iconWrap, { shadowColor: accent }, shadows.soft]}>
-            {/* A light-to-deep ramp of the accent. A flat fill reads as a
-                sticker; the ramp is what makes the badge look lit. */}
-            <LinearGradient
-              colors={accentRamp(accent)}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={StyleSheet.absoluteFill}
+        <View style={styles.clip}>
+          {/* A light-to-deep ramp of the accent. A flat fill reads as a
+              sticker; the ramp is what makes the tile look lit. */}
+          <LinearGradient
+            colors={accentRamp(accent)}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.32)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 0.6 }}
+            style={styles.gloss}
+            pointerEvents="none"
+          />
+          <View style={styles.art}>
+            <View
+              style={[styles.halo, { width: iconSize * 1.25, height: iconSize * 1.25, borderRadius: iconSize }]}
               pointerEvents="none"
             />
-            <LinearGradient
-              colors={['rgba(255,255,255,0.30)', 'rgba(255,255,255,0)']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 0.65 }}
-              style={styles.iconGloss}
-              pointerEvents="none"
-            />
-            {icon}
+            {Icon ? <Icon size={iconSize} /> : null}
           </View>
-        </LinearGradient>
-        {/* label bar */}
-        <View style={styles.labelBar}>
-          <Text numberOfLines={1} style={styles.title}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text numberOfLines={1} style={styles.subtitle}>
-              {subtitle}
+          <View style={styles.label}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.title}>
+              {title}
             </Text>
-          ) : null}
+            {subtitle ? (
+              <Text numberOfLines={1} style={styles.subtitle}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
         </View>
       </AView>
     </Pressable>
@@ -111,68 +109,54 @@ export function WiiChannelTile({
 const styles = StyleSheet.create({
   tile: {
     borderRadius: radii.tile,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.32,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  art: {
+  clip: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radii.tile,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   gloss: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '52%',
-    backgroundColor: 'rgba(255,255,255,0.26)',
-    borderTopLeftRadius: radii.tile,
-    borderTopRightRadius: radii.tile,
+    height: '55%',
+  },
+  art: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 6,
   },
   halo: {
     position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    opacity: 0.30,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
-  iconWrap: {
-    width: 66,
-    height: 66,
-    borderRadius: 22,
+  label: {
+    height: LABEL_H,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.85)',
-    overflow: 'hidden',
-  },
-  iconGloss: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '50%',
-  },
-  labelBar: {
-    height: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: '#FBFDFE',
     paddingHorizontal: 8,
+    paddingBottom: 4,
   },
   title: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.ink,
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   subtitle: {
     fontFamily: fonts.medium,
-    fontSize: 11,
-    color: colors.inkMuted,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.88)',
     marginTop: 1,
   },
 });

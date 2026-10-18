@@ -63,12 +63,12 @@ export function HomeScreen({ navigation }: Props) {
   const tileW = Math.floor((width - pagePad * 2 - gap * (cols - 1)) / cols);
 
   const tiles = [
-    { key: 'friends', title: 'Play with Friends', subtitle: 'Private room', accent: colors.blue, icon: <PlayWithFriendsTileIcon />, onPress: () => navigation.navigate('CreateJoin') },
-    { key: 'quick', title: 'Quick Play', subtitle: 'vs. computer', accent: colors.teal, icon: <QuickPlayTileIcon />, onPress: () => navigation.navigate('GameSetup', { mode: 'quick' }) },
-    { key: 'pal', title: 'My Pal', subtitle: 'Customize', accent: colors.accent, icon: <MyPalTileIcon />, onPress: () => navigation.navigate('PalDesigner') },
-    { key: 'friendsList', title: 'Friends', subtitle: 'Your crew', accent: colors.accentPink, icon: <FriendsTileIcon />, onPress: () => navigation.navigate('Friends') },
-    { key: 'stats', title: 'My Stats', subtitle: 'Track your game', accent: colors.indigo, icon: <StatsTileIcon />, onPress: () => navigation.navigate('Stats') },
-    { key: 'store', title: 'Store', subtitle: 'Coins & style', accent: colors.gold, icon: <StoreTileIcon />, onPress: () => navigation.navigate('Store') },
+    { key: 'friends', title: 'Play with Friends', subtitle: 'Private room', accent: colors.blue, Icon: PlayWithFriendsTileIcon, onPress: () => navigation.navigate('CreateJoin') },
+    { key: 'quick', title: 'Quick Play', subtitle: 'vs. computer', accent: colors.teal, Icon: QuickPlayTileIcon, onPress: () => navigation.navigate('GameSetup', { mode: 'quick' }) },
+    { key: 'pal', title: 'My Pal', subtitle: 'Customize', accent: colors.accent, Icon: MyPalTileIcon, onPress: () => navigation.navigate('PalDesigner') },
+    { key: 'friendsList', title: 'Friends', subtitle: 'Your crew', accent: colors.accentPink, Icon: FriendsTileIcon, onPress: () => navigation.navigate('Friends') },
+    { key: 'stats', title: 'My Stats', subtitle: 'Track your game', accent: colors.indigo, Icon: StatsTileIcon, onPress: () => navigation.navigate('Stats') },
+    { key: 'store', title: 'Store', subtitle: 'Coins & style', accent: colors.gold, Icon: StoreTileIcon, onPress: () => navigation.navigate('Store') },
   ];
 
   const rows = Math.ceil(tiles.length / cols);
@@ -129,7 +129,7 @@ export function HomeScreen({ navigation }: Props) {
           <View style={[styles.grid, { gap }]}>
             {tiles.map((t, i) => (
               <Animated.View key={t.key} entering={FadeInDown.delay(70 * i).duration(420).easing(Easing.bezier(...easings.out))}>
-                <WiiChannelTile title={t.title} subtitle={t.subtitle} accent={t.accent} icon={t.icon} width={tileW} height={tileH} onPress={t.onPress} />
+                <WiiChannelTile title={t.title} subtitle={t.subtitle} accent={t.accent} Icon={t.Icon} width={tileW} height={tileH} onPress={t.onPress} />
               </Animated.View>
             ))}
           </View>

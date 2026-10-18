@@ -5,7 +5,7 @@
  * the Home grid is what App Store screenshots lead with. These are small
  * scenes in the app's own cast instead: Pals, felt, cards and chips.
  *
- * Every icon draws on a 64 unit canvas and sits inside the accent badge of a
+ * Every icon draws on a 64 unit canvas and sits on the accent-coloured face of a
  * `WiiChannelTile`, so each one picks colours that stand off its own badge
  * (no gold coins left bare on the gold Store badge, no blue chips on indigo).
  * Each has the same three finishing passes so they read as one set: a
