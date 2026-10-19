@@ -13,7 +13,7 @@ export interface WiiChannelTileProps {
   title: string;
   subtitle?: string;
   /** Drawn at a size that fills the tile, so it takes a component, not an element. */
-  Icon?: React.ComponentType<{ size?: number }>;
+  Icon?: React.ComponentType<{ size?: number; accent?: string }>;
   onPress?: () => void;
   disabled?: boolean;
   accent?: string;
@@ -26,7 +26,7 @@ const LABEL_H = 44;
 
 /**
  * A Home "channel": the whole tile is the glossy accent badge, with the
- * illustrated icon blown up to fill it and the label printed on the colour.
+ * glyph sized to the tile and the label printed on the colour.
  */
 export function WiiChannelTile({
   title,
@@ -42,7 +42,7 @@ export function WiiChannelTile({
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const h = height ?? width * 0.92;
-  const iconSize = Math.round(Math.max(48, Math.min(width * 0.6, (h - LABEL_H) * 0.86)));
+  const iconSize = Math.round(Math.max(48, Math.min(width * 0.5, (h - LABEL_H) * 0.72)));
 
   return (
     <Pressable
@@ -84,11 +84,7 @@ export function WiiChannelTile({
             pointerEvents="none"
           />
           <View style={styles.art}>
-            <View
-              style={[styles.halo, { width: iconSize * 1.25, height: iconSize * 1.25, borderRadius: iconSize }]}
-              pointerEvents="none"
-            />
-            {Icon ? <Icon size={iconSize} /> : null}
+            {Icon ? <Icon size={iconSize} accent={accent} /> : null}
           </View>
           <View style={styles.label}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.title}>
@@ -133,10 +129,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 6,
-  },
-  halo: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   label: {
     height: LABEL_H,
