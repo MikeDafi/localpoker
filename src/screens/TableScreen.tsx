@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, InteractionManager, View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { AppState, View, Text, StyleSheet, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, FadeInUp, FadeOut, Easing } from 'react-native-reanimated';
@@ -626,7 +626,7 @@ export function TableScreen({ navigation, route }: Props) {
   // screen, and the panel, pinned to the bottom of the controls, took Next
   // Hand down with it.
   const insets = useSafeAreaInsets();
-  const controlsRef = useRef<View>(null);
+  const controlsRef = useRef<React.ComponentRef<typeof View>>(null);
   const [controlsOverflow, setControlsOverflow] = useState(0);
   const measureControls = useCallback(() => {
     controlsRef.current?.measureInWindow((_x, y, _w, h) => {
@@ -2056,7 +2056,7 @@ export function TableScreen({ navigation, route }: Props) {
     // than 600 ms, because at 600 ms a fast table rewrote the whole game
     // after nearly every action; leaving the app or the table still saves
     // straight away, so a crash costs at most the last couple of seconds.
-    saveTimer.current = setTimeout(() => InteractionManager.runAfterInteractions(() => {
+    saveTimer.current = setTimeout(() => requestIdleCallback(() => {
       if (skipNextTableSave.current) return;
       saveGame({
         stateJson: JSON.stringify(state),

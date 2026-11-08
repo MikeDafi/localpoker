@@ -23,7 +23,7 @@ export interface CoachRect {
 
 /** What to spread onto the View a coach mark points at. */
 export interface CoachTargetProps {
-  ref: React.RefObject<View | null>;
+  ref: React.RefObject<React.ComponentRef<typeof View> | null>;
   onLayout: () => void;
   collapsable: false;
 }
@@ -37,7 +37,7 @@ export interface CoachTargetProps {
  * up, `measureInWindow` reports where it is mid-slide.
  */
 export function useCoachTarget(active: boolean): { rect: CoachRect | null; props: CoachTargetProps | undefined } {
-  const ref = useRef<View | null>(null);
+  const ref = useRef<React.ComponentRef<typeof View> | null>(null);
   const [rect, setRect] = useState<CoachRect | null>(null);
   const measure = useCallback(() => {
     ref.current?.measureInWindow((x, y, width, height) => {
@@ -90,7 +90,7 @@ const GAP = 14;
  * Skip is on every card, because a tutorial nobody can leave is a trap.
  */
 export function CoachMark({ title, body, target, placement = 'top', pinned, edgeOffset = spacing.lg, hint, nextLabel, onNext, onSkip }: CoachMarkProps) {
-  const rootRef = useRef<View | null>(null);
+  const rootRef = useRef<React.ComponentRef<typeof View> | null>(null);
   // The overlay fills the screen's safe area view, and an absolute child is
   // placed from its edge rather than inside its padding, so the insets are
   // added back by hand or a pinned card slides under the notch.

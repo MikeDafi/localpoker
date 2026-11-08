@@ -25,7 +25,7 @@ export interface RunCountWheelProps {
  * voting for either, because the commit happens when the wheel comes to rest.
  */
 export function RunCountWheel({ value, enabled, onChange }: RunCountWheelProps) {
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const options = runWheelOptions();
   const dragged = useRef(false);
 

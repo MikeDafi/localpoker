@@ -33,7 +33,7 @@ export function getTextScale(): number {
  */
 export function scaleTextStyle(style: TextStyle | undefined, scale: number): TextStyle | undefined {
   if (scale === 1 || !style) return style;
-  const next: TextStyle = { ...style };
+  const next: { -readonly [K in keyof TextStyle]: TextStyle[K] } = { ...style };
   if (typeof next.fontSize === 'number') next.fontSize = Math.round(scaleLargeTextSize(next.fontSize));
   if (typeof next.lineHeight === 'number') next.lineHeight = Math.round(scaleLargeTextSize(next.lineHeight));
   return next;
