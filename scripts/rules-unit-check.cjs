@@ -793,6 +793,36 @@ function logOk(message) {
      * both are exactly the kind of rule that has shipped broken here before
      * for want of an assertion.
      */
+    /*
+     * A guest leaving clears their own exposed cards along with their seat.
+     *
+     * leaveRoom sends one multi-path update, and exposed/{me} used to be
+     * host-only, so every guest leave was refused whole and the guest stayed
+     * seated. Clearing is allowed only while giving up the seat in the same
+     * write, which keeps "no taking back a shown card" for anyone still seated.
+     */
+    const seated = (await get(ref(hostDb, 'localpoker/rooms/PLAY1/players/player'))).val();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/PLAY1/exposed/player'), { 0: true });
+    });
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/exposed/player'), null));
+    logOk('a seated player still cannot clear their exposed cards wholesale');
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/players/player': null,
+      'localpoker/views/PLAY1/player': null,
+      'localpoker/userRooms/player/PLAY1': null,
+      'localpoker/rooms/PLAY1/exposed/player': null,
+      'localpoker/rooms/PLAY1/handReady/player': null,
+      'localpoker/rooms/PLAY1/runVotes/player': null,
+    }));
+    logOk('a guest leaving clears their seat and exposed cards in one update');
+
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await set(ref(ctx.database(), 'localpoker/rooms/PLAY1/players/player'), seated);
+    });
+
     await assertSucceeds(update(ref(hostDb), {
       'localpoker/rooms/PLAY1/players/player': null,
       'localpoker/views/PLAY1/player': null,

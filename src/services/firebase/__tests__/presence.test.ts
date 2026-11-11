@@ -11,6 +11,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
  */
 
 const configured = { value: true };
+const signedIn = { uid: 'me' as string | null };
 const listeners: Record<string, ((snap: { val: () => unknown }) => void)[]> = {};
 const errorHandlers: Record<string, ((e: Error) => void)[]> = {};
 
@@ -24,7 +25,7 @@ vi.mock('../config', () => ({
   getFirebaseApp: () => ({}),
 }));
 vi.mock('../auth', () => ({
-  ensureSignedIn: async () => 'me',
+  ensureSignedIn: async () => signedIn.uid,
   getAuthUid: () => 'me',
 }));
 vi.mock('../../telemetry', () => ({ captureError: vi.fn() }));
@@ -47,6 +48,9 @@ vi.mock('firebase/database', () => ({
   serverTimestamp: () => 0,
 }));
 
+/** Let the sign-in wait resolve, as it does on a real cold start. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
 const emit = (path: string, value: unknown) => {
   for (const cb of listeners[path] ?? []) cb({ val: () => value });
 };
@@ -56,6 +60,7 @@ const fail = (path: string, message: string) => {
 
 beforeEach(() => {
   configured.value = true;
+  signedIn.uid = 'me';
   for (const k of Object.keys(listeners)) delete listeners[k];
   for (const k of Object.keys(errorHandlers)) delete errorHandlers[k];
 });
@@ -65,6 +70,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: Record<string, unknown>[] = [];
     subscribeFriendLive(['alice'], (live) => seen.push(live));
+    await flush();
 
     emit('localpoker/presence/alice', { online: true, lastSeen: 1 });
     expect(seen.at(-1)?.alice).toMatchObject({ online: true });
@@ -77,6 +83,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: Record<string, unknown>[] = [];
     subscribeFriendLive(['alice'], (live) => seen.push(live));
+    await flush();
 
     emit('localpoker/presence/alice', null);
     expect(seen.at(-1)?.alice).toMatchObject({ online: false });
@@ -86,6 +93,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: Record<string, { palJson?: string; displayName?: string }>[] = [];
     subscribeFriendLive(['alice'], (live) => seen.push(live as never));
+    await flush();
 
     emit('localpoker/users/alice', { displayName: 'alice_new', palJson: '{"version":1}' });
     expect(seen.at(-1)?.alice.displayName).toBe('alice_new');
@@ -96,6 +104,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: Record<string, { palJson?: string }>[] = [];
     subscribeFriendLive(['alice'], (live) => seen.push(live as never));
+    await flush();
 
     emit('localpoker/users/alice', { displayName: 'alice', handle: 'alice' });
     expect(seen.at(-1)?.alice.palJson).toBeUndefined();
@@ -105,6 +114,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: Record<string, { online: boolean }>[] = [];
     subscribeFriendLive(['alice'], (live) => seen.push(live as never));
+    await flush();
 
     fail('localpoker/presence/alice', 'permission denied');
     expect(seen.at(-1)?.alice.online).toBe(false);
@@ -114,6 +124,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: Record<string, { online: boolean }>[] = [];
     subscribeFriendLive(['alice', 'bob'], (live) => seen.push(live as never));
+    await flush();
 
     emit('localpoker/presence/alice', { online: true, lastSeen: 1 });
     emit('localpoker/presence/bob', { online: false, lastSeen: 1 });
@@ -127,6 +138,7 @@ describe('subscribeFriendLive', () => {
     const { subscribeFriendLive } = await import('../presence');
     const seen: unknown[] = [];
     const stop = subscribeFriendLive(['alice'], (live) => seen.push(live));
+    await flush();
     expect(seen).toEqual([{}]);
     expect(() => stop()).not.toThrow();
   });
@@ -134,6 +146,7 @@ describe('subscribeFriendLive', () => {
   it('detaches every listener it attached', async () => {
     const { subscribeFriendLive } = await import('../presence');
     const stop = subscribeFriendLive(['alice'], () => {});
+    await flush();
     const attached = (listeners['localpoker/presence/alice'] ?? []).length
       + (listeners['localpoker/users/alice'] ?? []).length;
     expect(attached).toBe(2);
@@ -141,5 +154,23 @@ describe('subscribeFriendLive', () => {
     const left = (listeners['localpoker/presence/alice'] ?? []).length
       + (listeners['localpoker/users/alice'] ?? []).length;
     expect(left).toBe(0);
+  });
+
+  it('does not listen until Firebase has a signed-in user', async () => {
+    // A listener attached before auth restores is refused and cancelled for
+    // good, which is what left friends gray after every cold start.
+    signedIn.uid = null;
+    const { subscribeFriendLive } = await import('../presence');
+    subscribeFriendLive(['alice'], () => {});
+    await flush();
+    expect(listeners['localpoker/presence/alice'] ?? []).toHaveLength(0);
+  });
+
+  it('does not listen if unsubscribed before sign-in finishes', async () => {
+    const { subscribeFriendLive } = await import('../presence');
+    const stop = subscribeFriendLive(['alice'], () => {});
+    stop();
+    await flush();
+    expect(listeners['localpoker/presence/alice'] ?? []).toHaveLength(0);
   });
 });

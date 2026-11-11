@@ -252,7 +252,7 @@
            */
           "exposed": {
             "$playerId": {
-              ".write": "auth != null && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid && !newData.exists()",
+              ".write": "auth != null && !newData.exists() && (root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid || (auth.uid === $playerId && !newData.parent().parent().child('players').child($playerId).exists()))",
               ".validate": "!newData.exists() || newData.hasChildren(['0']) || newData.hasChildren(['1'])",
               "0": {
                 ".write": "auth != null && auth.uid === $playerId && newData.exists() && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",

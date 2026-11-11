@@ -129,43 +129,64 @@ export const subscribeFriendLive = (
 
   const state: Record<string, FriendLive> = {};
   const offs: (() => void)[] = [];
+  let stopped = false;
   const entry = (uid: string): FriendLive => (state[uid] ??= { online: false });
 
-  for (const uid of uids) {
-    entry(uid);
+  /*
+   * Wait for the Firebase session before listening.
+   *
+   * On a cold start the app knows it is logged in before Firebase has restored
+   * its auth token, and both reads require auth. A listener attached in that
+   * gap is refused and cancelled for good, so every friend stayed gray for the
+   * whole session and Sentry logged a permission_denied per friend.
+   */
+  const listen = (): void => {
+    for (const uid of uids) {
+      entry(uid);
 
-    offs.push(onValue(
-      ref(db, presencePath(uid)),
-      (snapshot) => {
-        const value = snapshot.val() as Partial<PresenceRecord> | null;
-        entry(uid).online = value?.online === true;
-        cb({ ...state });
-      },
-      (error) => {
-        // A failed read should leave the friend gray, not break the list.
-        captureError(error, { tags: { area: 'firebase-presence', operation: 'subscribe-presence' } });
-        entry(uid).online = false;
-        cb({ ...state });
-      },
-    ));
+      offs.push(onValue(
+        ref(db, presencePath(uid)),
+        (snapshot) => {
+          const value = snapshot.val() as Partial<PresenceRecord> | null;
+          entry(uid).online = value?.online === true;
+          cb({ ...state });
+        },
+        (error) => {
+          // A failed read should leave the friend gray, not break the list.
+          captureError(error, { tags: { area: 'firebase-presence', operation: 'subscribe-presence' } });
+          entry(uid).online = false;
+          cb({ ...state });
+        },
+      ));
 
-    offs.push(onValue(
-      ref(db, `localpoker/users/${uid}`),
-      (snapshot) => {
-        const value = snapshot.val() as { palJson?: string; displayName?: string } | null;
-        const it = entry(uid);
-        it.palJson = typeof value?.palJson === 'string' ? value.palJson : undefined;
-        it.displayName = typeof value?.displayName === 'string' ? value.displayName : undefined;
-        cb({ ...state });
-      },
-      (error) => {
-        captureError(error, { tags: { area: 'firebase-presence', operation: 'subscribe-profile' } });
-        cb({ ...state });
-      },
-    ));
-  }
+      offs.push(onValue(
+        ref(db, `localpoker/users/${uid}`),
+        (snapshot) => {
+          const value = snapshot.val() as { palJson?: string; displayName?: string } | null;
+          const it = entry(uid);
+          it.palJson = typeof value?.palJson === 'string' ? value.palJson : undefined;
+          it.displayName = typeof value?.displayName === 'string' ? value.displayName : undefined;
+          cb({ ...state });
+        },
+        (error) => {
+          captureError(error, { tags: { area: 'firebase-presence', operation: 'subscribe-profile' } });
+          cb({ ...state });
+        },
+      ));
+    }
+  };
+
+  ensureSignedIn()
+    .then((me) => {
+      if (stopped || !me) return;
+      listen();
+    })
+    .catch((error) => {
+      captureError(error, { tags: { area: 'firebase-presence', operation: 'subscribe-auth' } });
+    });
 
   return () => {
+    stopped = true;
     for (const off of offs) off();
   };
 };
