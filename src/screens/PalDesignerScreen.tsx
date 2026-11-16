@@ -176,16 +176,14 @@ export function PalDesignerScreen({ navigation }: Props) {
                 </View>
               </View>
 
-              <View style={[styles.previewCopy, compactPreview && styles.previewCopyCompact]}>
-                <View style={styles.liveBadge}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>Live preview</Text>
-                </View>
-                <Text style={styles.previewTitle}>Design your table Pal</Text>
-                {isDirty ? (
-                  <Text style={[styles.dirtyText, styles.dirtyTextActive]}>Unsaved changes</Text>
-                ) : null}
-              </View>
+              {/* Unsaved changes, shown rather than said: a dot on the
+                  preview and a Save button that lights up. The old "Live
+                  preview" badge, the "Design your table Pal" title and the
+                  "Unsaved changes" line were words around a picture that
+                  already explains itself. */}
+              {isDirty ? (
+                <View style={styles.dirtyDot} accessibilityLabel="Unsaved changes" accessible />
+              ) : null}
             </View>
           </WiiPanel>
         </Animated.View>
@@ -273,7 +271,8 @@ export function PalDesignerScreen({ navigation }: Props) {
               style={styles.actionHalf}
             />
           </View>
-          <WiiButton label="Save" onPress={handleSave} variant="blue" size="lg" fullWidth />
+          {/* Lit only when there is something to save. */}
+          <WiiButton label="Save" onPress={handleSave} variant={isDirty ? 'blue' : 'white'} size="lg" fullWidth />
         </View>
       </View>
       {coaching ? (
@@ -440,6 +439,10 @@ function optionLabel(key: EditableNumericKey, value: number, count: number) {
 }
 
 const styles = StyleSheet.create({
+  dirtyDot: {
+    position: 'absolute', top: 2, right: 2, width: 14, height: 14, borderRadius: 7,
+    backgroundColor: colors.gold, borderWidth: 2, borderColor: colors.panel,
+  },
   container: {
     flex: 1,
     paddingHorizontal: spacing.lg,
@@ -465,6 +468,8 @@ const styles = StyleSheet.create({
     minHeight: 176,
     flexDirection: 'row',
     alignItems: 'center',
+    // Just the Pal now that the words are gone, so it sits in the middle.
+    justifyContent: 'center',
     gap: spacing.lg,
   },
   previewContentCompact: {
@@ -491,59 +496,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     ...shadows.blueGlow,
   },
-  previewCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.sm,
-  },
-  previewCopyCompact: {
-    alignItems: 'center',
-  },
-  liveBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(47,191,113,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(47,191,113,0.22)',
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.online,
-  },
-  liveText: {
-    fontFamily: fonts.bold,
-    color: colors.feltDeep,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  previewTitle: {
-    fontFamily: fonts.bold,
-    color: colors.ink,
-    fontSize: 25,
-    lineHeight: 30,
-  },
   previewSubtitle: {
     fontFamily: fonts.medium,
     color: colors.inkSoft,
     fontSize: 15,
     lineHeight: 21,
-  },
-  dirtyText: {
-    alignSelf: 'flex-start',
-    fontFamily: fonts.semibold,
-    color: colors.inkMuted,
-    fontSize: 13,
-  },
-  dirtyTextActive: {
-    color: colors.blueDeep,
   },
   previewBloom: {
     position: 'absolute',
