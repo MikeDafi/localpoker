@@ -321,9 +321,18 @@ export function redactGameState(
 }
 
 export function hydrateGameState(publicState: PublicGameState, privateView?: PrivatePlayerView | null): GameState {
+  /*
+   * Every list below may be missing, not just empty.
+   *
+   * The Realtime Database does not store an empty array or object, so a pot
+   * nobody is eligible for comes back with no `eligiblePlayerIds` at all.
+   * Spreading that threw "Cannot convert undefined value to object" inside a
+   * render effect, and every attempt to resume the table crashed the same way
+   * (build 65, Sentry 7850005262).
+   */
   const privateCards =
     privateView && privateView.handNumber === publicState.handNumber
-      ? cloneCards(privateView.holeCards)
+      ? cloneCards(privateView.holeCards ?? [])
       : [];
 
   return {
@@ -332,8 +341,8 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
     // they can disagree: a seat listed in the order but missing from the map
     // used to throw while rendering, taking the whole table down on the
     // joining client rather than on the one that produced the bad state.
-    players: publicState.playerOrder.flatMap((playerId) => {
-      const player = publicState.players[playerId];
+    players: (publicState.playerOrder ?? []).flatMap((playerId) => {
+      const player = publicState.players?.[playerId];
       if (!player) return [];
       const ownCards = privateView?.playerId === playerId ? privateCards : undefined;
       return [{
@@ -353,7 +362,7 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
     board: cloneCards(publicState.board ?? []),
     deck: [],
     street: publicState.street,
-    pots: (publicState.pots ?? []).map((pot) => ({ amount: pot.amount, eligiblePlayerIds: [...pot.eligiblePlayerIds] })),
+    pots: (publicState.pots ?? []).map((pot) => ({ amount: pot.amount, eligiblePlayerIds: [...(pot.eligiblePlayerIds ?? [])] })),
     currentPlayerIndex: publicState.currentPlayerIndex,
     dealerIndex: publicState.dealerIndex,
     currentBet: publicState.currentBet,
@@ -366,15 +375,15 @@ export function hydrateGameState(publicState: PublicGameState, privateView?: Pri
     winners: (publicState.winners ?? []).map((winner) => ({
       playerId: winner.playerId,
       amount: winner.amount,
-      ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
+      ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards ?? []) } } : {}),
     })),
     runCount: publicState.runCount,
     runResults: publicState.runResults?.map((run) => ({
-      board: cloneCards(run.board),
-      winners: run.winners.map((winner) => ({
+      board: cloneCards(run.board ?? []),
+      winners: (run.winners ?? []).map((winner) => ({
         playerId: winner.playerId,
         amount: winner.amount,
-        ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards) } } : {}),
+        ...(winner.hand ? { hand: { ...winner.hand, cards: cloneCards(winner.hand.cards ?? []) } } : {}),
       })),
     })),
     log: [],
@@ -457,12 +466,29 @@ export function applyHostIntent(
   intent: OnlineIntent,
   options: HostIntentValidationOptions = {},
 ): ActionResult {
-  const validation = validateHostIntent(state, playerId, intent, options);
+  const validation = validateHostIntent(state, playerId, intent, {
+    ...options,
+    lastAppliedSeq: options.lastAppliedSeq ?? state.appliedSeq,
+  });
   if (!validation.ok) {
     return validation;
   }
 
-  return applyAction(state, playerId, validation.action, validation.amount);
+  /*
+   * The engine throws on impossible states ("Deck is exhausted" once a host
+   * was rebuilt without its deck). This runs inside a React state updater, so
+   * a throw took the whole table down for every action that followed. A
+   * refused action leaves the table where it was instead.
+   */
+  try {
+    const result = applyAction(state, playerId, validation.action, validation.amount);
+    if (result.ok && typeof intent.seq === 'number') {
+      return { ok: true, state: { ...result.state, appliedSeq: Math.max(intent.seq, state.appliedSeq ?? 0) } };
+    }
+    return result;
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error), state };
+  }
 }
 
 export function applyConnectionStatusToGameState(

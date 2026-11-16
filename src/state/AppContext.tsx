@@ -350,7 +350,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(COSMETICS_KEY), AsyncStorage.getItem(TUTORIAL_KEY),
         ]);
         activeAccount.current = acct || GUEST_ACCOUNT;
-        if (p) { const parsed = JSON.parse(p); setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
+        /*
+         * Each key parses on its own. They shared one try, so a single
+         * corrupt value (a half-written saved game, say) skipped every key
+         * after it, cosmetics included, and the app came up as if new. A bad
+         * key is dropped and reported instead; everything else still loads.
+         */
+        const read = (raw: string | null, key: string): any => {
+          if (!raw) return null;
+          try {
+            return JSON.parse(raw);
+          } catch (error) {
+            reportStorageError('parse-on-load', key, error);
+            AsyncStorage.removeItem(key).catch(() => {});
+            return null;
+          }
+        };
+        const parsedProfile = read(p, PROFILE_KEY);
+        if (parsedProfile) { const parsed = parsedProfile; setProfile({ ...makeDefaultProfile(), ...parsed, pal: normalizePal(parsed.pal) }); }
         else {
           // First launch on this device: commit the generated identity so
           // "Play as Guest" resolves to the same user on every future launch
@@ -362,23 +379,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             return prev;
           });
         }
-        if (s) setStats(mergeStats(JSON.parse(s)));
-        if (a) setAuth(JSON.parse(a));
-        if (f) setFriends(JSON.parse(f));
-        if (st) setSettings(normalizeSettings(JSON.parse(st)));
-        if (g) setSavedGame(JSON.parse(g));
+        const parsedStats = read(s, STATS_KEY);
+        if (parsedStats) setStats(mergeStats(parsedStats));
+        const parsedAuth = read(a, AUTH_KEY);
+        if (parsedAuth) setAuth(parsedAuth);
+        const parsedFriends = read(f, FRIENDS_KEY);
+        if (parsedFriends) setFriends(parsedFriends);
+        const parsedSettings = read(st, SETTINGS_KEY);
+        if (parsedSettings) setSettings(normalizeSettings(parsedSettings));
+        const parsedGame = read(g, SAVED_GAME_KEY);
+        // Settings normalized like every other load: a game saved by an older
+        // build lacks newer fields, and the tournament ladder computed NaN.
+        if (parsedGame) setSavedGame({ ...parsedGame, settings: normalizeSettings(parsedGame.settings) });
         if (av === 'true') setAgeVerified(true);
-        if (b) setBlockedUsers(JSON.parse(b));
-        if (oh) setOpponentHistory(JSON.parse(oh));
+        const parsedBlocks = read(b, BLOCKS_KEY);
+        if (parsedBlocks) setBlockedUsers(parsedBlocks);
+        const parsedHistory = read(oh, OPPONENT_HISTORY_KEY);
+        if (parsedHistory) setOpponentHistory(parsedHistory);
         // Read straight from storage rather than from state, which has not
         // settled yet, so an existing player's history is seen on this launch.
-        const storedProfile = p ? JSON.parse(p) as Partial<Profile> : null;
-        const storedAuth = a ? JSON.parse(a) as Partial<AuthState> : null;
+        const storedProfile = parsedProfile as Partial<Profile> | null;
+        const storedAuth = parsedAuth as Partial<AuthState> | null;
         const tutorial = resolveTutorialStatus({
           stored: tut,
           hadProfile: !!storedProfile,
           signedIn: !!storedAuth?.loggedIn,
-          handsPlayed: s ? mergeStats(JSON.parse(s)).handsPlayed : 0,
+          handsPlayed: parsedStats ? mergeStats(parsedStats).handsPlayed : 0,
           xp: storedProfile?.xp ?? 0,
           hasSavedGame: !!g && g !== 'null',
         });
@@ -825,7 +851,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCoins = useCallback((n: number) => persistProfile({ ...profile, coins: Math.max(0, profile.coins + n) }), [profile, persistProfile]);
 
   const recordHand = useCallback((r: HandResult): number => {
-    const { stats: nextStats, coinsEarned } = applyHandResult(stats, r);
+    const { stats: nextStats, coinsEarned } = applyHandResult(stats, { ...r, at: r.at ?? Date.now() });
     persistStats(nextStats);
     persistProfile({
       ...profile,

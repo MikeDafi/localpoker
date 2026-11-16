@@ -111,6 +111,17 @@ describe('resolveFelt', () => {
       .toEqual(FELT_PALETTES['table-miami']);
   });
 
+  /*
+   * A guest at an online table sees the host's felt even when the guest never
+   * bought it. The host's ownership was checked when the room was pinned.
+   */
+  it('shows a published room felt to a viewer who does not own it', () => {
+    expect(resolveFelt({ setting: 'table-lunar', owned, published: true }))
+      .toEqual(FELT_PALETTES['table-lunar']);
+    expect(resolveFelt({ setting: 'no-such-felt', owned, published: true }))
+      .toEqual(FELT_PALETTES[CLASSIC_FELT]);
+  });
+
   it('refuses a felt that was never bought', () => {
     expect(resolveFelt({ setting: 'table-lunar', owned })).toEqual(FELT_PALETTES[CLASSIC_FELT]);
     expect(resolveFelt({ setting: 'equipped', equippedId: 'table-lunar', owned }))

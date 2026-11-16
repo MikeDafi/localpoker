@@ -34,3 +34,16 @@ export function boardDealDelay(index: number, stepMs: number = BOARD_DEAL_STEP):
   if (index < 0) return 0;
   return index < 3 ? index * stepMs : 0;
 }
+
+/**
+ * How long after the board grows from `from` to `to` cards until the last new
+ * card has landed on the felt.
+ *
+ * The betting buttons wait for this. Shown as soon as the engine moved the
+ * street on, they came up while the flop was still in the air, so a player
+ * could be asked to bet on cards nobody had seen yet.
+ */
+export function boardLandMs(from: number, to: number, stepMs: number = BOARD_DEAL_STEP): number {
+  if (to <= from) return 0;
+  return boardDealDelay(to - 1, stepMs) + BOARD_THROW_MS;
+}

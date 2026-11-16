@@ -245,6 +245,20 @@ function clampStyle(value: unknown, count: number, fallback: number): number {
   return clampIndex(value, count, fallback);
 }
 
+/**
+ * A Pal published as JSON (on a room seat or a directory entry), or undefined
+ * when it is missing or malformed, so the caller can fall back to the seeded
+ * face rather than crash a list over one bad record.
+ */
+export function palFromJson(palJson?: string): PalConfig | undefined {
+  if (!palJson) return undefined;
+  try {
+    return normalizePal(JSON.parse(palJson) as StoredPalConfig);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Clamp/repair a possibly-partial stored config into a valid PalConfig. */
 export function normalizePal(c?: StoredPalConfig | null): PalConfig {
   const source = c ?? {};

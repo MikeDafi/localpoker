@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_STATS, applyHandResult, derivedStats, coinsForHand, mergeStats,
-  COINS_PER_HAND, COINS_WIN_BONUS, COINS_SHOWDOWN_WIN_BONUS, type HandResult,
-} from '../stats';
+  COINS_PER_HAND, COINS_WIN_BONUS, COINS_SHOWDOWN_WIN_BONUS, type HandResult, shortWhen, stackHistoryEnds,
+}  from '../stats';
 
 function result(over: Partial<HandResult> = {}): HandResult {
   return {
@@ -120,5 +120,51 @@ describe('mergeStats', () => {
     expect(merged.handsPlayed).toBe(5);
     expect(merged.coinsEarned).toBe(0);
     expect(merged.chipHistory).toEqual([]);
+  });
+});
+
+describe('chip history times', () => {
+  const hand = (endingStack: number, at?: number) => ({
+    won: false, wentToShowdown: false, wonAtShowdown: false, potWon: 0, net: 0,
+    vpip: false, pfr: false, aggressor: false, endingStack, at,
+  });
+
+  it('records when each hand finished, index for index with the stacks', () => {
+    let s = DEFAULT_STATS;
+    s = applyHandResult(s, hand(100, 1000)).stats;
+    s = applyHandResult(s, hand(140, 2000)).stats;
+    expect(s.chipHistory).toEqual([100, 140]);
+    expect(s.chipHistoryAt).toEqual([1000, 2000]);
+  });
+
+  it('marks hands saved by an older build as unknown rather than guessing a time', () => {
+    const old = mergeStats({ chipHistory: [50, 60, 70] });
+    const s = applyHandResult(old, hand(80, 5000)).stats;
+    expect(s.chipHistory).toEqual([50, 60, 70, 80]);
+    expect(s.chipHistoryAt).toEqual([0, 0, 0, 5000]);
+  });
+
+  it('keeps the two lists the same length past the cap', () => {
+    let s = DEFAULT_STATS;
+    for (let i = 0; i < 120; i++) s = applyHandResult(s, hand(i, i + 1)).stats;
+    expect(s.chipHistoryAt).toHaveLength(100);
+    expect(s.chipHistoryAt?.[99]).toBe(120);
+  });
+});
+
+describe('stackHistoryEnds', () => {
+  const now = new Date(2026, 10, 15, 22, 0).getTime();
+
+  it('dates both ends when the hands were timed', () => {
+    const at = [new Date(2026, 10, 12, 9, 5).getTime(), new Date(2026, 10, 15, 21, 40).getTime()];
+    expect(stackHistoryEnds({ chipHistory: [100, 200], chipHistoryAt: at }, now)).toEqual(['Nov 12', '9:40 PM']);
+  });
+
+  it('counts back for hands with no recorded time', () => {
+    expect(stackHistoryEnds({ chipHistory: [1, 2, 3] }, now)).toEqual(['2 hands ago', 'Latest']);
+  });
+
+  it('adds the year for a hand from a previous year', () => {
+    expect(shortWhen(new Date(2025, 0, 3).getTime(), now)).toBe('Jan 3, 2025');
   });
 });

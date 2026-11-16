@@ -7,9 +7,7 @@ import {
   push,
   query,
   ref,
-  runTransaction,
   serverTimestamp,
-  set,
   startAt,
   type Database,
 } from 'firebase/database';
@@ -17,7 +15,7 @@ import {
 import { getDb, isFirebaseConfigured } from './config';
 import { updateRoot } from './rootUpdate';
 import { deleteCurrentAuthUser, ensureSignedIn } from './auth';
-import { sendPush } from './push';
+import { RATE_LIMITED_REASON, isThrottled, rateLimitPath, type RateLimitKind } from './rateLimits';
 import { captureError } from '../telemetry';
 import { maskedPublicName, publicNameIssue } from '../../moderation/contentFilter';
 
@@ -107,6 +105,34 @@ const reportFirebaseError = (operation: string, error: unknown): void => {
   captureError(error, { tags: { area: 'firebase-friends', operation } });
 };
 
+/** Firebase's estimate of server minus device time, or 0 if unknown. */
+const readServerTimeOffset = (db: Database): Promise<number> => new Promise((resolve) => {
+  const off = onValue(ref(db, '.info/serverTimeOffset'), (snapshot) => {
+    off();
+    const value = snapshot.val();
+    resolve(typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  }, () => resolve(0));
+});
+
+/**
+ * Whether a refused write was the per-user throttle rather than anything else.
+ *
+ * Asked only after a refusal, because the rules are the enforcement and the
+ * common path should not pay two extra reads. Any failure here answers "no",
+ * which falls back to the message the caller would have shown anyway.
+ */
+const wasThrottled = async (db: Database, uid: string, kind: RateLimitKind): Promise<boolean> => {
+  try {
+    const [stamp, offset] = await Promise.all([
+      get(ref(db, rateLimitPath(uid, kind))),
+      readServerTimeOffset(db),
+    ]);
+    return isThrottled(stamp.val(), Date.now() + offset, kind);
+  } catch {
+    return false;
+  }
+};
+
 /** Generous for the current Pal, tight enough to bound the directory. */
 export const MAX_PAL_JSON = 600;
 
@@ -182,30 +208,20 @@ export const publishUserDirectory = async (
     return { ok: false, reason: displayNameIssue };
   }
 
-  try {
-    // Claiming a name you already hold is rejected: the rules treat the claim
-    // as create-or-release, so an owner-to-owner write is not allowed.
-    // Returning `undefined` aborts, which leaves the existing claim in place.
-    const claimed = await runTransaction(
-      ref(db, handlesPath(wanted)),
-      (current) => (current === null ? uid : undefined),
-      { applyLocally: false },
-    );
+  const takenResult = (): FirebaseFriendResult<{ uid: string; handle: string }> => ({
+    ok: false,
+    reason: `@${wanted} is already taken.`,
+    // Lets the caller keep the name the player already has rather than
+    // falling back to a generated one, which would be a surprise rename.
+    nameTaken: Boolean(held),
+  });
 
-    // Aborting because you already hold it is success. Aborting because
-    // somebody else holds it is not.
-    if (!claimed.snapshot.exists() || claimed.snapshot.val() !== uid) {
-      return {
-        ok: false,
-        reason: `@${wanted} is already taken.`,
-        // Lets the caller keep the name the player already has rather than
-        // falling back to a generated one, which would be a surprise rename.
-        nameTaken: Boolean(held),
-      };
+  try {
+    const claim = await get(ref(db, handlesPath(wanted)));
+    if (claim.exists() && claim.val() !== uid) {
+      return takenResult();
     }
 
-    // The claim has to exist before this write: `users/$uid` is validated
-    // against `handles/<name>` already pointing at this uid.
     const record: DirectoryUser = {
       handle: wanted,
       displayName,
@@ -214,12 +230,45 @@ export const publishUserDirectory = async (
     // Only include it when there is one, since the rules reject an empty or
     // oversized value and an absent Pal is a legitimate state.
     if (palJson && palJson.length <= MAX_PAL_JSON) record.palJson = palJson;
-    await updateRoot(db, { [usersPath(uid)]: record });
 
-    // Release the old name last, so a failure part way through leaves the
-    // account reachable under one of the two rather than neither.
+    /*
+     * Claim, profile and release in one atomic write.
+     *
+     * This used to be three writes: a transaction on the new name, then the
+     * profile, then releasing the old name. The rules now hold each account
+     * to one name, which they can only check when the claim and the profile
+     * arrive together: a claim is accepted only for the handle the same
+     * write points the profile at, and a profile may only move off a handle
+     * that the same write releases. Atomic also means a failure can no
+     * longer strand the account between two names.
+     *
+     * Claiming a name you already hold is left out of the write, because the
+     * rules treat a claim as create-or-release and refuse owner-to-owner.
+     */
+    const updates: Record<string, unknown> = { [usersPath(uid)]: record };
+    if (!claim.exists()) {
+      updates[handlesPath(wanted)] = uid;
+    }
     if (held && held !== wanted) {
-      await set(ref(db, handlesPath(held)), null);
+      const previous = await get(ref(db, handlesPath(held)));
+      if (previous.exists() && previous.val() === uid) {
+        updates[handlesPath(held)] = null;
+      }
+    }
+
+    try {
+      await updateRoot(db, updates);
+    } catch (error) {
+      // Somebody else can claim the name between the read above and this
+      // write. The rules then refuse the claim, and that is "taken", not a
+      // failure worth an error report.
+      if (isPermissionDenied(error)) {
+        const recheck = await get(ref(db, handlesPath(wanted)));
+        if (recheck.exists() && recheck.val() !== uid) {
+          return takenResult();
+        }
+      }
+      throw error;
     }
 
     return { ok: true, uid, handle: wanted };
@@ -419,23 +468,41 @@ export const sendFriendRequest = async (
         createdAt: serverTimestamp() as unknown as number,
         status: 'pending',
       } satisfies FriendRequestRecord,
+      // The rules accept a request only with this bump in the same write, and
+      // the bump only ten seconds after the last, so deleting and resending a
+      // request cannot be used to flood somebody's inbox.
+      [rateLimitPath(fromUid, 'friendRequest')]: serverTimestamp(),
     });
 
-    // Deliberately not awaited into the result: the request itself already
-    // succeeded, and a push that fails must not turn that into an error.
-    void sendPush(target.uid, 'friend-request', ownHandle);
+    /*
+     * No push from here any more.
+     *
+     * Sending one meant reading the recipient's push token, and the rules
+     * granted that to anyone with a pending request. Anyone can send a
+     * request, so anyone could take the token and put whatever they liked on
+     * that person's lock screen. The token is now readable by accepted
+     * friends only, and the recipient learns of the request from their own
+     * listener in subscribeSocialGraph. The cost: a request no longer
+     * notifies a phone whose app is closed. Bringing that back needs a
+     * trusted sender (a Cloud Function), not a wider read.
+     */
 
     return { ok: true, toUid: target.uid, handle: target.handle, displayName: target.displayName };
   } catch (error) {
-    reportFirebaseError('send-friend-request', error);
-    console.warn('Unable to send Firebase friend request.', error);
-    // The rules refuse the write when the target has blocked the sender, and
-    // that is the only way a request that got this far can be rejected. Saying
-    // "permission denied" would be both unhelpful and a hint that the block
-    // exists, so it reads as the target simply not accepting requests.
+    // The rules refuse a request for two reasons that get this far: sending
+    // again inside the throttle gap, or the target having blocked the sender.
+    // The throttle is checked first because it is ours to explain. Saying
+    // "permission denied" for a block would be both unhelpful and a hint that
+    // the block exists, so that reads as the target not accepting requests.
     if (isPermissionDenied(error)) {
+      if (await wasThrottled(db, fromUid, 'friendRequest')) {
+        return { ok: false, reason: RATE_LIMITED_REASON };
+      }
+      reportFirebaseError('send-friend-request', error);
       return { ok: false, reason: 'That player is not accepting friend requests from you.' };
     }
+    reportFirebaseError('send-friend-request', error);
+    console.warn('Unable to send Firebase friend request.', error);
     return { ok: false, reason: getErrorMessage(error) };
   }
 };
@@ -629,8 +696,8 @@ export const reportUser = async (
        * Reporting someone also cuts the line between you.
        *
        * Filing the report alone left them able to notify you, because a push
-       * token is readable by a friend or by anyone with a pending request,
-       * and reporting changed neither. Somebody you have just reported for
+       * token is readable by a friend, and reporting did not end the
+       * friendship. Somebody you have just reported for
        * offensive content should not still be able to put a message on your
        * lock screen.
        *
@@ -644,9 +711,16 @@ export const reportUser = async (
       [friendPath(reportedUid, uid)]: null,
       [requestPath(uid, reportedUid)]: null,
       [requestPath(reportedUid, uid)]: null,
+      // Reports are append-only with fresh keys, so nothing else bounds how
+      // many one account can file. The rules require this bump alongside
+      // every report and allow one per thirty seconds.
+      [rateLimitPath(uid, 'report')]: serverTimestamp(),
     });
     return { ok: true };
   } catch (error) {
+    if (isPermissionDenied(error) && await wasThrottled(db, uid, 'report')) {
+      return { ok: false, reason: RATE_LIMITED_REASON };
+    }
     reportFirebaseError('report-user', error);
     console.warn('Unable to report Firebase user.', error);
     return { ok: false, reason: getErrorMessage(error) };

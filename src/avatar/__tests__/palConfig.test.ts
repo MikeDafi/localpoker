@@ -8,6 +8,7 @@ import {
   FRECKLE_STYLES,
   PalConfig,
   normalizePal,
+  palFromJson,
   palFromSeed,
   randomPal,
 } from '../palConfig';
@@ -106,5 +107,17 @@ describe('pal generation', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('palFromJson', () => {
+  it('reads back a published Pal', () => {
+    const pal = palFromSeed('someone');
+    expect(palFromJson(JSON.stringify(pal))).toEqual(normalizePal(pal));
+  });
+
+  it('gives undefined for a missing or corrupt record so the caller can fall back', () => {
+    expect(palFromJson(undefined)).toBeUndefined();
+    expect(palFromJson('{not json')).toBeUndefined();
   });
 });

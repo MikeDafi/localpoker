@@ -60,6 +60,27 @@
           "endedAt": {
             ".validate": "newData.isNumber()"
           },
+          "visibility": {
+            ".validate": "newData.isString() && (newData.val() === 'public' || newData.val() === 'private')"
+          },
+          /*
+           * Looser than a seat name's 24 on purpose: builds 63 to 65 write
+           * the host's name here without trimming it first, and refusing
+           * their room creation over a long name would be a worse outcome
+           * than storing a few extra characters.
+           */
+          "hostName": {
+            ".validate": "newData.isString() && newData.val().length <= 64"
+          },
+          /*
+           * Every child a room may carry is declared above or below, so
+           * anything else is refused. A lobby can be read by anyone signed
+           * in, which made an open-ended room a free place to park megabytes
+           * that every joiner then downloaded.
+           */
+          "$other": {
+            ".validate": false
+          },
           "players": {
             "$uid": {
               ".write": "auth != null && auth.uid === $uid && (!newData.exists() || newData.parent().parent().child('hostId').val() === auth.uid || (data.exists() && root.child('localpoker').child('rooms').child($code).child('status').val() !== 'ended' && newData.child('id').val() === data.child('id').val() && newData.child('isHost').val() === data.child('isHost').val() && newData.child('seatIndex').val() === data.child('seatIndex').val() && newData.child('chips').val() === data.child('chips').val()) || (!data.exists() && root.child('localpoker').child('rooms').child($code).child('status').val() === 'lobby' && !root.child('localpoker').child('blocks').child(newData.parent().parent().child('hostId').val()).child(auth.uid).exists()))",
@@ -308,7 +329,22 @@
           "emotes": {
             "$playerId": {
               ".write": "auth != null && auth.uid === $playerId && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
-              ".validate": "!newData.exists() || (newData.hasChildren(['type','value','ts']) && newData.child('type').isString() && (newData.child('type').val() === 'emoji' || newData.child('type').val() === 'text' || newData.child('type').val() === 'sticker' || newData.child('type').val() === 'gif' || newData.child('type').val() === 'palMotion') && newData.child('value').isString() && newData.child('value').val().length <= 64 && newData.child('ts').isNumber() && (!newData.child('anim').exists() || (newData.child('anim').isString() && newData.child('anim').val().length <= 12)))",
+              /*
+               * The ts gate is the rate limit. Rules cannot count writes, but
+               * they can insist each reaction's timestamp moves forward by at
+               * least a second and never runs more than a minute ahead of the
+               * server clock. A sender can therefore bank at most about sixty
+               * reactions of burst and then gets one a second, however the
+               * client is modified.
+               *
+               * The clock is compared with slack rather than `=== now`
+               * because builds 63 to 65 stamp reactions with Date.now(), and
+               * an exact match would silence every one of them.
+               *
+               * Free text is screened for the same slurs as names, since a
+               * typed reaction is shown over the sender's seat to the table.
+               */
+              ".validate": "!newData.exists() || (newData.hasChildren(['type','value','ts']) && newData.child('type').isString() && (newData.child('type').val() === 'emoji' || newData.child('type').val() === 'text' || newData.child('type').val() === 'sticker' || newData.child('type').val() === 'gif' || newData.child('type').val() === 'palMotion') && newData.child('value').isString() && newData.child('value').val().length <= 64 && newData.child('ts').isNumber() && newData.child('ts').val() <= now + 60000 && (!data.child('ts').isNumber() || newData.child('ts').val() >= data.child('ts').val() + 1000) && (newData.child('type').val() !== 'text' || !(newData.child('value').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('value').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('value').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('value').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('value').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('value').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('value').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/))) && (!newData.child('anim').exists() || (newData.child('anim').isString() && newData.child('anim').val().length <= 12)))",
               /*
                * Each field needs its own rule, not just a mention in the
                * validate string above. "$other": false rejects every named
@@ -328,9 +364,21 @@
              * a stranger could drop a fold or bet into any live room by writing
              * the action alone, without the actionSeq bump that is gated.
              */
+            /*
+             * The data clause stops a seated player overwriting somebody
+             * else's queued action with their own: the node keys are push ids
+             * every seat can read, and the playerId check alone only looked at
+             * what was being written, not at whose action it replaced.
+             */
             "$id": {
-              ".write": "auth != null && newData.child('playerId').val() === auth.uid && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
-              ".validate": "newData.hasChildren(['playerId','type','seq','ts']) && newData.child('playerId').val() === auth.uid && newData.child('type').isString() && (newData.child('type').val() === 'fold' || newData.child('type').val() === 'check' || newData.child('type').val() === 'call' || newData.child('type').val() === 'bet' || newData.child('type').val() === 'raise' || newData.child('type').val() === 'allin') && newData.child('seq').isNumber() && root.child('localpoker').child('rooms').child($code).child('actionSeq').isNumber() && newData.child('seq').val() > root.child('localpoker').child('rooms').child($code).child('actionSeq').val() && newData.child('seq').val() <= 9007199254740990 && newData.child('ts').isNumber() && (!newData.child('amount').exists() || newData.child('amount').isNumber())"
+              ".write": "auth != null && newData.child('playerId').val() === auth.uid && (!data.exists() || data.child('playerId').val() === auth.uid) && root.child('localpoker').child('rooms').child($code).child('players').child(auth.uid).exists()",
+              ".validate": "newData.hasChildren(['playerId','type','seq','ts']) && newData.child('playerId').val() === auth.uid && newData.child('type').isString() && (newData.child('type').val() === 'fold' || newData.child('type').val() === 'check' || newData.child('type').val() === 'call' || newData.child('type').val() === 'bet' || newData.child('type').val() === 'raise' || newData.child('type').val() === 'allin') && newData.child('seq').isNumber() && root.child('localpoker').child('rooms').child($code).child('actionSeq').isNumber() && newData.child('seq').val() > root.child('localpoker').child('rooms').child($code).child('actionSeq').val() && newData.child('seq').val() <= 9007199254740990 && newData.child('ts').isNumber() && (!newData.child('amount').exists() || newData.child('amount').isNumber())",
+              "playerId": { ".validate": "newData.isString() && newData.val().length <= 128" },
+              "type": { ".validate": "newData.isString() && newData.val().length <= 8" },
+              "seq": { ".validate": "newData.isNumber()" },
+              "ts": { ".validate": "newData.isNumber()" },
+              "amount": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
             }
           }
         }
@@ -375,12 +423,41 @@
         "$uid": {
           ".read": "auth != null",
           ".write": "auth != null && auth.uid === $uid",
-          ".validate": "!newData.exists() || (newData.hasChildren(['handle','displayName','updatedAt']) && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('handle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && root.child('localpoker').child('handles').child(newData.child('handle').val()).val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && !(newData.child('displayName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('displayName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('displayName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('displayName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('displayName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('updatedAt').isNumber() && (!newData.child('palJson').exists() || (newData.child('palJson').isString() && newData.child('palJson').val().length <= 600)))"
+          /*
+           * The handle check reads `newData`, not `root`, so the claim and the
+           * profile can land in one atomic write. `root` is the database
+           * before the write, which would refuse the profile until a separate
+           * claim had already landed.
+           *
+           * The last clause is the other half of one-handle-per-user: when
+           * the profile moves to a new handle, the old one must be released
+           * in the same write (or already belong to somebody else). Without
+           * it a single account could hop from name to name and leave every
+           * one it passed through reserved.
+           */
+          ".validate": "!newData.exists() || (newData.hasChildren(['handle','displayName','updatedAt']) && newData.child('handle').isString() && newData.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('handle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && newData.parent().parent().child('handles').child(newData.child('handle').val()).val() === $uid && (!data.child('handle').isString() || data.child('handle').val() === newData.child('handle').val() || !data.child('handle').val().matches(/^[a-z0-9_]{3,20}$/) || newData.parent().parent().child('handles').child(data.child('handle').val()).val() !== $uid) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 1 && newData.child('displayName').val().length <= 24 && !(newData.child('displayName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('displayName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('displayName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('displayName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('displayName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('displayName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('updatedAt').isNumber() && (!newData.child('palJson').exists() || (newData.child('palJson').isString() && newData.child('palJson').val().length <= 600)))",
+          "handle": { ".validate": "newData.isString() && newData.val().length <= 20" },
+          "displayName": { ".validate": "newData.isString() && newData.val().length <= 24" },
+          "updatedAt": { ".validate": "newData.isNumber()" },
+          "palJson": { ".validate": "newData.isString() && newData.val().length <= 600" },
+          /*
+           * A directory entry is readable by everyone signed in, so an
+           * open-ended one was free public storage on a plan with a 1 GB cap.
+           */
+          "$other": { ".validate": false }
         }
       },
       "pushTokens": {
         "$uid": {
-          ".read": "auth != null && (auth.uid === $uid || root.child('localpoker').child('friends').child($uid).child(auth.uid).exists() || root.child('localpoker').child('friendRequests').child($uid).child(auth.uid).child('status').val() === 'pending')",
+          /*
+           * Accepted friends only. A pending request used to grant this too,
+           * so a friend request could notify, but that let anyone who could
+           * send a request (anyone at all, given the directory) take the
+           * token and push whatever they liked to that lock screen for as
+           * long as it lived. A recipient now learns of a request from their
+           * own listener instead; see sendFriendRequest.
+           */
+          ".read": "auth != null && (auth.uid === $uid || root.child('localpoker').child('friends').child($uid).child(auth.uid).exists())",
           ".write": "auth != null && auth.uid === $uid",
           ".validate": "!newData.exists() || newData.hasChildren(['token','updatedAt'])",
           "token": { ".validate": "newData.isString() && newData.val().length <= 200 && (newData.val().beginsWith('ExponentPushToken[') || newData.val().beginsWith('ExpoPushToken['))" },
@@ -390,7 +467,13 @@
       },
       "presence": {
         "$uid": {
-          ".read": "auth != null",
+          /*
+           * Owner and accepted friends. The only readers are the friends
+           * list's live dot and the invite push, and an invite already
+           * requires the friendship. Open reads let anyone who scraped the
+           * directory watch when a stranger came online.
+           */
+          ".read": "auth != null && (auth.uid === $uid || root.child('localpoker').child('friends').child($uid).child(auth.uid).exists())",
           ".write": "auth != null && auth.uid === $uid",
           ".validate": "!newData.exists() || newData.hasChildren(['online','lastSeen'])",
           "online": { ".validate": "newData.isBoolean()" },
@@ -399,10 +482,28 @@
         }
       },
       "handles": {
-        ".read": "auth != null && query.orderByKey === true && query.limitToFirst <= 10 && query.startAt !== null && query.endAt !== null",
+        /*
+         * A real prefix search, not a cursor. The end must be the start plus
+         * the last sortable character, so each query covers exactly the
+         * names beginning with one prefix, and the prefix must be at least
+         * the two characters the autocomplete already waits for. Before this
+         * `startAt('')` paged through every name ten at a time.
+         *
+         * Two, not three, because builds 63 to 65 search from two characters
+         * and would otherwise show an error for every short prefix. This
+         * makes scraping a walk down a tree of prefixes rather than a single
+         * loop, which slows it; it cannot stop it while prefix search exists.
+         */
+        ".read": "auth != null && query.orderByKey === true && query.limitToFirst <= 10 && query.startAt !== null && query.endAt !== null && query.startAt.length >= 2 && query.endAt === query.startAt + '\uf8ff'",
         "$handle": {
           ".read": "auth != null",
-          ".write": "auth != null && ((!data.exists() && newData.isString() && newData.val() === auth.uid && $handle.matches(/^[a-z0-9_]{3,20}$/) && !$handle.matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/)) || (data.exists() && data.val() === auth.uid && !newData.exists()))",
+          /*
+           * A new claim must be the handle the claimant's own profile points
+           * at in the same write. That pairs with the profile rule, which
+           * requires the previous handle to be released, so each account
+           * holds one name instead of reserving as many as it likes.
+           */
+          ".write": "auth != null && ((!data.exists() && newData.isString() && newData.val() === auth.uid && $handle.matches(/^[a-z0-9_]{3,20}$/) && !$handle.matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && newData.parent().parent().child('users').child(auth.uid).child('handle').val() === $handle) || (data.exists() && data.val() === auth.uid && !newData.exists()))",
           ".validate": "!newData.exists() || (newData.isString() && newData.val() === auth.uid)"
         }
       },
@@ -410,10 +511,25 @@
         "$toUid": {
           ".read": "auth != null && auth.uid === $toUid",
           ".write": "auth != null && auth.uid === $toUid && !newData.exists()",
+          /*
+           * A new request must name the sender's own handle, checked against
+           * `handles/`, or anyone could send a request that reads as coming
+           * from somebody the recipient trusts. `createdAt === now` holds
+           * every build to the server clock; all of them already write
+           * ServerValue.TIMESTAMP here. The create must also bump
+           * `rateLimits/<sender>/friendRequest` in the same write, which is
+           * what stops delete-and-resend spam (see rateLimits).
+           */
           "$fromUid": {
             ".read": "auth != null && (auth.uid === $toUid || auth.uid === $fromUid)",
-            ".write": "auth != null && ((!data.exists() && auth.uid === $fromUid && $toUid !== auth.uid && !root.child('localpoker').child('blocks').child($toUid).child($fromUid).exists() && newData.child('fromUid').val() === auth.uid && newData.child('status').val() === 'pending') || (data.exists() && !newData.exists() && (auth.uid === $toUid || auth.uid === $fromUid)) || (data.exists() && auth.uid === $toUid && data.child('status').val() === 'pending' && (newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined')))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','fromHandle','fromName','createdAt','status']) && newData.child('fromUid').val() === $fromUid && newData.child('fromHandle').isString() && newData.child('fromHandle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('fromHandle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && newData.child('fromName').isString() && newData.child('fromName').val().length >= 1 && newData.child('fromName').val().length <= 24 && !(newData.child('fromName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('fromName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('fromName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('fromName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('fromName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('fromName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('fromName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('createdAt').isNumber() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined') && (!data.exists() || (newData.child('fromUid').val() === data.child('fromUid').val() && newData.child('fromHandle').val() === data.child('fromHandle').val() && newData.child('fromName').val() === data.child('fromName').val() && newData.child('createdAt').val() === data.child('createdAt').val())))"
+            ".write": "auth != null && ((!data.exists() && auth.uid === $fromUid && $toUid !== auth.uid && !root.child('localpoker').child('blocks').child($toUid).child($fromUid).exists() && newData.child('fromUid').val() === auth.uid && newData.child('status').val() === 'pending' && root.child('localpoker').child('handles').child(newData.child('fromHandle').val()).val() === auth.uid && newData.child('createdAt').val() === now && newData.parent().parent().parent().child('rateLimits').child(auth.uid).child('friendRequest').val() === now) || (data.exists() && !newData.exists() && (auth.uid === $toUid || auth.uid === $fromUid)) || (data.exists() && auth.uid === $toUid && data.child('status').val() === 'pending' && (newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined')))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','fromHandle','fromName','createdAt','status']) && newData.child('fromUid').val() === $fromUid && newData.child('fromHandle').isString() && newData.child('fromHandle').val().matches(/^[a-z0-9_]{3,20}$/) && !newData.child('fromHandle').val().matches(/.*(fuck|shit|cunt|nazi|hitler|nigger|faggot).*/) && newData.child('fromName').isString() && newData.child('fromName').val().length >= 1 && newData.child('fromName').val().length <= 24 && !(newData.child('fromName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('fromName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('fromName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('fromName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('fromName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('fromName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('fromName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && newData.child('createdAt').isNumber() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'accepted' || newData.child('status').val() === 'declined') && (!data.exists() || (newData.child('fromUid').val() === data.child('fromUid').val() && newData.child('fromHandle').val() === data.child('fromHandle').val() && newData.child('fromName').val() === data.child('fromName').val() && newData.child('createdAt').val() === data.child('createdAt').val())))",
+            "fromUid": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "fromHandle": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "fromName": { ".validate": "newData.isString() && newData.val().length <= 24" },
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "status": { ".validate": "newData.isString() && newData.val().length <= 8" },
+            "$other": { ".validate": false }
           }
         }
       },
@@ -440,8 +556,50 @@
       "reports": {
         "$reportId": {
           ".read": false,
-          ".write": "auth != null && !data.exists() && newData.child('reporterUid').val() === auth.uid && newData.child('reportedUid').val() !== auth.uid",
-          ".validate": "newData.hasChildren(['reporterUid','reportedUid','reportedName','context','category','createdAt']) && newData.child('reporterUid').val() === auth.uid && newData.child('reportedUid').isString() && newData.child('reportedUid').val().length <= 128 && newData.child('reportedName').isString() && newData.child('reportedName').val().length >= 1 && newData.child('reportedName').val().length <= 24 && !(newData.child('reportedName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('reportedName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('reportedName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('reportedName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('reportedName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('reportedName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('reportedName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && (newData.child('context').val() === 'friends' || newData.child('context').val() === 'table') && newData.child('category').val() === 'offensive_content' && newData.child('createdAt').isNumber() && (!newData.child('roomCode').exists() || (newData.child('roomCode').isString() && newData.child('roomCode').val().length <= 12))"
+          ".write": "auth != null && !data.exists() && newData.child('reporterUid').val() === auth.uid && newData.child('reportedUid').val() !== auth.uid && newData.parent().parent().child('rateLimits').child(auth.uid).child('report').val() === now",
+          ".validate": "newData.hasChildren(['reporterUid','reportedUid','reportedName','context','category','createdAt']) && newData.child('reporterUid').val() === auth.uid && newData.child('reportedUid').isString() && newData.child('reportedUid').val().length <= 128 && newData.child('reportedName').isString() && newData.child('reportedName').val().length >= 1 && newData.child('reportedName').val().length <= 24 && !(newData.child('reportedName').val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.child('reportedName').val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.child('reportedName').val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.child('reportedName').val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.child('reportedName').val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.child('reportedName').val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.child('reportedName').val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/)) && (newData.child('context').val() === 'friends' || newData.child('context').val() === 'table') && newData.child('category').val() === 'offensive_content' && newData.child('createdAt').isNumber() && newData.child('createdAt').val() === now && (!newData.child('roomCode').exists() || (newData.child('roomCode').isString() && newData.child('roomCode').val().length <= 12))",
+          "reporterUid": { ".validate": "newData.isString() && newData.val().length <= 128" },
+          "reportedUid": { ".validate": "newData.isString() && newData.val().length <= 128" },
+          "reportedName": { ".validate": "newData.isString() && newData.val().length <= 24" },
+          "context": { ".validate": "newData.isString() && newData.val().length <= 8" },
+          "category": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "roomCode": { ".validate": "newData.isString() && newData.val().length <= 12" },
+          "$other": { ".validate": false }
+        }
+      },
+      /*
+       * Per-user write throttles.
+       *
+       * Rules cannot count requests, but they can compare two timestamps. A
+       * friend request or a report is only accepted in the same atomic write
+       * as a bump of the sender's own stamp here to the server's `now`, and
+       * the bump is only accepted when the previous stamp is old enough. So
+       * the gap is enforced on the server whatever the client does, without
+       * a Cloud Function.
+       *
+       * Ten seconds between friend requests and thirty between reports are
+       * far longer than a person tapping through the app ever waits, and
+       * short enough that nobody sees the message without trying.
+       *
+       * No deletes, not even by the owner: deleting the stamp would reset
+       * the clock. That lives in `.write` because `.validate` is skipped
+       * when a write removes data. A deleted account leaves two numbers behind, which is the
+       * price of that. Readable by the owner alone so the app can tell a
+       * throttle from any other refusal; nobody else learns anything from it.
+       */
+      "rateLimits": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          "friendRequest": {
+            ".write": "auth != null && auth.uid === $uid && newData.exists()",
+            ".validate": "newData.isNumber() && newData.val() === now && (!data.isNumber() || now >= data.val() + 10000)"
+          },
+          "report": {
+            ".write": "auth != null && auth.uid === $uid && newData.exists()",
+            ".validate": "newData.isNumber() && newData.val() === now && (!data.isNumber() || now >= data.val() + 30000)"
+          },
+          "$other": { ".validate": false }
         }
       },
       "userRooms": {
@@ -454,6 +612,13 @@
           }
         }
       },
+      /*
+       * Every client downloads this listing, so each entry is closed to the
+       * fields a summary carries and each string is capped. `updatedAt` may
+       * run at most a minute ahead of the server: the list sorts newest
+       * first, and a far-future stamp pinned an entry to the top for good.
+       * The slack is for builds 63 to 65, which stamp it with Date.now().
+       */
       "publicRooms": {
         ".read": "auth != null",
         ".indexOn": [
@@ -461,7 +626,18 @@
         ],
         "$code": {
           ".write": "auth != null && ((newData.exists() && newData.child('visibility').val() === 'public' && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid) || (!newData.exists() && (!data.exists() || data.child('hostUid').val() === auth.uid)))",
-          ".validate": "!newData.exists() || (newData.hasChildren(['code','hostUid','hostName','visibility','status','updatedAt']) && newData.child('hostUid').val() === auth.uid && newData.child('code').val() === $code && newData.child('hostName').isString() && newData.child('hostName').val().length <= 24 && newData.child('status').isString() && newData.child('updatedAt').isNumber() && newData.child('visibility').val() === 'public')",
+          ".validate": "!newData.exists() || (newData.hasChildren(['code','hostUid','hostName','visibility','status','updatedAt']) && newData.child('hostUid').val() === auth.uid && newData.child('code').val() === $code && newData.child('hostName').isString() && newData.child('hostName').val().length <= 24 && newData.child('status').isString() && newData.child('updatedAt').isNumber() && newData.child('updatedAt').val() <= now + 60000 && newData.child('visibility').val() === 'public')",
+          "code": { ".validate": "newData.isString() && newData.val().length <= 12" },
+          "hostUid": { ".validate": "newData.isString() && newData.val().length <= 128" },
+          "visibility": { ".validate": "newData.isString() && (newData.val() === 'public' || newData.val() === 'private')" },
+          "status": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "playerCount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10" },
+          "smallBlind": { ".validate": "newData.isNumber()" },
+          "bigBlind": { ".validate": "newData.isNumber()" },
+          "startingStack": { ".validate": "newData.isNumber()" },
+          "gameMode": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "updatedAt": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false },
           "hostName": {
             ".validate": "newData.isString() && newData.val().length <= 24 && !(newData.val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/))"
           }
@@ -475,7 +651,18 @@
           ],
           "$code": {
             ".write": "auth != null && ((newData.exists() && root.child('localpoker').child('friends').child($uid).child(auth.uid).exists() && root.child('localpoker').child('rooms').child($code).child('hostId').val() === auth.uid) || (!newData.exists() && (auth.uid === $uid || (data.exists() && data.child('hostUid').val() === auth.uid))))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['code','hostUid','hostName','visibility','status','updatedAt']) && newData.child('hostUid').val() === auth.uid && newData.child('code').val() === $code && newData.child('hostName').isString() && newData.child('hostName').val().length <= 24 && newData.child('status').isString() && newData.child('updatedAt').isNumber())",
+            ".validate": "!newData.exists() || (newData.hasChildren(['code','hostUid','hostName','visibility','status','updatedAt']) && newData.child('hostUid').val() === auth.uid && newData.child('code').val() === $code && newData.child('hostName').isString() && newData.child('hostName').val().length <= 24 && newData.child('status').isString() && newData.child('updatedAt').isNumber() && newData.child('updatedAt').val() <= now + 60000)",
+            "code": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "hostUid": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "visibility": { ".validate": "newData.isString() && (newData.val() === 'public' || newData.val() === 'private')" },
+            "status": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "playerCount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10" },
+            "smallBlind": { ".validate": "newData.isNumber()" },
+            "bigBlind": { ".validate": "newData.isNumber()" },
+            "startingStack": { ".validate": "newData.isNumber()" },
+            "gameMode": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "updatedAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false },
             "hostName": {
               ".validate": "newData.isString() && newData.val().length <= 24 && !(newData.val().matches(/.*[Ff][Uu][Cc][Kk].*/) || newData.val().matches(/.*[Ss][Hh][Ii][Tt].*/) || newData.val().matches(/.*[Cc][Uu][Nn][Tt].*/) || newData.val().matches(/.*[Nn][Aa][Zz][Ii].*/) || newData.val().matches(/.*[Hh][Ii][Tt][Ll][Ee][Rr].*/) || newData.val().matches(/.*[Nn][Ii][Gg][Gg][Ee][Rr].*/) || newData.val().matches(/.*[Ff][Aa][Gg][Gg][Oo][Tt].*/))"
             }

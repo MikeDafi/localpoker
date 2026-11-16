@@ -244,13 +244,13 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'table', title: 'Table', icon: '🎲',
     fields: [
-      { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash has a buy-in and fixed blinds. Tournament modes publish a hand-based blind schedule and busted players are out.', options: GAME_MODE_OPTIONS },
+      { key: 'gameMode', label: 'Game Mode', type: 'select', help: 'Cash: blinds stay put. Tournament: blinds rise and you are out when you bust.', options: GAME_MODE_OPTIONS },
       /*
        * One row for both blinds. The big blind is always twice the small, so
        * a second row only ever offered a way to set up a table wrong.
        */
-      { key: 'smallBlind', label: 'Blinds', type: 'number', min: 1, max: 100000, step: 1, presets: [1, 2, 5, 10, 25, 50, 100, 250, 500], help: 'Small blind / big blind; the big blind is always double. Cash plays these all game. Tournaments start their ladder here.' },
-      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, presets: [0, 1, 2, 5, 10, 25, 50], modes: ['tournament'], help: 'Tournament-only. Cash setup hides this so an old ante cannot change a cash table.' },
+      { key: 'smallBlind', label: 'Blinds', type: 'number', min: 1, max: 100000, step: 1, presets: [1, 2, 5, 10, 25, 50, 100, 250, 500], help: 'Small blind. The big blind is double.' },
+      { key: 'ante', label: 'Starting Ante', type: 'number', min: 0, max: 100000, step: 1, presets: [0, 1, 2, 5, 10, 25, 50], modes: ['tournament'], help: 'Everyone posts this each hand.' },
       {
         key: 'blindLevelLengthHands',
         label: 'Level Length',
@@ -268,26 +268,26 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
          * would go up at all, which is the part of a tournament they plan
          * around. The preview answers the question the bare number could not.
          */
-        help: 'Hands per blind level. All clients derive the same level from the shared hand number.',
+        help: 'Hands before the blinds go up.',
       },
       { key: 'startingStack', label: 'Buy-In / Stack', type: 'number', min: 100, max: 1000000, step: 100, presets: [500, 1000, 2000, 5000, 10000, 25000, 50000] },
       { key: 'turnTimerSec', label: 'Turn Timer (s)', type: 'slider', min: 5, max: 60, step: 1 },
-      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public tables are listed for anyone to join. Private tables are only shown to your friends. Whoever opens a table deals its cards, so open public tables only if you are happy for strangers to sit down.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
+      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public: anyone can join. Private: friends only.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
     ],
   },
   {
     id: 'bots', title: 'Opponents', icon: '🤖',
     fields: [
-      { key: 'numOpponents', label: 'Number of Opponents', type: 'slider', min: 1, max: 8, step: 1, help: 'Number of computer opponents in quick play.' },
+      { key: 'numOpponents', label: 'Number of Opponents', type: 'slider', min: 1, max: 8, step: 1 },
       { key: 'difficulty', label: 'Difficulty', type: 'select', options: [{ value: 'easy', label: 'Easy' }, { value: 'medium', label: 'Medium' }, { value: 'hard', label: 'Hard' }, { value: 'expert', label: 'Expert' }] },
       { key: 'botSpeed', label: 'Opponent Speed', type: 'select', options: [{ value: 'slow', label: 'Slow' }, { value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }] },
-      { key: 'mixedDifficulty', label: 'Mixed Table', type: 'toggle', help: 'Opponents use a mix of skill levels.' },
+      { key: 'mixedDifficulty', label: 'Mixed Table', type: 'toggle', help: 'Bots of different skill.' },
     ],
   },
   {
     id: 'ingame', title: 'In-Game', icon: '🎯',
     fields: [
-      { key: 'showLiveStats', label: 'Live Stats Overlay', type: 'toggle', help: 'Show VPIP / PFR / win rate during play.' },
+      { key: 'showLiveStats', label: 'Live Stats Overlay', type: 'toggle', help: 'VPIP, PFR and win rate at the table.' },
       { key: 'autoMuck', label: 'Auto Muck Losers', type: 'toggle' },
       { key: 'confirmFoldWhenCheckAvailable', label: 'Confirm Fold (can check)', type: 'toggle' },
     ],
@@ -295,7 +295,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'social', title: 'Friends', icon: '👥',
     fields: [
-      { key: 'pushNotifications', label: 'Notify me', type: 'toggle', help: 'Get a notification when a friend adds you or opens a table. Turning this on lets your friends\u2019 devices reach yours; turning it off stops that immediately.' },
+      { key: 'pushNotifications', label: 'Notify me', type: 'toggle', help: 'When a friend adds you or opens a table.' },
     ],
   },
   {
@@ -303,7 +303,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
     fields: [
       { key: 'soundEnabled', label: 'Sound Effects', type: 'toggle' },
       { key: 'soundVolume', label: 'Volume', type: 'slider', min: 0, max: 100, step: 5 },
-      { key: 'chipSound', label: 'Chip Sound', type: 'select', options: CHIP_SOUND_OPTIONS, help: 'Which handful of chips a call or a raise sounds like.' },
+      { key: 'chipSound', label: 'Chip Sound', type: 'select', options: CHIP_SOUND_OPTIONS },
       { key: 'hapticsEnabled', label: 'Haptics', type: 'toggle' },
       { key: 'winFanfare', label: 'Win Fanfare', type: 'toggle' },
     ],
@@ -319,15 +319,15 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     id: 'appearance', title: 'Appearance', icon: '🎨',
     fields: [
-      { key: 'cardBack', label: 'Card Back', type: 'select', help: 'The back printed on every card at this table. Anything you own from the Store shows up here, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }, { value: 'card-sunrise', label: 'Sunrise' }, { value: 'card-nebula', label: 'Neon Nebula' }, { value: 'card-royal-holo', label: 'Royal Holo' }, { value: 'card-lucky-koi', label: 'Lucky Koi' }, { value: 'card-midnight', label: 'Midnight Matrix' }] },
-      { key: 'feltStyle', label: 'Felt', type: 'select', help: 'The cloth this table is played on. Anything you own from the Store shows up here, and everyone in an online room sees the host\u2019s choice.', options: [{ value: 'classic', label: 'Classic' }, { value: 'table-emerald', label: 'Emerald' }, { value: 'table-miami', label: 'Miami' }, { value: 'table-velvet', label: 'Velvet' }, { value: 'table-sakura', label: 'Sakura' }, { value: 'table-lunar', label: 'Lunar' }] },
-      { key: 'chipStyle', label: 'Chips', type: 'select', help: 'The chip set used for every bet at this table. Anything you own from the Store shows up here.', options: [{ value: 'classic', label: 'Classic' }, { value: 'chips-candy', label: 'Candy' }, { value: 'chips-obsidian', label: 'Obsidian' }, { value: 'chips-circuit', label: 'Circuit' }, { value: 'chips-diamond', label: 'Diamond' }, { value: 'chips-golden-tiki', label: 'Golden Tiki' }] },
+      { key: 'cardBack', label: 'Card Back', type: 'select', help: 'Your table shows yours to everyone.', options: [{ value: 'blue', label: 'Blue' }, { value: 'red', label: 'Red' }, { value: 'black', label: 'Black' }, { value: 'holo', label: 'Holo' }, { value: 'retro', label: 'Retro' }, { value: 'card-sunrise', label: 'Sunrise' }, { value: 'card-nebula', label: 'Neon Nebula' }, { value: 'card-royal-holo', label: 'Royal Holo' }, { value: 'card-lucky-koi', label: 'Lucky Koi' }, { value: 'card-midnight', label: 'Midnight Matrix' }] },
+      { key: 'feltStyle', label: 'Felt', type: 'select', help: 'Your table shows yours to everyone.', options: [{ value: 'classic', label: 'Classic' }, { value: 'table-emerald', label: 'Emerald' }, { value: 'table-miami', label: 'Miami' }, { value: 'table-velvet', label: 'Velvet' }, { value: 'table-sakura', label: 'Sakura' }, { value: 'table-lunar', label: 'Lunar' }] },
+      { key: 'chipStyle', label: 'Chips', type: 'select', options: [{ value: 'classic', label: 'Classic' }, { value: 'chips-candy', label: 'Candy' }, { value: 'chips-obsidian', label: 'Obsidian' }, { value: 'chips-circuit', label: 'Circuit' }, { value: 'chips-diamond', label: 'Diamond' }, { value: 'chips-golden-tiki', label: 'Golden Tiki' }] },
     ],
   },
   {
     id: 'a11y', title: 'Accessibility', icon: '♿',
     fields: [
-      { key: 'largeText', label: 'Large Text', type: 'toggle', help: 'Bigger type across menus and the table.' },
+      { key: 'largeText', label: 'Large Text', type: 'toggle', help: 'Bigger text everywhere.' },
     ],
   },
 ];

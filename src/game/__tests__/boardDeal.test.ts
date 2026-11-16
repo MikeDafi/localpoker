@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_DEAL_STEP, BOARD_THROW_MS, boardDealDelay } from '../boardDeal';
+import { BOARD_DEAL_STEP, BOARD_THROW_MS, boardDealDelay, boardLandMs } from '../boardDeal';
 import { motion } from '../../theme/theme';
 
 /**
@@ -64,5 +64,21 @@ describe('BOARD_THROW_MS', () => {
     // Three flop cards are staggered on top of this, so the whole flop has to
     // stay inside about a second.
     expect(BOARD_THROW_MS + BOARD_DEAL_STEP * 2).toBeLessThanOrEqual(1000);
+  });
+});
+
+describe('boardLandMs', () => {
+  it('waits for the last flop card, which leaves after the other two', () => {
+    expect(boardLandMs(0, 3)).toBe(boardDealDelay(2) + BOARD_THROW_MS);
+  });
+
+  it('waits one throw for the turn or the river', () => {
+    expect(boardLandMs(3, 4)).toBe(BOARD_THROW_MS);
+    expect(boardLandMs(4, 5)).toBe(BOARD_THROW_MS);
+  });
+
+  it('does not wait when no card was added', () => {
+    expect(boardLandMs(5, 5)).toBe(0);
+    expect(boardLandMs(5, 0)).toBe(0);
   });
 });

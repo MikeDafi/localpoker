@@ -15,6 +15,13 @@ export interface Stats {
   handsAsAggressor: number;
   coinsEarned: number;
   chipHistory: number[];
+  /**
+   * When each `chipHistory` entry was recorded, epoch ms, index for index.
+   * 0 means unknown: hands played before this was tracked have no time, and
+   * the chart says "N hands ago" for those rather than inventing a date.
+   * Optional so stats saved by an older build still load.
+   */
+  chipHistoryAt?: number[];
 }
 
 export interface HandResult {
@@ -27,6 +34,8 @@ export interface HandResult {
   pfr: boolean;
   aggressor: boolean;
   endingStack: number;
+  /** When the hand finished, epoch ms. Passed in so this stays pure. */
+  at?: number;
 }
 
 export const DEFAULT_STATS: Stats = {
@@ -41,6 +50,7 @@ export const DEFAULT_STATS: Stats = {
   handsAsAggressor: 0,
   coinsEarned: 0,
   chipHistory: [],
+  chipHistoryAt: [],
 };
 
 export const COINS_PER_HAND = 10;
@@ -62,6 +72,16 @@ export function coinsForHand(r: HandResult): number {
   return 0;
 }
 
+/**
+ * The recorded times lined up with `chipHistory`, padded with 0 (unknown) at
+ * the front for the hands that were played before times were kept.
+ */
+export function alignedTimes(stats: Pick<Stats, 'chipHistory' | 'chipHistoryAt'>): number[] {
+  const n = stats.chipHistory.length;
+  const at = (stats.chipHistoryAt ?? []).slice(-n);
+  return [...new Array<number>(n - at.length).fill(0), ...at];
+}
+
 /** Fold a single completed hand into the running stats. Pure. */
 export function applyHandResult(stats: Stats, r: HandResult): { stats: Stats; coinsEarned: number } {
   const coinsEarned = coinsForHand(r);
@@ -77,6 +97,7 @@ export function applyHandResult(stats: Stats, r: HandResult): { stats: Stats; co
     handsAsAggressor: stats.handsAsAggressor + (r.aggressor ? 1 : 0),
     coinsEarned: stats.coinsEarned + coinsEarned,
     chipHistory: [...stats.chipHistory, r.endingStack].slice(-100),
+    chipHistoryAt: [...alignedTimes(stats), r.at ?? 0].slice(-100),
   };
   return { stats: next, coinsEarned };
 }
@@ -102,4 +123,36 @@ export function derivedStats(stats: Stats): DerivedStats {
 
 export function mergeStats(stored?: Partial<Stats> | null): Stats {
   return { ...DEFAULT_STATS, ...(stored ?? {}) };
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "9:05 PM" today, "Nov 12" this year, "Nov 12, 2025" before that. Local time. */
+export function shortWhen(at: number, now: number): string {
+  const d = new Date(at);
+  const n = new Date(now);
+  if (d.toDateString() === n.toDateString()) {
+    const h = d.getHours();
+    return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  }
+  const day = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return d.getFullYear() === n.getFullYear() ? day : `${day}, ${d.getFullYear()}`;
+}
+
+/**
+ * The two ends of the stack history's time axis.
+ *
+ * A date where one was recorded, and otherwise a count, because hands from
+ * before times were kept have none and a made-up date would be worse than
+ * "40 hands ago".
+ */
+export function stackHistoryEnds(stats: Pick<Stats, 'chipHistory' | 'chipHistoryAt'>, now: number): [string, string] {
+  const times = alignedTimes(stats);
+  const n = stats.chipHistory.length;
+  const first = times[0] ?? 0;
+  const last = times[n - 1] ?? 0;
+  return [
+    first > 0 ? shortWhen(first, now) : `${Math.max(0, n - 1)} hands ago`,
+    last > 0 ? shortWhen(last, now) : 'Latest',
+  ];
 }

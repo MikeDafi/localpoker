@@ -143,6 +143,10 @@ export function GameSetupScreen({ navigation, route }: Props) {
         <WiiPanel padding={spacing.lg} style={styles.heroPanel}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroIntro}>
+              {/* Named once, up front. Nothing anywhere said which poker
+                  this was, and "Cash" or "Tournament" only describes how
+                  the blinds behave. */}
+              <Text style={styles.gameKind}>{'No-Limit Texas Hold\u2019em'}</Text>
               <Text style={styles.modeLabel}>{isFriends ? 'Private friends table' : 'Quick play vs bots'}</Text>
             </View>
             {/*
@@ -545,6 +549,7 @@ function formatChips(value: number): string {
 }
 
 const styles = StyleSheet.create({
+  gameKind: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.8, color: colors.blueDeep, textTransform: 'uppercase', marginBottom: 2 },
   schedulePreview: {
     ...type.caption,
     color: colors.inkMuted,

@@ -106,9 +106,24 @@ export function PlayingStyleChart({ map, width }: { map: PlayingStyleMap; width:
         <SvgText x={pad + plot * 0.75} y={pad + plot - 8} fill={colors.inkMuted} fontSize={10} fontFamily={fonts.medium} textAnchor="middle">
           Loose passive
         </SvgText>
+        {/* Named on the chart: an unlabelled green box read as a stray
+            circle, and nobody could tell it was the range to aim for. */}
+        <SvgText x={targetX + targetW / 2} y={targetY - 5} fill={colors.green} fontSize={10} fontFamily={fonts.bold} textAnchor="middle">
+          Target
+        </SvgText>
         <Circle cx={dotX} cy={dotY} r={7} fill={colors.blueDeep} stroke="#fff" strokeWidth={3} />
       </Svg>
       <Text style={styles.callout}>{map.label}</Text>
+      <View style={styles.styleKey}>
+        <View style={styles.legendItem}>
+          <View style={[styles.keyDot, { backgroundColor: colors.blueDeep }]} />
+          <Text style={styles.legendLabel}>You</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.keyBox, { borderColor: colors.green }]} />
+          <Text style={styles.legendLabel}>Where solid players sit</Text>
+        </View>
+      </View>
       <Text style={styles.note}>VPIP rises to the right. PFR rises upward.</Text>
     </View>
   );
@@ -230,6 +245,9 @@ export function ChipHighlightCards({ highlights, width }: { highlights: ChipHigh
 }
 
 const styles = StyleSheet.create({
+  styleKey: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 6 },
+  keyDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
+  keyBox: { width: 12, height: 10, borderRadius: 3, borderWidth: 1.5, backgroundColor: 'rgba(46,184,119,0.22)', marginRight: 6 },
   block: { gap: spacing.md },
   centerBlock: { alignItems: 'center', gap: spacing.sm },
   empty: { fontFamily: fonts.medium, fontSize: 14, color: colors.inkMuted, paddingVertical: spacing.md, textAlign: 'center' },

@@ -88,6 +88,81 @@ describe('online redaction', () => {
   });
 });
 
+/** What the Realtime Database hands back: empty arrays and objects simply vanish. */
+const asStoredInRtdb = <T,>(value: T): T => {
+  const strip = (v: unknown): unknown => {
+    if (Array.isArray(v)) {
+      const out = v.map(strip).filter((x) => x !== undefined);
+      return out.length ? out : undefined;
+    }
+    if (v && typeof v === 'object') {
+      const entries = Object.entries(v).map(([k, x]) => [k, strip(x)] as const).filter(([, x]) => x !== undefined);
+      return entries.length ? Object.fromEntries(entries) : undefined;
+    }
+    return v;
+  };
+  return strip(JSON.parse(JSON.stringify(value))) as T;
+};
+
+describe('hydrating a room read back from the database', () => {
+  /*
+   * Build 65 crashed on every resume here: a pot nobody was eligible for came
+   * back with no eligiblePlayerIds at all, and spreading it threw.
+   */
+  it('survives a pot whose eligible list the database dropped', () => {
+    const state = startHand(createGame(config, players(['a', 'b']), 'rtdb-empty-pot'));
+    const { publicState } = redactGameState(state);
+    const stored = asStoredInRtdb({ ...publicState, pots: [{ amount: 30, eligiblePlayerIds: [] }], contributions: {} });
+
+    const guest = hydrateGameState(stored);
+    expect(guest.pots).toEqual([{ amount: 30, eligiblePlayerIds: [] }]);
+    expect(guest.players.map((p) => p.id)).toEqual(['a', 'b']);
+  });
+
+  it('survives a room with no players left at all', () => {
+    const state = startHand(createGame(config, players(['a', 'b']), 'rtdb-no-players'));
+    const { publicState } = redactGameState(state);
+    const stored = asStoredInRtdb({ ...publicState, players: {}, playerOrder: [] });
+
+    expect(hydrateGameState(stored).players).toEqual([]);
+  });
+});
+
+describe('applyHostIntent on a broken table', () => {
+  /*
+   * A host rebuilt without its deck used to throw out of a state updater and
+   * crash the table. It must come back as an ordinary refusal instead.
+   */
+  it('refuses rather than throwing when the engine cannot deal', () => {
+    let state = startHand(createGame(config, players(['a', 'b']), 'no-deck'));
+    state = { ...state, deck: [] };
+    const actor = state.players[state.currentPlayerIndex].id;
+    const callFirst = applyHostIntent(state, actor, { type: 'call' });
+    const next = callFirst.ok ? callFirst.state : state;
+    const closer = next.players[next.currentPlayerIndex].id;
+    expect(() => applyHostIntent(next, closer, { type: 'check' })).not.toThrow();
+    expect(applyHostIntent(next, closer, { type: 'check' }).ok).toBe(false);
+  });
+});
+
+describe('host replay protection', () => {
+  /*
+   * A host that remounts mid-hand re-reads every action of the hand. The
+   * applied sequence lives on the state, so it survives the remount.
+   */
+  it('refuses an action sequence it has already applied', () => {
+    const state = startHand(createGame(config, players(['a', 'b']), 'replay'));
+    const actor = state.players[state.currentPlayerIndex].id;
+    const first = applyHostIntent(state, actor, { type: 'call', seq: 5 });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.state.appliedSeq).toBe(5);
+    const restored = JSON.parse(JSON.stringify(first.state));
+    const replayed = applyHostIntent(restored, actor, { type: 'call', seq: 5 });
+    expect(replayed.ok).toBe(false);
+  });
+});
+
 describe('host intent validation', () => {
   it('rejects out-of-turn intents', () => {
     const state = startHand(createGame(config, players(), 'out-of-turn'));

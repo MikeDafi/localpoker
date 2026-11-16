@@ -67,7 +67,7 @@ import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
 import { isResumable, resumedTurnStartedAt } from '../game/savedGame';
 import { emptyObservedTable, observeTransition } from '../game/observedStats';
-import { BOARD_THROW_MS, boardDealDelay } from '../game/boardDeal';
+import { BOARD_THROW_MS, boardDealDelay, boardLandMs } from '../game/boardDeal';
 import { isRunningOut, runoutAction, runoutFelt, runoutLabel, runoutRunLabel, SHOWDOWN_STEP_MS } from '../game/runout';
 import { restoredDealHandNumber, shouldAnimateDeal } from '../game/dealAnimation';
 import {
@@ -456,6 +456,14 @@ export function TableScreen({ navigation, route }: Props) {
       const live = stateRef.current;
       if (cached && (!live || atLeastAsFresh(cached, live))) setState(cached);
       if (cached) return;
+      /*
+       * No cache means iOS killed the app and the host came back through
+       * Resume. The screen already holds the host's own saved game, deck and
+       * every hole card included. Rebuilding from the public copy threw that
+       * away: the next street drew from an empty deck and the table crashed,
+       * and a showdown paid out against hands it could no longer see.
+       */
+      if (live && live.deck.length > 0 && live.handNumber >= room.publicState.handNumber) return;
     }
 
     /*
@@ -498,9 +506,12 @@ export function TableScreen({ navigation, route }: Props) {
         const cached = getCachedHostGame(roomCode);
         const currentState = cached && atLeastAsFresh(cached, live) ? cached : live;
         setTurnTimeouts((counts) => noteActed(counts, action.playerId));
+        // The sequence lets applyHostIntent refuse an action it has already
+        // applied, which a remounted host otherwise replays.
         const result = applyHostIntent(currentState, action.playerId, {
           type: action.type,
           amount: action.amount,
+          seq: action.seq,
         });
         if (!result.ok) {
           console.warn('Rejected online poker intent.', result.error);
@@ -1511,8 +1522,15 @@ export function TableScreen({ navigation, route }: Props) {
       if (!id) return prev;
       // Acting is proof they are here, so the count starts again from nothing.
       setTurnTimeouts((counts) => noteActed(counts, id));
-      const res = applyAction(prev, id, action, amount);
-      return res.ok ? res.state : prev;
+      // Same guard as applyHostIntent: an engine throw here is a crash
+      // inside a state updater, so leave the table as it was instead.
+      try {
+        const res = applyAction(prev, id, action, amount);
+        return res.ok ? res.state : prev;
+      } catch (error) {
+        captureError(error, { tags: { area: 'table', operation: 'apply-action' } });
+        return prev;
+      }
     });
   }, []);
 
@@ -1986,6 +2004,25 @@ export function TableScreen({ navigation, route }: Props) {
     if (revealedBoard > prevBoard.current) sound.play('deal');
     prevBoard.current = revealedBoard;
   }, [revealedBoard]);
+
+  /*
+   * How much of the board has finished flying onto the felt.
+   *
+   * `revealedBoard` moves the moment a street is dealt, while its cards are
+   * still in the air. The betting buttons wait on this instead, so nobody is
+   * asked to bet on a flop they have not seen land.
+   */
+  const [landedBoard, setLandedBoard] = useState(revealedBoard);
+  useEffect(() => {
+    if (revealedBoard <= landedBoard || animsOff || skipping) {
+      if (landedBoard !== revealedBoard) setLandedBoard(revealedBoard);
+      return undefined;
+    }
+    const target = revealedBoard;
+    const timer = setTimeout(() => setLandedBoard(target), boardLandMs(landedBoard, target));
+    return () => clearTimeout(timer);
+  }, [revealedBoard, animsOff, skipping]); // eslint-disable-line react-hooks/exhaustive-deps
+  const boardOnFelt = landedBoard >= state.board.length;
 
   useEffect(() => {
     /*
@@ -2507,6 +2544,8 @@ export function TableScreen({ navigation, route }: Props) {
     setting: settings.feltStyle,
     equippedId: cosmetics.equippedByCategory.tables,
     owned: cosmetics.ownedCosmeticIds,
+    // An online room carries the host's pinned choice. See pickStyle.
+    published: !!roomCode,
   });
   /*
    * Same rule for the deck. The store sold five card backs that changed
@@ -2517,6 +2556,8 @@ export function TableScreen({ navigation, route }: Props) {
     setting: settings.cardBack,
     equippedId: cosmetics.equippedByCategory.cardBacks,
     owned: cosmetics.ownedCosmeticIds,
+    // An online room carries the host's pinned choice. See pickStyle.
+    published: !!roomCode,
   });
   /*
    * No clock. Levels count hands (see tournamentTableStatus), so a one second
@@ -4091,7 +4132,7 @@ export function TableScreen({ navigation, route }: Props) {
             </View>
           </Animated.View>
           </GestureDetector>
-        ) : legal && isHumanTurn && !actionSending ? (
+        ) : legal && isHumanTurn && !actionSending && boardOnFelt ? (
           <View>
             <TurnTimer
               seconds={settings.turnTimerSec}
@@ -4127,8 +4168,15 @@ export function TableScreen({ navigation, route }: Props) {
             <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText, !!rebuyMessage && styles.rebuyNotice]}>
               {humanEliminated
                 ? 'You are out of the tournament.'
-                : actionSending
-                  ? 'Sent. Waiting for the table…'
+                : actionSending || (isHumanTurn && !boardOnFelt)
+                  /*
+                   * Blank, not "Sent. Waiting for the table…". That line
+                   * lived for the half second between a tap and the host's
+                   * reply, so it read as a flash at the bottom of the screen
+                   * and told nobody anything. A space keeps the line's height
+                   * so the panel does not jump while the action is in flight.
+                   */
+                  ? ' '
                   : rebuyMessage ?? runoutStatus ?? (current ? `Waiting for ${visiblePlayer(current).name}…` : 'Dealing…')}
             </Text>
             {finishedRuns.map((run, runIndex) => (
@@ -4145,9 +4193,8 @@ export function TableScreen({ navigation, route }: Props) {
                 label={`Run ${activeRunIndex + 2} of ${runCount} in`}
               />
             ) : null}
-            {human.folded && !isShowdown && (
-              <Text style={styles.foldedNote}>You folded this hand</Text>
-            )}
+            {/* No "You folded this hand" line: your cards are already gone
+                from in front of you, and the note only restated that. */}
             {/* Bots only: online, the other players are people, and their
                 hand is theirs to play at their own pace. */}
             {human.folded && !handOver && !skipping && !(roomCode && firebaseOnline) ? (

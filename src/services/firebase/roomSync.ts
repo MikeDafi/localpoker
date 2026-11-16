@@ -1,8 +1,11 @@
 import {
   get,
+  limitToLast,
   onDisconnect,
   onValue,
+  orderByChild,
   push,
+  query,
   ref,
   serverTimestamp,
   set,
@@ -106,6 +109,9 @@ const userRoomPath = (playerId: string, code: string): string => `localpoker/use
  * inbox used only after the host deliberately taps Invite.
  */
 const publicRoomPath = (code: string): string => `localpoker/publicRooms/${code}`;
+
+/** How many open tables the browse list asks for, newest first. */
+export const PUBLIC_ROOM_LIST_LIMIT = 50;
 const roomInvitePath = (friendUid: string, code: string): string =>
   `localpoker/roomInvites/${friendUid}/${code}`;
 
@@ -326,7 +332,12 @@ const roomSummaryOf = (
     bigBlind: settings.bigBlind,
     startingStack: settings.startingStack,
     gameMode: settings.gameMode,
-    updatedAt: Date.now(),
+    /*
+     * Server time, because the rules refuse a stamp more than a minute ahead
+     * of it: the list sorts newest first, and a far-future stamp from a
+     * modified client pinned a listing to the top for good.
+     */
+    updatedAt: serverTimestamp() as unknown as number,
   };
 };
 
@@ -388,7 +399,17 @@ export const subscribeOpenRooms = (
 
   const unsubPublic = options.includePublic === false
     ? () => {}
-    : onValue(ref(db, 'localpoker/publicRooms'), (snapshot) => {
+    /*
+     * The newest fifty, not the whole node. Every client keeps this listener
+     * open, so an unbounded read let one person listing tables by the
+     * hundred cost every other player the download. `updatedAt` is indexed
+     * in the rules, which keeps the ordering server side.
+     */
+    : onValue(query(
+      ref(db, 'localpoker/publicRooms'),
+      orderByChild('updatedAt'),
+      limitToLast(PUBLIC_ROOM_LIST_LIMIT),
+    ), (snapshot) => {
       publicRooms = read(snapshot);
       emit();
     }, () => { publicRooms = []; emit(); });
@@ -1718,6 +1739,10 @@ export const endRoom = async (code: string, reason = 'ended'): Promise<Result> =
  * appended, so the node cannot be used as an unbounded log, and never throws:
  * a reaction that fails to send must not interrupt a hand.
  */
+/** Matches the rules' one-second gate, plus slack for network jitter. */
+export const EMOTE_MIN_GAP_MS = 1200;
+const lastEmoteSentAt = new Map<string, number>();
+
 export const sendEmoteToRoom = async (
   code: string,
   emote: { type: string; value: string; anim?: string },
@@ -1725,6 +1750,16 @@ export const sendEmoteToRoom = async (
   const db = getConfiguredDb();
   const roomCode = cleanKey(code);
   if (!db || !roomCode) return false;
+  /*
+   * The rules hold each sender to one reaction a second of server time.
+   * Checking here as well keeps a fast double tap from becoming a refused
+   * write and an error report; the slightly longer local gap absorbs network
+   * jitter between two sends that left a second apart.
+   */
+  const now = Date.now();
+  const previous = lastEmoteSentAt.get(roomCode) ?? 0;
+  if (now - previous < EMOTE_MIN_GAP_MS) return false;
+  lastEmoteSentAt.set(roomCode, now);
   try {
     const playerId = await authedPlayerId();
     if (!playerId) return false;
@@ -1732,11 +1767,15 @@ export const sendEmoteToRoom = async (
       type: emote.type,
       value: emote.value,
       ...(emote.anim ? { anim: emote.anim } : {}),
-      ts: Date.now(),
+      // Server time, which the rules' one-a-second gate is measured in.
+      ts: serverTimestamp(),
     });
     return true;
   } catch (error) {
-    reportFirebaseError('send-emote', error);
+    // A refusal here is the rate limit or the slur screen doing its job.
+    if (!/permission[_ ]denied/i.test(getErrorMessage(error))) {
+      reportFirebaseError('send-emote', error);
+    }
     return false;
   }
 };

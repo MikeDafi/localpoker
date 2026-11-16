@@ -48,6 +48,13 @@ export interface BoardRunResult {
 }
 
 export interface GameState {
+  /**
+   * Online host only: the highest room action sequence already applied.
+   * Kept on the state so it is saved and restored with the game; a host that
+   * remounted mid-hand re-read the whole hand's actions and applied them a
+   * second time, checking or folding guests who had not acted.
+   */
+  appliedSeq?: number;
   config: GameConfig;
   players: Player[];
   board: Card[];

@@ -859,6 +859,7 @@ export function resolveFelt(input: {
   setting?: string;
   equippedId?: string;
   owned?: readonly string[];
+  published?: boolean;
 }): FeltPalette {
   return FELT_PALETTES[pickStyle(input, FELT_PALETTES, CLASSIC_FELT, STARTER_FELTS)]!;
 }
@@ -867,6 +868,7 @@ export function resolveChips(input: {
   setting?: string;
   equippedId?: string;
   owned?: readonly string[];
+  published?: boolean;
 }): ChipPalette {
   return CHIP_PALETTES[pickStyle(input, CHIP_PALETTES, CLASSIC_CHIPS, STARTER_CHIPS)]!;
 }
@@ -881,6 +883,7 @@ export function resolveCardBack(input: {
   setting?: string;
   equippedId?: string;
   owned?: readonly string[];
+  published?: boolean;
 }): string {
   return pickStyle(input, CARD_BACK_PALETTES, CLASSIC_CARD_BACK, STARTER_CARD_BACKS);
 }
@@ -998,7 +1001,19 @@ export function canSendEmotePayload(emote: CosmeticEmotePayload, owned?: readonl
 
 /** The id a table settles on, exported so the host can publish it to a room. */
 export function pickStyle(
-  input: { setting?: string; equippedId?: string; owned?: readonly string[] },
+  input: {
+    setting?: string;
+    equippedId?: string;
+    owned?: readonly string[];
+    /**
+     * The setting came from a room a host published. `pinCosmetics` already
+     * checked the host owns it, so the viewer's own closet is irrelevant: a
+     * guest who never bought the Miami felt still sits at a Miami table.
+     * Checking the viewer's ownership here is what turned every guest's
+     * table classic green.
+     */
+    published?: boolean;
+  },
   known: Record<string, unknown>,
   fallback: string,
   freeIds: readonly string[] = [fallback],
@@ -1009,6 +1024,7 @@ export function pickStyle(
     !!id && id !== 'equipped' && id in known && (freeSet.has(id) || ownedSet.has(id));
 
   if (input.setting && input.setting !== 'equipped') {
+    if (input.published && input.setting in known) return input.setting;
     return usable(input.setting) ? input.setting : fallback;
   }
   return usable(input.equippedId) ? input.equippedId : fallback;

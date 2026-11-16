@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { endAt, get, limitToFirst, orderByKey, query, ref, set, startAt, update } = require('firebase/database');
+const { endAt, get, limitToFirst, orderByKey, query, ref, serverTimestamp, set, startAt, update } = require('firebase/database');
 
 const projectId = 'demo-localpoker';
 const rules = fs.readFileSync('database.rules.json', 'utf8');
@@ -122,6 +122,19 @@ function logOk(message) {
     const hostDb = testEnv.authenticatedContext('host').database();
     const strangerDb = testEnv.authenticatedContext('stranger').database();
 
+    // Friend requests and reports are only accepted alongside a bump of the
+    // sender's throttle stamp, in the same write, the way the app sends them.
+    const withBump = (uid, kind, path, value) => ({
+      [path]: value,
+      [`localpoker/rateLimits/${uid}/${kind}`]: serverTimestamp(),
+    });
+    // Seeds a stamp directly, so a test can stand on either side of the gap
+    // without sleeping through it, or clear it so an assertion fails for the
+    // reason it names rather than for the throttle.
+    const setStamp = (uid, kind, value) => testEnv.withSecurityRulesDisabled((ctx) => (
+      set(ref(ctx.database(), `localpoker/rateLimits/${uid}/${kind}`), value)
+    ));
+
     await assertSucceeds(get(ref(playerDb, `localpoker/handles/${users.host.handle}`)));
     logOk('known handle can be resolved exactly');
 
@@ -162,26 +175,90 @@ function logOk(message) {
     await assertFails(get(ref(playerDb, 'localpoker/users')));
     logOk('users collection cannot be listed');
 
-    await assertSucceeds(set(ref(strangerDb, 'localpoker/handles/new_shark'), 'stranger'));
-    logOk('authenticated user can create an unclaimed own handle');
+    // Enumeration: a wide range with a moving start used to page through
+    // every name ten at a time. A query must now be one prefix, at least two
+    // characters long.
+    await assertFails(get(query(
+      ref(playerDb, 'localpoker/handles'),
+      orderByKey(),
+      startAt('aa'),
+      endAt(''),
+      limitToFirst(8),
+    )));
+    logOk('a range spanning the whole directory cannot be used to page through it');
 
-    await assertFails(set(ref(playerDb, 'localpoker/handles/new_shark'), 'player'));
+    await assertFails(get(query(
+      ref(playerDb, 'localpoker/handles'),
+      orderByKey(),
+      startAt('h'),
+      endAt('h'),
+      limitToFirst(8),
+    )));
+    logOk('a one character prefix is refused');
+
+    await assertFails(get(query(
+      ref(playerDb, 'localpoker/handles'),
+      orderByKey(),
+      startAt('host_ace'),
+      endAt('zzzz'),
+      limitToFirst(8),
+    )));
+    logOk('a cursor range that is not one prefix is refused');
+
+    // One handle per account. A claim is only accepted alongside the profile
+    // pointing at it, so a bare claim, which builds 63 to 65 still send first,
+    // is refused.
+    await assertFails(set(ref(strangerDb, 'localpoker/handles/squatted'), 'stranger'));
+    logOk('a bare handle claim with no profile pointing at it is refused');
+
+    await assertFails(update(ref(strangerDb), {
+      'localpoker/handles/squat_one': 'stranger',
+      'localpoker/handles/squat_two': 'stranger',
+      'localpoker/users/stranger': { handle: 'squat_one', displayName: 'Squatter', updatedAt: 1 },
+    }));
+    logOk('two claims in one write are refused, since the profile names only one');
+
+    await assertSucceeds(update(ref(strangerDb), {
+      'localpoker/handles/new_shark': 'stranger',
+      [`localpoker/handles/${users.stranger.handle}`]: null,
+      'localpoker/users/stranger': { handle: 'new_shark', displayName: 'Table Ghost', updatedAt: 2 },
+    }));
+    logOk('claim, profile and release land together in one write');
+
+    await assertFails(update(ref(playerDb), {
+      'localpoker/handles/new_shark': 'player',
+      'localpoker/users/player': { handle: 'new_shark', displayName: 'River Shark', updatedAt: 3 },
+    }));
     logOk('claimed handle cannot be overwritten');
 
     await assertFails(set(ref(playerDb, 'localpoker/handles/forged_owner'), 'host'));
     logOk('user cannot claim a handle for another uid');
 
+    await assertFails(update(ref(strangerDb), {
+      'localpoker/handles/hopped_to': 'stranger',
+      'localpoker/users/stranger': { handle: 'hopped_to', displayName: 'Table Ghost', updatedAt: 4 },
+    }));
+    logOk('moving the profile to a new handle without releasing the old one is refused');
+
     // Renaming was impossible for a while: the app froze the first name it
     // published, so a rename silently reverted and friends searching the new
-    // name found nobody. This walks the whole sequence the app now performs.
-    await assertSucceeds(set(ref(strangerDb, 'localpoker/handles/renamed_to'), 'stranger'));
-    await assertSucceeds(set(ref(strangerDb, 'localpoker/users/stranger'), {
-      handle: 'renamed_to',
-      displayName: 'Renamed To',
-      updatedAt: Date.now(),
+    // name found nobody. This is the single write the app now performs.
+    await assertSucceeds(update(ref(strangerDb), {
+      'localpoker/handles/renamed_to': 'stranger',
+      'localpoker/handles/new_shark': null,
+      'localpoker/users/stranger': { handle: 'renamed_to', displayName: 'Renamed To', updatedAt: Date.now() },
     }));
-    await assertSucceeds(set(ref(strangerDb, 'localpoker/handles/new_shark'), null));
     logOk('user can rename: claim the new handle, repoint the profile, release the old');
+
+    await assertSucceeds(set(ref(strangerDb, 'localpoker/users/stranger'), {
+      handle: 'renamed_to', displayName: 'Renamed Again', updatedAt: Date.now(),
+    }));
+    logOk('a profile edit that keeps its handle needs no claim, which is what old builds send');
+
+    await assertFails(set(ref(strangerDb, 'localpoker/users/stranger'), {
+      handle: 'renamed_to', displayName: 'Renamed To', updatedAt: 5, junk: 'x'.repeat(1000),
+    }));
+    logOk('a directory entry refuses fields it does not define');
 
     await assertFails(set(ref(playerDb, 'localpoker/handles/renamed_to'), null));
     logOk('user cannot release a handle somebody else holds');
@@ -291,6 +368,9 @@ function logOk(message) {
     await assertFails(set(ref(playerDb, 'localpoker/presence/host'), { online: false, lastSeen: 21 }));
     logOk('a user cannot rewrite someone else presence');
 
+    await assertFails(get(ref(strangerDb, 'localpoker/presence/host')));
+    logOk('a stranger cannot read presence');
+
     await assertFails(set(ref(hostDb, 'localpoker/presence/host'), { online: 'yes', lastSeen: 20 }));
     logOk('presence rejects a malformed record');
 
@@ -332,14 +412,45 @@ function logOk(message) {
     await assertFails(get(ref(strangerDb, 'localpoker/pushTokens/host')));
     logOk('a stranger cannot read a push token');
 
-    // A pending request is the one other way in, so a friend request can
-    // notify before the friendship exists. It ends when the request does.
-    await assertSucceeds(set(ref(strangerDb, 'localpoker/friendRequests/host/stranger'), {
-      fromUid: 'stranger', fromHandle: users.stranger.handle, fromName: users.stranger.displayName,
-      createdAt: 33, status: 'pending',
-    }));
-    await assertSucceeds(get(ref(strangerDb, 'localpoker/pushTokens/host')));
-    logOk('a pending requester can read a token, and only while pending');
+    // A pending request used to be a way in, so a request could notify. Since
+    // anyone can send one, that handed any stranger the token. Not any more.
+    // The stranger renamed to `renamed_to` above, so that is their real handle.
+    await assertSucceeds(update(ref(strangerDb), withBump('stranger', 'friendRequest',
+      'localpoker/friendRequests/host/stranger', {
+        fromUid: 'stranger', fromHandle: 'renamed_to', fromName: users.stranger.displayName,
+        createdAt: serverTimestamp(), status: 'pending',
+      })));
+    await assertFails(get(ref(strangerDb, 'localpoker/pushTokens/host')));
+    logOk('a pending requester can no longer read the recipient push token');
+
+    await assertFails(get(ref(strangerDb, 'localpoker/presence/host')));
+    logOk('nor their presence, which is for accepted friends only');
+
+    // Impersonation: fromHandle is shown to the recipient, so it must be the
+    // sender's own claimed handle.
+    await setStamp('stranger', 'friendRequest', null);
+    await assertFails(update(ref(strangerDb), withBump('stranger', 'friendRequest',
+      'localpoker/friendRequests/player/stranger', {
+        fromUid: 'stranger', fromHandle: users.host.handle, fromName: 'Host Ace',
+        createdAt: serverTimestamp(), status: 'pending',
+      })));
+    logOk('a friend request cannot claim somebody else handle');
+
+    await setStamp('stranger', 'friendRequest', null);
+    await assertFails(update(ref(strangerDb), withBump('stranger', 'friendRequest',
+      'localpoker/friendRequests/player/stranger', {
+        fromUid: 'stranger', fromHandle: 'renamed_to', fromName: 'Table Ghost',
+        createdAt: 1, status: 'pending',
+      })));
+    logOk('a friend request must carry the server timestamp');
+
+    await setStamp('stranger', 'friendRequest', null);
+    await assertFails(update(ref(strangerDb), withBump('stranger', 'friendRequest',
+      'localpoker/friendRequests/player/stranger', {
+        fromUid: 'stranger', fromHandle: 'renamed_to', fromName: 'Table Ghost',
+        createdAt: serverTimestamp(), status: 'pending', note: 'x'.repeat(5000),
+      })));
+    logOk('a friend request refuses fields it does not define');
 
     // The join path. A joiner has to establish the room exists before seating
     // themselves, and the old rule denied exactly that read, so nobody who was
@@ -419,6 +530,33 @@ function logOk(message) {
     }));
     logOk('and nobody can act on another player behalf');
 
+    // Push keys are readable by every seat, so without the data check a
+    // seated guest could replace somebody else's queued action with their
+    // own. (The host can already write the whole room; that is the trust
+    // model, not this gap.)
+    await assertFails(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/a2': { playerId: 'player', type: 'fold', seq: 3, ts: 57 },
+      'localpoker/rooms/PLAY1/actionSeq': 3,
+    }));
+    logOk('a seated player cannot overwrite another player queued action');
+
+    await assertFails(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/fat': { playerId: 'player', type: 'call', seq: 3, ts: 58, blob: 'x'.repeat(5000) },
+      'localpoker/rooms/PLAY1/actionSeq': 3,
+    }));
+    logOk('an action refuses fields it does not define');
+
+    // A lobby is readable by anyone signed in, so an open-ended room was
+    // free storage that every joiner downloaded.
+    await assertFails(set(ref(hostDb, 'localpoker/rooms/PLAY1/junk'), 'x'.repeat(5000)));
+    logOk('a room refuses top-level fields it does not define');
+
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/PLAY1/visibility': 'private',
+      'localpoker/rooms/PLAY1/hostName': 'Host',
+    }));
+    logOk('but still takes the visibility and host name the app writes');
+
     // The client used to send Date.now() as the sequence number, which asks to
     // jump the counter from 0 to about 1.7e12. The cap that stops anyone
     // exhausting the sequence refused it, so every action in every hand was
@@ -435,6 +573,12 @@ function logOk(message) {
       'localpoker/rooms/PLAY1/actionSeq': 3,
     }));
     logOk('and simply taking the next number is accepted');
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/rooms/PLAY1/actions/bet4': { playerId: 'player', type: 'raise', amount: 40, seq: 4, ts: serverTimestamp() },
+      'localpoker/rooms/PLAY1/actionSeq': 4,
+    }));
+    logOk('a full action with an amount and server time is still accepted');
 
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await set(ref(ctx.database(), 'localpoker/rooms/CLOSE1'), {
@@ -612,9 +756,44 @@ function logOk(message) {
      * `npm run deploy:rules`.
      */
     await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
-      type: 'palMotion', value: 'wave', ts: 65,
+      type: 'palMotion', value: 'wave', ts: 1060,
     }));
     logOk('a pal motion is an allowed reaction kind');
+
+    /*
+     * The rate limit. Each reaction's stamp has to move a second past the
+     * last and may not run more than a minute ahead of the server, so a
+     * modified client gets a bounded burst and then one a second.
+     */
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'emoji', value: '\u{1F525}', ts: 1500,
+    }));
+    logOk('a reaction less than a second after the last is refused');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'emoji', value: '\u{1F525}', ts: Date.now() + 10 * 60 * 1000,
+    }));
+    logOk('a reaction stamped far in the future is refused, so the gate cannot be pre-spent');
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'text', value: 'All in!', ts: 2060,
+    }));
+    logOk('a typed reaction is allowed');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'text', value: 'shit hand', ts: 3060,
+    }));
+    logOk('a typed reaction with a slur is refused');
+
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'emoji', value: '\u{1F44D}', ts: serverTimestamp(),
+    }));
+    logOk('a reaction stamped with server time, as the app now sends, is accepted');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/emotes/player'), {
+      type: 'emoji', value: '\u{1F44D}', ts: serverTimestamp(),
+    }));
+    logOk('and an immediate second one is refused by the one-a-second gate');
 
     /*
      * Tabling your hand.
@@ -638,7 +817,7 @@ function logOk(message) {
     logOk('the flag has to be a boolean, not a payload');
 
     await assertSucceeds(update(ref(hostDb), {
-      'localpoker/rooms/PLAY1/state': { version: 1, handNumber: 9, street: 'preflop' },
+      'localpoker/rooms/PLAY1/publicState': { ...validPublicState, handNumber: 9 },
       'localpoker/rooms/PLAY1/shown': null,
     }));
     logOk('the host clears every tabled hand as part of publishing the next one');
@@ -683,7 +862,7 @@ function logOk(message) {
     logOk('the host marks only their own readiness as a player');
 
     await assertSucceeds(update(ref(hostDb), {
-      'localpoker/rooms/PLAY1/state': { version: 1, handNumber: 11, street: 'preflop' },
+      'localpoker/rooms/PLAY1/publicState': { ...validPublicState, handNumber: 11 },
       'localpoker/rooms/PLAY1/handReady': null,
     }));
     logOk('the host clears readiness as part of publishing the next hand');
@@ -713,7 +892,7 @@ function logOk(message) {
     logOk('a player cannot take back an exposed card');
 
     await assertSucceeds(update(ref(hostDb), {
-      'localpoker/rooms/PLAY1/state': { version: 1, handNumber: 10, street: 'preflop' },
+      'localpoker/rooms/PLAY1/publicState': { ...validPublicState, handNumber: 10 },
       'localpoker/rooms/PLAY1/exposed': null,
     }));
     logOk('the host clears every exposed card as part of publishing the next one');
@@ -981,8 +1160,48 @@ function logOk(message) {
     await assertSucceeds(get(ref(playerDb, 'localpoker/views/ROOM12/player')));
     logOk('player can read own private view');
 
-    await assertSucceeds(set(ref(playerDb, playerRequestPath), friendRequest));
-    logOk('sender can create pending request to another player');
+    await assertSucceeds(update(ref(playerDb), withBump('player', 'friendRequest',
+      playerRequestPath, { ...friendRequest, createdAt: serverTimestamp() })));
+    logOk('sender can create pending request to another player, bumping their throttle');
+    // Accepting rewrites the record and the rules insist createdAt is
+    // unchanged, so later steps must carry the server's value, not the fixture's.
+    friendRequest.createdAt = (await get(ref(playerDb, playerRequestPath))).val().createdAt;
+
+    const toStranger = 'localpoker/friendRequests/stranger/player';
+    const playerRequest = () => ({ ...friendRequest, createdAt: serverTimestamp() });
+
+    await assertFails(update(ref(playerDb), withBump('player', 'friendRequest', toStranger, playerRequest())));
+    logOk('a second friend request straight after is refused by the ten second gap');
+
+    await setStamp('player', 'friendRequest', Date.now() - 11000);
+    await assertSucceeds(update(ref(playerDb), withBump('player', 'friendRequest', toStranger, playerRequest())));
+    logOk('and accepted once the gap has passed');
+
+    // Delete-and-resend is the spam this exists for: the sender may withdraw
+    // a request, but resending it is throttled like any other.
+    await assertSucceeds(set(ref(playerDb, toStranger), null));
+    await setStamp('player', 'friendRequest', null);
+    await assertFails(set(ref(playerDb, toStranger), playerRequest()));
+    logOk('a friend request without the throttle bump in the same write is refused');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rateLimits/host/friendRequest'), serverTimestamp()));
+    logOk('nobody can write somebody else throttle stamp');
+
+    await assertFails(get(ref(playerDb, 'localpoker/rateLimits/host')));
+    logOk('nor read it');
+
+    await setStamp('player', 'friendRequest', Date.now() - 60000);
+    await assertSucceeds(get(ref(playerDb, 'localpoker/rateLimits/player')));
+    logOk('the owner can read their own, which is how the app explains a refusal');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rateLimits/player/friendRequest'), null));
+    logOk('and cannot delete it, which would reset the clock');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rateLimits/player/friendRequest'), Date.now() - 60000));
+    logOk('or backdate it: a stamp must be the server now');
+
+    await assertFails(set(ref(playerDb, 'localpoker/rateLimits/player/other'), serverTimestamp()));
+    logOk('and only the two known throttles exist');
 
     await assertFails(update(ref(playerDb, playerRequestPath), { ...friendRequest, status: 'accepted' }));
     logOk('sender cannot accept their own request');
@@ -1134,6 +1353,26 @@ function logOk(message) {
     await assertSucceeds(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary()));
     logOk('host can advertise their own public room');
 
+    await assertSucceeds(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary({
+      gameMode: 'tournament', updatedAt: serverTimestamp(),
+    })));
+    logOk('a summary with a game mode and server time, as the app now sends, is accepted');
+
+    await assertFails(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary({ junk: 'x'.repeat(5000) })));
+    logOk('a public listing refuses fields a summary does not carry');
+
+    await assertFails(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary({ status: 'x'.repeat(100) })));
+    logOk('a public listing status is length capped');
+
+    await assertFails(set(ref(hostDb, 'localpoker/publicRooms/ROOM12'), summary({ updatedAt: Date.now() + 24 * 60 * 60 * 1000 })));
+    logOk('a public listing cannot be stamped in the future to pin it at the top');
+
+    await assertFails(set(ref(hostDb, 'localpoker/roomInvites/player/ROOM12'), summary({ visibility: 'private', junk: 'x'.repeat(5000) })));
+    logOk('an invite refuses fields a summary does not carry');
+
+    await assertFails(set(ref(hostDb, 'localpoker/roomInvites/player/ROOM12'), summary({ visibility: 'private', status: 'x'.repeat(100) })));
+    logOk('an invite status is length capped');
+
     await assertSucceeds(get(ref(strangerDb, 'localpoker/publicRooms')));
     logOk('anyone signed in can browse the public lobby');
 
@@ -1178,13 +1417,15 @@ function logOk(message) {
     }));
     logOk('user cannot write another user block list');
 
-    await assertFails(set(ref(strangerDb, 'localpoker/friendRequests/player/stranger'), {
-      fromUid: 'stranger',
-      fromHandle: users.stranger.handle,
-      fromName: users.stranger.displayName,
-      createdAt: 6,
-      status: 'pending',
-    }));
+    await setStamp('stranger', 'friendRequest', null);
+    await assertFails(update(ref(strangerDb), withBump('stranger', 'friendRequest',
+      'localpoker/friendRequests/player/stranger', {
+        fromUid: 'stranger',
+        fromHandle: 'renamed_to',
+        fromName: users.stranger.displayName,
+        createdAt: serverTimestamp(),
+        status: 'pending',
+      })));
     logOk('blocked user cannot send a friend request to blocker');
 
     /*
@@ -1216,15 +1457,33 @@ function logOk(message) {
     await assertSucceeds(get(ref(hostDb, 'localpoker/pushTokens/player')));
     logOk('while a current friend can, which is the edge blocking removes');
 
-    await assertSucceeds(set(ref(playerDb, 'localpoker/reports/report1'), {
-      reporterUid: 'player',
-      reportedUid: 'host',
-      reportedName: users.host.displayName,
-      context: 'friends',
-      category: 'offensive_content',
-      createdAt: 7,
-    }));
-    logOk('user can create an offensive content report');
+    const report = (over = {}) => ({
+      reporterUid: 'player', reportedUid: 'host', reportedName: users.host.displayName,
+      context: 'friends', category: 'offensive_content', createdAt: serverTimestamp(), ...over,
+    });
+
+    await assertSucceeds(update(ref(playerDb), withBump('player', 'report', 'localpoker/reports/report1', report())));
+    logOk('user can create an offensive content report, bumping their throttle');
+
+    await assertFails(update(ref(playerDb), withBump('player', 'report', 'localpoker/reports/report1b', report())));
+    logOk('a second report straight after is refused by the thirty second gap');
+
+    await setStamp('player', 'report', Date.now() - 31000);
+    await assertSucceeds(update(ref(playerDb), withBump('player', 'report', 'localpoker/reports/report1c', report())));
+    logOk('and accepted once the gap has passed');
+
+    await setStamp('player', 'report', null);
+    await assertFails(set(ref(playerDb, 'localpoker/reports/report1d'), report()));
+    logOk('a report without the throttle bump in the same write is refused');
+
+    await setStamp('player', 'report', null);
+    await assertFails(update(ref(playerDb), withBump('player', 'report', 'localpoker/reports/report2', report({ createdAt: 7 }))));
+    logOk('a report must carry the server timestamp');
+
+    await setStamp('player', 'report', null);
+    await assertFails(update(ref(playerDb), withBump('player', 'report', 'localpoker/reports/report3',
+      report({ evidence: 'x'.repeat(100000) }))));
+    logOk('a report refuses fields it does not define, so it is not a free upload sink');
 
     await assertFails(get(ref(playerDb, 'localpoker/reports/report1')));
     logOk('reporter cannot read reports');

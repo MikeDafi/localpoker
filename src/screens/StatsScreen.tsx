@@ -21,6 +21,7 @@ import { useApp, derivedStats } from '../state/AppContext';
 import { InfoDot, InfoNote } from '../components/InfoDot';
 import { PROFILE_STAT_KEYS, STAT_HELP, statHelpText, type StatKey } from '../game/statHelp';
 import { buildStatsViz } from '../game/statsViz';
+import { stackHistoryEnds } from '../game/stats';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Stats'>;
@@ -87,7 +88,13 @@ export function StatsScreen({ navigation }: Props) {
           <WiiPanel>
             <Text style={styles.section}>Stack history</Text>
             {stats.chipHistory.length >= 2 ? (
-              <LineChart data={stats.chipHistory} width={chartW} height={140} />
+              <LineChart
+                data={stats.chipHistory}
+                width={chartW}
+                height={160}
+                yTitle="Chips after each hand"
+                xEnds={stackHistoryEnds(stats, Date.now())}
+              />
             ) : (
               <Text style={styles.empty}>Play a few hands to see your stack trend.</Text>
             )}

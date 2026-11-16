@@ -13,11 +13,18 @@ import { captureError } from '../telemetry';
  * POST and needs no server secret.
  *
  * That makes **read scope the entire security question**. A push token is a
- * capability: anyone who can read yours can notify you, repeatedly, from
- * anywhere. So tokens are readable only where a legitimate send exists, which
- * for the two events we support means the reader is already an accepted friend.
- * Writing is restricted to the owner. The rules enforce both; this module must
- * not be the only thing standing between a token and a stranger.
+ * capability: anyone who can read yours can notify you, with any text,
+ * repeatedly, from anywhere, and this module's rate limit binds only clients
+ * that run it. So the rules let only the owner and accepted friends read a
+ * token, and only the owner write it; this module must not be the only thing
+ * standing between a token and a stranger.
+ *
+ * That leaves one event that sends: room invites, which already require the
+ * friendship. Friend requests used to send too, which needed the token
+ * readable by a pending requester, which is to say by anyone. They no longer
+ * push; the recipient's own listener shows them. Restoring a request push, or
+ * locking sends down further with Expo's access-token check, both need a
+ * trusted server to hold the credential, which Spark does not have.
  *
  * Deliberately not covered: turn alerts. They would fire on every action, which
  * is the fastest way to make an app feel like spam and get notifications turned

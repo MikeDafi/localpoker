@@ -13,7 +13,7 @@ import { AnimatedPal } from '../components/AnimatedPal';
 import { CoachMark, useCoachTarget } from '../components/CoachMark';
 import { useTutorialFlow } from '../components/useTutorialFlow';
 import { TUTORIAL_COPY, TUTORIAL_SAMPLE_ROOMS, TUTORIAL_SAMPLE_SEATS } from '../game/tutorial';
-import { palFromSeed } from '../avatar/palConfig';
+import { palFromJson, palFromSeed } from '../avatar/palConfig';
 import { isRoomCodeTaken, subscribeOpenRooms, getRoomListingInfo } from '../services/firebase/roomSync';
 import { CODE_LENGTH, filterToCodeAlphabet, isRoomCodeShaped, makeAvailableRoomCode, makeRoomCode, normalizeRoomCode } from '../game/roomCode';
 import type { RoomSummary } from '../services/firebase/types';
@@ -203,63 +203,106 @@ function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats, sample }
       {rooms.length === 0 ? (
         <Text style={styles.note}>{emptyText}</Text>
       ) : (
-        rooms.map((room) => (
-          <View key={room.code} style={[styles.roomRow, { borderLeftColor: accent }]}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.roomTitleRow}>
-                <Text style={styles.friendName} numberOfLines={1}>{room.hostName || 'Someone'}</Text>
-                <View style={[styles.roomBadge, { backgroundColor: accent }]}>
-                  <Text style={styles.roomBadgeText}>{sample ? 'SAMPLE' : tone === 'friends' ? 'FRIEND' : 'PUBLIC'}</Text>
-                </View>
+        rooms.map((room) => {
+          const seated = seats[room.code] ?? [];
+          // The host leads the card. Everyone else is a small row of faces,
+          // so who is hosting reads first and the crowd reads second.
+          const host = seated.find((p) => p.id === room.hostUid) ?? seated[0];
+          const others = seated.filter((p) => p !== host);
+          const hostName = room.hostName || 'Someone';
+          return (
+            /*
+             * The whole card is the target, not only the button. A row of
+             * plain text with a small pill at the end read as a label, and
+             * people tapped the name and got nothing.
+             */
+            <Pressable
+              key={room.code}
+              onPress={() => onJoin(room)}
+              accessibilityRole="button"
+              accessibilityLabel={`Join ${hostName}'s table`}
+              style={({ pressed }) => [styles.roomCard, { borderLeftColor: accent }, pressed && styles.roomCardPressed]}
+            >
+              <View style={[styles.hostRing, { borderColor: accent }]}>
+                {host ? (
+                  <AnimatedPal config={seatPal(host)} size={46} alive />
+                ) : (
+                  // Seats are still loading. A seeded stand-in here would
+                  // flash a stranger's face and then swap, so hold an initial.
+                  <Text style={styles.hostInitial}>{hostName.slice(0, 1).toUpperCase()}</Text>
+                )}
               </View>
-              {/* Faces, so you can see who is already there rather than
-                  deciding from a host name and a blind level alone. */}
-              {/* The faces are the count. Saying "3 seated" next to three
-                  faces is the same fact twice, and the row is narrow enough
-                  that the words were crowding out the stakes. Six fit, and
-                  past that a plain number carries the overflow. */}
-              {(seats[room.code] ?? []).length > 0 && (
-                <View style={styles.seatFaces}>
-                  {(seats[room.code] ?? []).slice(0, 6).map((p) => (
+              <View style={styles.roomBody}>
+                <View style={styles.roomTitleRow}>
+                  <Text style={styles.roomHost} numberOfLines={1}>{hostName}</Text>
+                  <View style={[styles.roomBadge, { backgroundColor: accent }]}>
+                    <Text style={styles.roomBadgeText}>{sample ? 'SAMPLE' : tone === 'friends' ? 'FRIEND' : 'PUBLIC'}</Text>
+                  </View>
+                </View>
+                <Text style={styles.roomMeta} numberOfLines={1}>
+                  {[
+                    // Every table is the same game, but nothing said which.
+                    "Hold'em",
+                    // A missing mode means the room was published by an older
+                    // build, so say nothing rather than guess at cash.
+                    room.gameMode ? GAME_MODE_LABELS[room.gameMode] : null,
+                    `Blinds ${room.smallBlind}/${room.bigBlind}`,
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+                {/* The faces are the count, so no "3 seated" beside them.
+                    Five fit beside the host, and past that a number carries
+                    the overflow. */}
+                <View style={styles.roomFoot}>
+                  {others.slice(0, 5).map((p) => (
                     <View key={p.id} style={styles.seatFace}>
-                      <AnimatedPal config={palFromSeed(p.palSeed || p.id)} size={26} alive />
+                      <AnimatedPal config={seatPal(p)} size={22} alive />
                     </View>
                   ))}
-                  {(seats[room.code] ?? []).length > 6 && (
-                    <Text style={styles.seatOverflow}>{`+${(seats[room.code] ?? []).length - 6}`}</Text>
-                  )}
+                  {others.length > 5 && <Text style={styles.seatOverflow}>{`+${others.length - 5}`}</Text>}
+                  <Text style={styles.roomCode}>{`#${room.code}`}</Text>
                 </View>
-              )}
-              <Text style={styles.note}>
-                {[
-                  `#${room.code}`,
-                  // A missing mode means the room was published by an older
-                  // build, so say nothing rather than guess at cash.
-                  room.gameMode ? GAME_MODE_LABELS[room.gameMode] : null,
-                  `${room.smallBlind}/${room.bigBlind}`,
-                ].filter(Boolean).join(' · ')}
-              </Text>
-            </View>
-            <WiiButton label="Join" variant="blue" size="sm" onPress={() => onJoin(room)} />
-          </View>
-        ))
+              </View>
+              <WiiButton label="Join" variant="blue" size="sm" onPress={() => onJoin(room)} />
+            </Pressable>
+          );
+        })
       )}
     </WiiPanel>
   );
 }
 
+/**
+ * The face a seated player chose, falling back to their seeded one.
+ *
+ * The seats already carry each player's saved Pal. Drawing only from the seed
+ * showed a stranger's face in place of the one they built.
+ */
+const seatPal = (p: { id: string; palSeed?: string; palJson?: string }) =>
+  palFromJson(p.palJson) ?? palFromSeed(p.palSeed || p.id);
+
 const styles = StyleSheet.create({
   listHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 2 },
   listDot: { width: 10, height: 10, borderRadius: 5 },
   listCount: { marginLeft: 'auto', fontFamily: fonts.bold, fontSize: 13, color: colors.inkMuted },
-  roomRow: {
+  roomCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingVertical: spacing.sm, paddingLeft: spacing.md,
-    borderLeftWidth: 3, marginTop: spacing.sm,
+    marginTop: spacing.md, padding: spacing.md,
+    backgroundColor: colors.panelAlt, borderRadius: radii.md,
+    borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4,
   },
-  seatFaces: { flexDirection: 'row', marginTop: 6, marginBottom: 2 },
-  seatOverflow: { fontFamily: fonts.bold, fontSize: 12, color: colors.inkMuted, marginLeft: 4 },
-  seatFace: { marginRight: -8 },
+  roomCardPressed: { transform: [{ scale: 0.98 }], backgroundColor: '#E6F1F8' },
+  hostRing: {
+    width: 54, height: 54, borderRadius: 27, borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.panel,
+  },
+  hostInitial: { fontFamily: fonts.bold, fontSize: 20, color: colors.inkSoft },
+  roomBody: { flex: 1, minWidth: 0 },
+  roomHost: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink, flexShrink: 1 },
+  roomMeta: { fontFamily: fonts.semibold, fontSize: 13, color: colors.inkSoft, marginTop: 3 },
+  roomFoot: { flexDirection: 'row', alignItems: 'center', marginTop: 6, minHeight: 22 },
+  roomCode: { fontFamily: fonts.medium, fontSize: 11, color: colors.inkMuted, marginLeft: 'auto', letterSpacing: 0.5 },
+  seatOverflow: { fontFamily: fonts.bold, fontSize: 12, color: colors.inkMuted, marginLeft: 10 },
+  seatFace: { marginRight: -6 },
   roomTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   roomBadge: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
   roomBadgeText: { fontFamily: fonts.bold, fontSize: 9, color: '#fff', letterSpacing: 0.6 },
