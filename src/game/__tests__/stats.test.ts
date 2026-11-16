@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_STATS, applyHandResult, derivedStats, coinsForHand, mergeStats,
-  COINS_PER_HAND, COINS_WIN_BONUS, COINS_SHOWDOWN_WIN_BONUS, type HandResult, shortWhen, stackHistoryEnds,
+  COINS_PER_HAND, COINS_WIN_BONUS, COINS_SHOWDOWN_WIN_BONUS, type HandResult, shortWhen, stackHistoryEnds, GAMES_KEPT, gameAsStats,
 }  from '../stats';
 
 function result(over: Partial<HandResult> = {}): HandResult {
@@ -166,5 +166,35 @@ describe('stackHistoryEnds', () => {
 
   it('adds the year for a hand from a previous year', () => {
     expect(shortWhen(new Date(2025, 0, 3).getTime(), now)).toBe('Jan 3, 2025');
+  });
+});
+
+describe('per-game records', () => {
+  const hand = (over: Partial<HandResult>) => ({
+    won: false, wentToShowdown: false, wonAtShowdown: false, potWon: 0, net: 0,
+    vpip: false, pfr: false, aggressor: false, endingStack: 1000, ...over,
+  });
+
+  it('keeps each game on its own, beside the lifetime totals', () => {
+    let s = DEFAULT_STATS;
+    s = applyHandResult(s, hand({ won: true, net: 50, at: 10, game: { id: 'g1', kind: 'bots' } })).stats;
+    s = applyHandResult(s, hand({ net: -20, at: 20, game: { id: 'g1', kind: 'bots' } })).stats;
+    s = applyHandResult(s, hand({ net: 5, at: 30, game: { id: 'g2', kind: 'friends' } })).stats;
+    expect(s.handsPlayed).toBe(3);
+    expect(s.games?.map((g) => [g.id, g.handsPlayed, g.netChips])).toEqual([['g1', 2, 30], ['g2', 1, 5]]);
+    expect(s.games?.[0]).toMatchObject({ startedAt: 10, endedAt: 20, handsWon: 1 });
+  });
+
+  it('keeps only the newest 25 games, by when they were last played', () => {
+    let s = DEFAULT_STATS;
+    for (let i = 0; i < 30; i++) s = applyHandResult(s, hand({ at: i, game: { id: `g${i}`, kind: 'bots' } })).stats;
+    s = applyHandResult(s, hand({ at: 99, game: { id: 'g10', kind: 'bots' } })).stats;
+    expect(s.games).toHaveLength(GAMES_KEPT);
+    expect(s.games?.[s.games.length - 1].id).toBe('g10');
+  });
+
+  it('reads a game back in the shape the stats screen draws', () => {
+    const s = applyHandResult(DEFAULT_STATS, hand({ won: true, potWon: 80, net: 40, at: 5, game: { id: 'g', kind: 'bots' } })).stats;
+    expect(gameAsStats(s.games![0])).toMatchObject({ handsPlayed: 1, handsWon: 1, biggestPotWon: 80, netChips: 40 });
   });
 });

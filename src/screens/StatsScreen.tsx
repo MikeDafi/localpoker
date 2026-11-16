@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
@@ -16,18 +16,27 @@ import {
   WinBreakdownChart,
 } from '../components/charts/StatsCharts';
 import { AdBanner, ADS_ENABLED } from '../components/AdBanner';
-import { colors, fonts, spacing, easings } from '../theme/theme';
+import { colors, fonts, radii, spacing, easings } from '../theme/theme';
 import { useApp, derivedStats } from '../state/AppContext';
 import { InfoDot, InfoNote } from '../components/InfoDot';
 import { PROFILE_STAT_KEYS, STAT_HELP, statHelpText, type StatKey } from '../game/statHelp';
 import { buildStatsViz } from '../game/statsViz';
-import { stackHistoryEnds } from '../game/stats';
+import { gameAsStats, shortWhen, stackHistoryEnds } from '../game/stats';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Stats'>;
 
 export function StatsScreen({ navigation }: Props) {
-  const { stats, resetStats } = useApp();
+  const { stats: allStats, resetStats } = useApp();
+  /*
+   * All time by default, or one of the last 25 games. Every panel below reads
+   * `stats`, so picking a game re-draws the whole page for that game alone
+   * rather than adding a second, smaller copy of it.
+   */
+  const [gameId, setGameId] = useState<string | null>(null);
+  const games = [...(allStats.games ?? [])].reverse();
+  const picked = gameId ? games.find((g) => g.id === gameId) ?? null : null;
+  const stats = picked ? gameAsStats(picked) : allStats;
   const d = derivedStats(stats);
   const viz = buildStatsViz(stats);
   const { width } = useWindowDimensions();
@@ -61,6 +70,32 @@ export function StatsScreen({ navigation }: Props) {
     <ScreenBackground variant="menu">
       <ScreenHeader title="My Stats" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
+        {games.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gameChips}>
+            {[null, ...games].map((g) => {
+              const active = (g?.id ?? null) === (picked?.id ?? null);
+              const label = g
+                ? `${shortWhen(g.startedAt, Date.now())} · ${g.netChips >= 0 ? '+' : ''}${g.netChips.toLocaleString()}`
+                : 'All time';
+              return (
+                <Pressable
+                  key={g?.id ?? 'all'}
+                  onPress={() => setGameId(g?.id ?? null)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={[styles.gameChip, active && styles.gameChipActive]}
+                >
+                  <Text style={[styles.gameChipText, active && styles.gameChipTextActive]}>{label}</Text>
+                  {g ? (
+                    <Text style={[styles.gameChipMeta, active && styles.gameChipTextActive]}>
+                      {`${g.kind === 'friends' ? 'Friends' : 'Bots'} · ${g.handsPlayed} hands`}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
         <Animated.View entering={FadeInDown.delay(0).duration(400).easing(Easing.bezier(...easings.out))}>
           <WiiPanel>
             <Text style={styles.section}>Key metrics</Text>
@@ -127,7 +162,7 @@ export function StatsScreen({ navigation }: Props) {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(350).duration(400).easing(Easing.bezier(...easings.out))}>
-          <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onReset} />
+          <WiiButton label="Reset stats" variant="gold" size="md" fullWidth onPress={onReset} />
         </Animated.View>
         {ADS_ENABLED ? (
           <Animated.View entering={FadeInDown.delay(420).duration(400).easing(Easing.bezier(...easings.out))}>
@@ -140,6 +175,12 @@ export function StatsScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  gameChips: { gap: spacing.sm, paddingRight: spacing.sm },
+  gameChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
+  gameChipActive: { backgroundColor: colors.blue, borderColor: colors.blue },
+  gameChipText: { fontFamily: fonts.bold, fontSize: 14, color: colors.ink },
+  gameChipMeta: { fontFamily: fonts.medium, fontSize: 11, color: colors.inkMuted, marginTop: 1 },
+  gameChipTextActive: { color: colors.onBlue },
   section: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink, marginBottom: spacing.md },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '33.33%', paddingVertical: spacing.sm, alignItems: 'center' },

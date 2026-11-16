@@ -2236,6 +2236,9 @@ export function TableScreen({ navigation, route }: Props) {
       pfr: handFlags.current.pfr,
       aggressor: handFlags.current.pfr,
       endingStack,
+      // One sitting: the room for a live table, the seed for bots. A resumed
+      // game keeps both, so it carries on the same record.
+      game: { id: `${roomCode ?? 'bots'}:${String(seed)}`, kind: roomCode ? 'friends' : 'bots' },
     });
     setEarned(coins);
     setSessionHands((n) => n + 1);

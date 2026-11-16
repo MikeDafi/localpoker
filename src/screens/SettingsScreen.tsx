@@ -347,7 +347,9 @@ function AccountSection({
       </View>
 
       <View style={styles.accountBody}>
-        <View style={[styles.accountSummary, compact && styles.accountSummaryCompact]}>
+        {/* Always one row. Phones under 430pt stacked these, and nearly
+            every iPhone is under 430pt, so Name and Wallet took two rows. */}
+        <View style={styles.accountSummary}>
           <AccountFact label="Name" value={name ? `@${name}` : 'Not connected'} />
           <AccountFact label="Wallet" value={`${coins.toLocaleString()} coins`} />
         </View>
@@ -355,7 +357,7 @@ function AccountSection({
         <View style={styles.accountActions}>
           <WiiButton label="Replay tutorial" variant="blue" size="md" fullWidth onPress={onReplayTutorial} />
           <WiiButton label="Log out" variant="white" size="md" fullWidth onPress={onLogout} />
-          <WiiButton label="Reset stats" variant="red" size="md" fullWidth onPress={onResetStats} />
+          <WiiButton label="Reset stats" variant="gold" size="md" fullWidth onPress={onResetStats} />
           <WiiButton
             label={deletingAccount ? 'Deleting account...' : 'Delete account'}
             variant="red"
@@ -759,15 +761,11 @@ const styles = StyleSheet.create({
   },
   accountSummary: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  accountSummaryCompact: {
-    flexDirection: 'column',
-  },
   accountFact: {
-    flexGrow: 1,
-    flexBasis: '48%',
+    flex: 1,
+    minWidth: 0,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,

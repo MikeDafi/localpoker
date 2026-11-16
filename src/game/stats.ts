@@ -22,6 +22,8 @@ export interface Stats {
    * Optional so stats saved by an older build still load.
    */
   chipHistoryAt?: number[];
+  /** The last GAMES_KEPT games, oldest first. Absent in older saves. */
+  games?: GameRecord[];
 }
 
 export interface HandResult {
@@ -36,7 +38,37 @@ export interface HandResult {
   endingStack: number;
   /** When the hand finished, epoch ms. Passed in so this stays pure. */
   at?: number;
+  /** Which game (table sitting) this hand belongs to, for per-game stats. */
+  game?: { id: string; kind: GameKind };
 }
+
+export type GameKind = 'bots' | 'friends';
+
+/**
+ * One game's own numbers: the same counters as the lifetime stats, kept
+ * separately so a single sitting can be looked back at on its own.
+ */
+export interface GameRecord {
+  id: string;
+  kind: GameKind;
+  startedAt: number;
+  endedAt: number;
+  handsPlayed: number;
+  handsWon: number;
+  showdownsSeen: number;
+  showdownsWon: number;
+  biggestPotWon: number;
+  netChips: number;
+  vpipHands: number;
+  pfrHands: number;
+  handsAsAggressor: number;
+  coinsEarned: number;
+  chipHistory: number[];
+  chipHistoryAt: number[];
+}
+
+/** How many past games are kept to look back at. */
+export const GAMES_KEPT = 25;
 
 export const DEFAULT_STATS: Stats = {
   handsPlayed: 0,
@@ -82,6 +114,43 @@ export function alignedTimes(stats: Pick<Stats, 'chipHistory' | 'chipHistoryAt'>
   return [...new Array<number>(n - at.length).fill(0), ...at];
 }
 
+/** Adds one hand to its game's record, starting the record on its first hand. */
+function foldIntoGame(games: GameRecord[], r: HandResult, coinsEarned: number): GameRecord[] {
+  const game = r.game!;
+  const at = r.at ?? 0;
+  const existing = games.find((g) => g.id === game.id);
+  const base: GameRecord = existing ?? {
+    id: game.id, kind: game.kind, startedAt: at, endedAt: at,
+    handsPlayed: 0, handsWon: 0, showdownsSeen: 0, showdownsWon: 0, biggestPotWon: 0,
+    netChips: 0, vpipHands: 0, pfrHands: 0, handsAsAggressor: 0, coinsEarned: 0,
+    chipHistory: [], chipHistoryAt: [],
+  };
+  const next: GameRecord = {
+    ...base,
+    endedAt: Math.max(base.endedAt, at),
+    handsPlayed: base.handsPlayed + 1,
+    handsWon: base.handsWon + (r.won ? 1 : 0),
+    showdownsSeen: base.showdownsSeen + (r.wentToShowdown ? 1 : 0),
+    showdownsWon: base.showdownsWon + (r.wonAtShowdown ? 1 : 0),
+    biggestPotWon: Math.max(base.biggestPotWon, r.won ? r.potWon : 0),
+    netChips: base.netChips + r.net,
+    vpipHands: base.vpipHands + (r.vpip ? 1 : 0),
+    pfrHands: base.pfrHands + (r.pfr ? 1 : 0),
+    handsAsAggressor: base.handsAsAggressor + (r.aggressor ? 1 : 0),
+    coinsEarned: base.coinsEarned + coinsEarned,
+    chipHistory: [...base.chipHistory, r.endingStack].slice(-100),
+    chipHistoryAt: [...base.chipHistoryAt, at].slice(-100),
+  };
+  // The game just played moves to the end, so the newest are kept.
+  return [...games.filter((g) => g.id !== game.id), next].slice(-GAMES_KEPT);
+}
+
+/** One game's record in the shape the stats screen already draws. */
+export function gameAsStats(game: GameRecord): Stats {
+  const { id: _id, kind: _kind, startedAt: _s, endedAt: _e, ...counters } = game;
+  return { ...counters, games: [] };
+}
+
 /** Fold a single completed hand into the running stats. Pure. */
 export function applyHandResult(stats: Stats, r: HandResult): { stats: Stats; coinsEarned: number } {
   const coinsEarned = coinsForHand(r);
@@ -98,6 +167,7 @@ export function applyHandResult(stats: Stats, r: HandResult): { stats: Stats; co
     coinsEarned: stats.coinsEarned + coinsEarned,
     chipHistory: [...stats.chipHistory, r.endingStack].slice(-100),
     chipHistoryAt: [...alignedTimes(stats), r.at ?? 0].slice(-100),
+    games: r.game ? foldIntoGame(stats.games ?? [], r, coinsEarned) : stats.games ?? [],
   };
   return { stats: next, coinsEarned };
 }
