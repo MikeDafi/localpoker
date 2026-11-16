@@ -148,7 +148,6 @@ export function CreateJoinScreen({ navigation }: Props) {
             </View>
             <RoomList
               title="Public tables"
-              hint="Open to anyone."
               rooms={liveRooms.public}
               seats={seats}
               tone="public"
@@ -182,7 +181,8 @@ export function CreateJoinScreen({ navigation }: Props) {
  */
 function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats, sample }: {
   title: string;
-  hint: string;
+  /** Optional: "Public tables" says enough on its own. */
+  hint?: string;
   rooms: readonly RoomSummary[];
   tone: 'friends' | 'public';
   /** Badge the rows as samples, so a tutorial table is never mistaken for a real one. */
@@ -199,7 +199,7 @@ function RoomList({ title, hint, rooms, tone, onJoin, emptyText, seats, sample }
         <Text style={styles.suggestTitle}>{title}</Text>
         <Text style={styles.listCount}>{rooms.length}</Text>
       </View>
-      <Text style={styles.note}>{hint}</Text>
+      {hint ? <Text style={styles.note}>{hint}</Text> : null}
       {rooms.length === 0 ? (
         <Text style={styles.note}>{emptyText}</Text>
       ) : (
