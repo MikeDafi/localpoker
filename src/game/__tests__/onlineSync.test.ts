@@ -163,6 +163,37 @@ describe('host replay protection', () => {
   });
 });
 
+describe('cards flipped at the end of a hand reach everyone', () => {
+  /*
+   * The end-of-hand flip writes exposed/<you>/0 and /1, and the host
+   * republishes. These pin that the host's publish really carries both cards
+   * to the other players, in the two cases the button exists for.
+   */
+  it('publishes the winner\'s flipped cards after a pot won on a fold', () => {
+    let state = startHand(createGame(config, players(['a', 'b']), 'flip-after-fold-win'));
+    const first = state.players[state.currentPlayerIndex].id;
+    const res = applyHostIntent(state, first, { type: 'fold' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    state = res.state;
+    const winner = state.players.find((p) => !p.folded)!;
+    const { publicState } = redactGameState(state, { exposed: { [winner.id]: [true, true] } as never });
+    expect(publicState.players[winner.id].exposedHoleCards).toEqual({ 0: winner.holeCards[0], 1: winner.holeCards[1] });
+  });
+
+  it('publishes a folded player\'s cards when they flip to show what they laid down', () => {
+    let state = startHand(createGame(config, players(['a', 'b']), 'flip-after-folding'));
+    const folder = state.players[state.currentPlayerIndex].id;
+    const res = applyHostIntent(state, folder, { type: 'fold' });
+    if (!res.ok) throw new Error(res.error);
+    state = res.state;
+    const me = state.players.find((p) => p.id === folder)!;
+    expect(me.holeCards).toHaveLength(2);
+    const { publicState } = redactGameState(state, { exposed: { [folder]: [true, true] } as never });
+    expect(publicState.players[folder].exposedHoleCards).toEqual({ 0: me.holeCards[0], 1: me.holeCards[1] });
+  });
+});
+
 describe('host intent validation', () => {
   it('rejects out-of-turn intents', () => {
     const state = startHand(createGame(config, players(), 'out-of-turn'));
