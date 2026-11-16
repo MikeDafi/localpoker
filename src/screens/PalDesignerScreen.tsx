@@ -12,7 +12,6 @@ import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import {
   BG_STYLES,
   BLUSH_STYLES,
-  DEFAULT_PAL,
   EYEBROW_STYLES,
   EYE_STYLES,
   FACIAL_HAIR,
@@ -139,10 +138,12 @@ export function PalDesignerScreen({ navigation }: Props) {
     setPalState(randomPal());
   }, []);
 
+  // Back to the last saved Pal, not the factory one. Reset is an undo for
+  // this visit; wiping a design someone spent time on was never wanted.
   const handleReset = useCallback(() => {
     sound.play('select');
-    setPalState(normalizePal(DEFAULT_PAL));
-  }, []);
+    setPalState(normalizePal(profile.pal));
+  }, [profile.pal]);
 
   const handleSave = useCallback(() => {
     setPal(normalizePal(pal));
