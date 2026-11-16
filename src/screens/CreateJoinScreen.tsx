@@ -137,7 +137,7 @@ export function CreateJoinScreen({ navigation }: Props) {
             <View {...listTarget.props}>
             <RoomList
               title="Friends' tables"
-              hint={coaching ? 'Sample tables, for the tutorial only.' : 'Private tables your friends opened.'}
+              hint={coaching ? 'Sample tables, for the tutorial only.' : undefined}
               rooms={coaching ? TUTORIAL_SAMPLE_ROOMS : liveRooms.friends}
               seats={coaching ? TUTORIAL_SAMPLE_SEATS : seats}
               tone="friends"
