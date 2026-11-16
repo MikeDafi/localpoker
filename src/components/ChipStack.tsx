@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Defs, Ellipse, LinearGradient, Path, Stop } from 'react-native-svg';
 import { colors, fonts } from '../theme/theme';
@@ -173,6 +173,16 @@ function ChipPile({ color, edge, size = 22, count = 1 }: { color: string; edge: 
   );
 }
 
+/**
+ * The chip set of the table these chips are on.
+ *
+ * Chips used to read the viewer's own settings, so at an online table every
+ * player saw their own chip set rather than the host's. The table provides
+ * the host's pinned choice here; outside a table this is null and the
+ * viewer's own settings apply as before.
+ */
+export const TableChipsContext = createContext<ChipPalette | null>(null);
+
 export interface ChipStackProps {
   amount: number;
   size?: number;
@@ -202,7 +212,8 @@ function ChipStackInner({ amount, size = 26, showLabel = true, compact, palette:
     equippedId: cosmetics.equippedByCategory.chips,
     owned: cosmetics.ownedCosmeticIds,
   });
-  const palette = override ?? equipped;
+  const tablePalette = useContext(TableChipsContext);
+  const palette = override ?? tablePalette ?? equipped;
   const stacks = breakdown(amount, palette);
   return (
     <View style={styles.row}>

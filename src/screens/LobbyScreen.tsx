@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Share } from 'react-native';
+import { WaitingForHost } from '../components/WaitingForHost';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenBackground } from '../components/ScreenBackground';
@@ -41,7 +42,7 @@ const parseRoomPal = (palJson?: string): PalConfig | undefined => {
 
 export function LobbyScreen({ navigation, route }: Props) {
   const { roomCode, host, settings: hostSettings } = route.params;
-  const { profile, friends, cosmetics, savedGame } = useApp();
+  const { profile, friends, cosmetics, savedGame, settings: appSettings } = useApp();
   const online = isFirebaseConfigured();
 
   const me: RoomPlayer = useMemo(() => ({
@@ -247,7 +248,9 @@ export function LobbyScreen({ navigation, route }: Props) {
     // as a person to ask along.
     const seated = new Set(Object.keys(room?.players ?? {}));
     return friends
-      .filter((f) => !(f.uid && seated.has(f.uid)))
+      // By uid when the edge has one, else by id: a friend whose record had
+      // no uid slipped through and could be invited to a table they sat at.
+      .filter((f) => !seated.has(f.uid ?? f.id))
       .sort((a, b) => Number(!!b.online) - Number(!!a.online) || a.name.localeCompare(b.name));
   }, [friends, room?.players]);
 
@@ -313,7 +316,7 @@ export function LobbyScreen({ navigation, route }: Props) {
             onPress={startGame}
           />
         ) : (
-          <Text style={styles.waitHost}>Waiting for the host to start…</Text>
+          <WaitingForHost reduceMotion={appSettings.reduceMotion} />
         )}
 
         {/* The code used to be a full panel with 34pt type across the screen,
@@ -332,7 +335,7 @@ export function LobbyScreen({ navigation, route }: Props) {
         <WiiPanel padding={16}>
           <Text style={styles.section}>Invite friends</Text>
           {invitableFriends.length === 0 ? (
-            <Text style={styles.note}>Add friends first, then invite them from here.</Text>
+            <Text style={styles.note}>{friends.length > 0 ? 'Your friends are all here.' : 'Add friends first, then invite them from here.'}</Text>
           ) : (
             invitableFriends.map((f) => (
               <View key={f.id} style={styles.inviteRow}>
@@ -342,10 +345,12 @@ export function LobbyScreen({ navigation, route }: Props) {
                   <Text style={styles.playerMeta}>{f.online ? 'online' : 'offline'}</Text>
                 </View>
                 <WiiButton
-                  label={invited[f.id] ? 'Invited' : 'Invite'}
-                  variant={invited[f.id] ? 'white' : 'blue'}
+                  // Same key the invite is sent with. The label read f.id while
+                  // the invite stored uid, so the button never said Invited.
+                  label={invited[f.uid ?? f.id] ? 'Invited' : 'Invite'}
+                  variant={invited[f.uid ?? f.id] ? 'white' : 'blue'}
                   size="sm"
-                  disabled={invited[f.id]}
+                  disabled={invited[f.uid ?? f.id]}
                   onPress={() => inviteFriend(f.uid ?? f.id)}
                 />
               </View>

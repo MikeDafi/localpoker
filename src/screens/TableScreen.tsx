@@ -61,7 +61,8 @@ import {
   revealComplete,
   startReveal,
 } from '../game/showdownReveal';
-import { resolveCardBack, resolveFelt } from '../game/cosmetics';
+import { resolveCardBack, resolveChips, resolveFelt } from '../game/cosmetics';
+import { TableChipsContext } from '../components/ChipStack';
 import { captureError } from '../services/telemetry';
 import { palFromSeed, normalizePal, type PalConfig } from '../avatar/palConfig';
 import { RootStackParamList } from '../navigation/types';
@@ -2546,8 +2547,30 @@ export function TableScreen({ navigation, route }: Props) {
    * with the room, and a felt is a property of the table. Falls back to the
    * classic green for anything unowned or unrecognised.
    */
+  /*
+   * A guest dresses the table from the host's live room settings, not from
+   * what this phone was handed on joining, so a felt, deck or chip set the
+   * host changes mid-game reaches everyone at the next deal like the rules do.
+   */
+  const lookJson = roomCode && !isOnlineHost ? room?.settingsJson ?? null : null;
+  const look = useMemo((): Pick<GameSettings, 'feltStyle' | 'cardBack' | 'chipStyle'> => {
+    if (lookJson) {
+      try {
+        const host = normalizeSettings(JSON.parse(lookJson) as Partial<GameSettings>);
+        return { feltStyle: host.feltStyle, cardBack: host.cardBack, chipStyle: host.chipStyle };
+      } catch { /* fall through to this table's own settings */ }
+    }
+    return { feltStyle: settings.feltStyle, cardBack: settings.cardBack, chipStyle: settings.chipStyle };
+  }, [lookJson, settings.feltStyle, settings.cardBack, settings.chipStyle]);
+  // The chips follow the host too, like the felt and the card back.
+  const tableChips = resolveChips({
+    setting: look.chipStyle,
+    equippedId: cosmetics.equippedByCategory.chips,
+    owned: cosmetics.ownedCosmeticIds,
+    published: !!roomCode,
+  });
   const feltPalette = resolveFelt({
-    setting: settings.feltStyle,
+    setting: look.feltStyle,
     equippedId: cosmetics.equippedByCategory.tables,
     owned: cosmetics.ownedCosmeticIds,
     // An online room carries the host's pinned choice. See pickStyle.
@@ -2559,7 +2582,7 @@ export function TableScreen({ navigation, route }: Props) {
    * names and no purchase could reach it.
    */
   const cardBack = resolveCardBack({
-    setting: settings.cardBack,
+    setting: look.cardBack,
     equippedId: cosmetics.equippedByCategory.cardBacks,
     owned: cosmetics.ownedCosmeticIds,
     // An online room carries the host's pinned choice. See pickStyle.
@@ -3480,6 +3503,7 @@ export function TableScreen({ navigation, route }: Props) {
   const canExposeHoleCards = !handOver && !human.folded && human.holeCards.length >= 2;
 
   return (
+    <TableChipsContext.Provider value={tableChips}>
     <ScreenBackground variant="felt" edges={['top', 'bottom']}>
       <View style={styles.topBar}>
         <Pressable
@@ -4280,6 +4304,7 @@ export function TableScreen({ navigation, route }: Props) {
       />
       {coach.overlay(!!legal && isHumanTurn && !isAwaitingOnlineState && !runVotingActive && !isShowdown)}
     </ScreenBackground>
+    </TableChipsContext.Provider>
   );
 }
 
