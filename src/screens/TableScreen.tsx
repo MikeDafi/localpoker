@@ -2530,7 +2530,10 @@ export function TableScreen({ navigation, route }: Props) {
    * above both deliberately, so that raising the ceiling is never the thing
    * standing between the board and the felt it has room for.
    */
-  const cardSize = width < 380 ? 68 : 76;
+  // Raised 10% (from 68/76) on request. The empty slots are drawn at the
+  // same size, so they grow with it. Where the oval's width or the lane is
+  // what binds, fitBoardCard still caps the board, so it never reaches the rail.
+  const cardSize = width < 380 ? 75 : 84;
 
   /*
    * The cloth this table is played on.
@@ -2630,6 +2633,11 @@ export function TableScreen({ navigation, route }: Props) {
     ? state.players.find((p) => p.id === tournamentWinnerId)
     : null;
   const humanEliminated = tournament && isEliminated(human, true) && (isShowdown || (!handOver && human.holeCards.length === 0));
+  const resultTitle: string | null = tournamentWinnerId
+    ? tournamentWinnerId === human.id ? '🎉 Tournament champion!' : 'Tournament over'
+    : humanEliminated ? 'Out of tournament'
+      : humanWon ? '🎉 You win!'
+        : remainingAtEnd === 1 && !human.folded ? 'You take it!' : null;
   const lowChips = !tournament && human.chips < state.config.bigBlind * 5;
 
   /*
@@ -3580,7 +3588,13 @@ export function TableScreen({ navigation, route }: Props) {
               }
               const highlighted = verdictShown && winningCardKeys.has(`${card.rank}${card.suit}`);
               return (
-                <View key={`card-${i}-${card.rank}${card.suit}`} style={[styles.boardCardWrap, highlighted && styles.winCard]}>
+                <View key={`card-${i}-${card.rank}${card.suit}`} style={styles.boardCardWrap}>
+                  {/* Drawn at the card's own size rather than as the wrapper's
+                      border, so the ring hugs the card. As a border it took
+                      the wrapper's height and left a band above and below. */}
+                  {highlighted ? (
+                    <View pointerEvents="none" style={[styles.winRing, { width: sdCardSize + 6, height: sdCardSize * CARD_ASPECT + 6 }]} />
+                  ) : null}
                   <DealtCard
                     rank={card.rank}
                     suit={card.suit as any}
@@ -3662,7 +3676,12 @@ export function TableScreen({ navigation, route }: Props) {
           return (
             <Pressable
               key={p.id}
-              style={[styles.seatAbs, { left: pos.left, top: pos.top, width: SEAT_W }]}
+              /*
+               * Lifted while it shows an emote. The bubble's own zIndex only
+               * ranks it inside its seat, so at a full table the neighbouring
+               * seats, drawn after it, covered half of it.
+               */
+              style={[styles.seatAbs, { left: pos.left, top: pos.top, width: SEAT_W }, visibleEmote(p.id) ? styles.seatRaised : null]}
               onLayout={idx === 0 ? (e) => growPod(e.nativeEvent.layout.height) : undefined}
               onPress={() => { sound.play('tap'); openPlayerSafety(p); }}
               accessibilityRole="button"
@@ -3783,7 +3802,9 @@ export function TableScreen({ navigation, route }: Props) {
             // the cards shrinking just read as the hand being taken away.
             // A short phone (SE-sized) gets slightly smaller cards, the only
             // way to buy the turn clock room without pushing the felt up.
-            const cardW = winH < 700 ? 70 : width < 380 ? 76 : 86;
+            // The two smaller tiers were 70 and 76, trimmed 3% on request:
+            // they crowded the flip on a smaller phone.
+            const cardW = winH < 700 ? 68 : width < 380 ? 74 : 86;
             // Out of the hand, or at a showdown where the hand is tabled, the
             // card is simply open - there is nothing left to protect. A hand
             // turned up for a run-out is open for the same reason, early.
@@ -3952,14 +3973,13 @@ export function TableScreen({ navigation, route }: Props) {
             {/* Outcome and winnings share a row. The panel floats over the
                 felt right where the hole cards are, so every line it costs is a
                 line of your own hand you cannot see. */}
+            {/* No "Hand over" title: it said only that the hand had ended,
+                which the cards already show. The winner lines below carry the
+                result and are sized as the headline instead. */}
             <View style={styles.resultHead}>
-              <Text style={styles.resultTitle} numberOfLines={1}>
-                {tournamentWinnerId
-                  ? tournamentWinnerId === human.id ? '🎉 Tournament champion!' : 'Tournament over'
-                  : humanEliminated ? 'Out of tournament'
-                    : humanWon ? '🎉 You win!'
-                      : remainingAtEnd === 1 && !human.folded ? 'You take it!' : 'Hand over'}
-              </Text>
+              {resultTitle ? (
+                <Text style={styles.resultTitle} numberOfLines={1}>{resultTitle}</Text>
+              ) : null}
               {earned !== 0 && (
                 <View style={styles.coinRow}>
                   <View style={styles.coin}><Text style={styles.coinT}>$</Text></View>
@@ -4000,7 +4020,7 @@ export function TableScreen({ navigation, route }: Props) {
                 const p = state.players.find((pp) => pp.id === w.playerId);
                 const name = p ? visiblePlayer(p).name : 'Player';
                 return (
-                  <Text key={w.playerId} style={styles.resultLine} numberOfLines={1}>
+                  <Text key={w.playerId} style={styles.resultWinner} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                     {name} wins {w.amount.toLocaleString()}
                     {w.hand ? ` \u00b7 ${handName(w.hand.category)}` : ''}
                   </Text>
@@ -4737,7 +4757,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold, fontSize: 16, color: colors.onDark, textAlign: 'center', marginTop: 2,
   },
   boardCardWrap: { marginHorizontal: 0, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
-  winCard: { borderColor: colors.gold, backgroundColor: 'rgba(214,180,92,0.16)' },
+  winRing: { position: 'absolute', top: -1, left: -1, borderWidth: 2, borderColor: colors.gold, borderRadius: radii.sm + 2, backgroundColor: 'rgba(214,180,92,0.16)', zIndex: -1 },
   /*
    * Out of the flow, so the cards stay on the table's centre line.
    *
@@ -4857,6 +4877,7 @@ const styles = StyleSheet.create({
   // Low in the hero row, so the gear, Show and chat sit just above the turn
   // timer instead of floating halfway up the cards.
   emoteAnchor: { position: 'absolute', right: spacing.lg, bottom: 30, alignItems: 'flex-end' },
+  seatRaised: { zIndex: 40, elevation: 40 },
   controls: { flex: 1, paddingHorizontal: spacing.lg, minHeight: 140, justifyContent: 'flex-end' },
   waiting: { alignItems: 'center', paddingVertical: spacing.lg },
   rebuyNotice: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, textAlign: 'center', marginTop: spacing.xs },
@@ -4871,6 +4892,7 @@ const styles = StyleSheet.create({
   resultTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.onDark, textAlign: 'center' },
   // Who won what is the line people actually read at the end of a hand, so
   // it is sized to be read at a glance rather than squinted at.
+  resultWinner: { fontFamily: fonts.bold, fontSize: 20, color: colors.onDark, textAlign: 'center', marginTop: 2, ...numeric },
   resultLine: { fontFamily: fonts.medium, fontSize: 15, color: colors.onDarkSoft, textAlign: 'center', marginTop: 2, ...numeric },
   runResultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },
   runResultTag: {

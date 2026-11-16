@@ -139,21 +139,34 @@ export function LiveStatsPanel({
 
         <ScrollView style={{ maxHeight: 340 }}>
           {activeTab === 'you' ? (
-            LIVE_STAT_KEYS.map((key) => {
-              const { value, color } = valueFor(key);
-              return (
-                <View key={key}>
-                  <View style={styles.row}>
-                    <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>{STAT_HELP[key].label}</Text>
-                      <InfoDot label={STAT_HELP[key].label} open={openHelp === key} onPress={() => toggle(key)} />
-                    </View>
-                    <Text style={[styles.rowValue, color ? { color } : null]}>{value}</Text>
-                  </View>
-                  {openHelp === key && <InfoNote>{statHelpText(key)}</InfoNote>}
-                </View>
-              );
-            })
+            /* Laid out exactly like an opponent's card, so you read your
+               own numbers the same way you read theirs, side by side in a
+               grid rather than as a long list. */
+            <View style={styles.oppCard}>
+              <View style={styles.oppGrid}>
+                {LIVE_STAT_KEYS.map((key) => {
+                  const { value, color } = valueFor(key);
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => toggle(key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${STAT_HELP[key].label}: ${value}. Tap for what this means.`}
+                      style={styles.oppCell}
+                    >
+                      <Text style={[styles.oppValue, color ? { color } : null]}>{value}</Text>
+                      <View style={styles.oppCellLabel}>
+                        <Text style={styles.oppLabel}>{STAT_HELP[key].label}</Text>
+                        <InfoDot label={STAT_HELP[key].label} open={openHelp === key} onPress={() => toggle(key)} />
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {LIVE_STAT_KEYS.filter((k) => openHelp === k).map((k) => (
+                <InfoNote key={k}>{statHelpText(k)}</InfoNote>
+              ))}
+            </View>
           ) : (
             (() => {
               const who = opponents.find((o) => o.id === activeTab);

@@ -94,7 +94,8 @@ export const LIVE_STAT_KEYS: StatKey[] = [
   'af',
   'winRate',
   'showdownWin',
-  'handsLifetime',
+  // No lifetime hand count at the table: it never changes during a game and
+  // says nothing about the hand in front of you. This game's count does.
   'handsSession',
   'netChips',
 ];
