@@ -272,7 +272,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       { key: 'startingStack', label: 'Buy-In / Stack', type: 'number', min: 100, max: 1000000, step: 100, presets: [500, 1000, 2000, 5000, 10000, 25000, 50000] },
       { key: 'turnTimerSec', label: 'Turn Timer (s)', type: 'slider', min: 5, max: 60, step: 1 },
-      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public: anyone can join. Private: friends only.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
+      { key: 'roomVisibility', label: 'Room', type: 'select', help: 'Public: anyone. Private: friends.', options: [{ value: 'private', label: 'Private' }, { value: 'public', label: 'Public' }] },
     ],
   },
   {

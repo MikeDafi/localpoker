@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { showAlert } from '../components/alertBus';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -40,6 +40,11 @@ export function CreateJoinScreen({ navigation }: Props) {
   // Shown immediately so hosting never waits on the network, then replaced if
   // the availability check finds that code already belongs to a live room.
   const [roomCode, setRoomCode] = useState(() => makeRoomCode(Crypto.getRandomBytes));
+  // Read from inside the open-rooms listener, which is subscribed once.
+  const roomCodeRef = useRef(roomCode);
+  roomCodeRef.current = roomCode;
+  const coachingRef = useRef(coaching);
+  coachingRef.current = coaching;
   useEffect(() => {
     let active = true;
     makeAvailableRoomCode(isRoomCodeTaken, Crypto.getRandomBytes)
@@ -49,7 +54,25 @@ export function CreateJoinScreen({ navigation }: Props) {
   }, []);
   const [openRooms, setOpenRooms] = useState<{ friends: RoomSummary[]; public: RoomSummary[] }>({ friends: [], public: [] });
 
-  useEffect(() => subscribeOpenRooms(setOpenRooms), []);
+  /*
+   * Nothing to join: go straight to creating one.
+   *
+   * Decided on the first list the server sends, not on the empty list this
+   * screen starts with, or everyone would be sent on before the tables had a
+   * chance to load. Pushed rather than replaced, so Back still lands on the
+   * code box: a friend's private table is only listed to their friends, and a
+   * code is how everyone else gets in. Once per visit, so coming Back does
+   * not bounce you forward again.
+   */
+  const autoCreated = useRef(false);
+  useEffect(() => subscribeOpenRooms((rooms) => {
+    setOpenRooms(rooms);
+    if (autoCreated.current) return;
+    autoCreated.current = true;
+    if (!coachingRef.current && rooms.friends.length === 0 && rooms.public.length === 0) {
+      navigation.navigate('GameSetup', { mode: 'friends', roomCode: roomCodeRef.current });
+    }
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
    * Who is already sitting at each listed table.

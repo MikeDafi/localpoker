@@ -147,7 +147,6 @@ export function GameSetupScreen({ navigation, route }: Props) {
                   this was, and "Cash" or "Tournament" only describes how
                   the blinds behave. */}
               <Text style={styles.gameKind}>{'No-Limit Texas Hold\u2019em'}</Text>
-              <Text style={styles.modeLabel}>{isFriends ? 'Private friends table' : 'Quick play vs bots'}</Text>
             </View>
             {/*
               * Sound is this phone's, not the table's, so it is not one of the
