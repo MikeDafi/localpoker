@@ -1071,6 +1071,87 @@ function logOk(message) {
     }));
     logOk('and clearing it means deleting it, not seizing it');
 
+    /*
+     * Host handoff. A seated player may take over a playing table once the
+     * host has left (its seat is gone) or has been away past the threshold,
+     * and only in the same write that makes their own seat the host's.
+     */
+    const otherDb = testEnv.authenticatedContext('other').database();
+    const handoffRoom = (code, extra = {}, hostSeat = { id: 'host', name: 'Host', seatIndex: 0, chips: 100, isHost: true, connected: true }) => ({
+      code, hostId: 'host', hostName: 'Host', status: 'playing', createdAt: 80, settingsJson: '{}', actionSeq: 0,
+      players: {
+        ...(hostSeat ? { host: hostSeat } : {}),
+        player: { id: 'player', name: 'Player', seatIndex: 1, chips: 100, isHost: false, connected: true },
+        other: { id: 'other', name: 'Other', seatIndex: 2, chips: 100, isHost: false, connected: true },
+      },
+      ...extra,
+    });
+    const claim = (code, uid, name) => ({
+      [`localpoker/rooms/${code}/hostId`]: uid,
+      [`localpoker/rooms/${code}/hostName`]: name,
+      [`localpoker/rooms/${code}/hostAwayAt`]: null,
+      [`localpoker/rooms/${code}/players/${uid}/isHost`]: true,
+      [`localpoker/rooms/${code}/players/${uid}/connected`]: true,
+    });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.database();
+      await set(ref(db, 'localpoker/rooms/HOFF1'), handoffRoom('HOFF1', {}, null));
+      await set(ref(db, 'localpoker/rooms/HOFF2'), handoffRoom('HOFF2'));
+      await set(ref(db, 'localpoker/rooms/HOFF3'), handoffRoom('HOFF3', { hostAwayAt: Date.now() - 60_000 },
+        { id: 'host', name: 'Host', seatIndex: 0, chips: 100, isHost: true, connected: false }));
+      await set(ref(db, 'localpoker/rooms/HOFF4'), handoffRoom('HOFF4', { hostAwayAt: Date.now() - 2_000 },
+        { id: 'host', name: 'Host', seatIndex: 0, chips: 100, isHost: true, connected: false }));
+      await set(ref(db, 'localpoker/rooms/HOFF5'), handoffRoom('HOFF5', { hostAwayAt: Date.now() - 60_000 }));
+      await set(ref(db, 'localpoker/rooms/HOFF6'), handoffRoom('HOFF6', { status: 'lobby' }, null));
+    });
+
+    await assertFails(update(ref(strangerDb), claim('HOFF1', 'stranger', 'Table Ghost')));
+    logOk('a stranger cannot take over a table whose host left');
+
+    await assertFails(update(ref(playerDb), { 'localpoker/rooms/HOFF1/hostId': 'player' }));
+    logOk('a claim must make the claimant\'s own seat the host\'s in the same write');
+
+    await assertFails(update(ref(playerDb), claim('HOFF1', 'other', 'Other')));
+    logOk('nobody can hand the table to somebody else');
+
+    await assertSucceeds(update(ref(playerDb), claim('HOFF1', 'player', 'Player')));
+    logOk('the seated player next in line takes over once the host has left');
+
+    await assertFails(update(ref(otherDb), claim('HOFF1', 'other', 'Other')));
+    logOk('a second claim racing the first is refused, so the table gets one host');
+
+    await assertSucceeds(update(ref(playerDb), {
+      'localpoker/rooms/HOFF1/publicState': validPublicState,
+      'localpoker/rooms/HOFF1/status': 'playing',
+    }));
+    logOk('and the new host may publish the next hand');
+
+    await assertFails(update(ref(playerDb), claim('HOFF2', 'player', 'Player')));
+    logOk('nobody can take over while the host is still at the table');
+
+    await assertSucceeds(update(ref(otherDb), claim('HOFF3', 'other', 'Other')));
+    logOk('a host away past the threshold can be replaced by a seated player');
+
+    await assertFails(update(ref(playerDb), claim('HOFF4', 'player', 'Player')));
+    logOk('but not one who dropped a moment ago');
+
+    await assertFails(update(ref(playerDb), claim('HOFF5', 'player', 'Player')));
+    logOk('nor one marked connected, whatever a stale away marker says');
+
+    await assertFails(update(ref(playerDb), claim('HOFF6', 'player', 'Player')));
+    logOk('a lobby is not taken over, it simply ends with its host');
+
+    // The replaced host comes back as a guest: it may drop its stale flag,
+    // but it cannot keep claiming the role.
+    await assertSucceeds(update(ref(hostDb), {
+      'localpoker/rooms/HOFF3/players/host/isHost': false,
+      'localpoker/rooms/HOFF3/players/host/connected': true,
+    }));
+    logOk('a replaced host can rejoin as a player by giving up its isHost flag');
+
+    await assertFails(set(ref(hostDb, 'localpoker/rooms/HOFF3/players/host/isHost'), true));
+    logOk('and cannot mark itself host again');
+
     await assertFails(update(ref(hostDb), {
       'localpoker/rooms/BADHOST': {
         code: 'BADHOST',

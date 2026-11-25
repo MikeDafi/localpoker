@@ -61,7 +61,20 @@ const hostPlayerFrom = (
   return players.find((player) => !!player && (player.isHost === true || player.id === hostId)) ?? undefined;
 };
 
-const endedReasonFrom = (reason: string | null | undefined): string => {
+const othersAtTable = (
+  players: RoomClosurePlayerMap | null | undefined,
+  hostId: string | null | undefined,
+): number => {
+  if (!players) return 0;
+  const entries: [string, RoomClosurePlayer | null | undefined][] = Array.isArray(players)
+    ? players.map((player, index) => [player?.id ?? String(index), player])
+    : Object.entries(players as Record<string, RoomClosurePlayer | null | undefined>);
+  // By id, not by the isHost flag: a host replaced while away keeps a stale
+  // `isHost: true` on its seat until it comes back, and is a player now.
+  return entries.filter(([id, player]) => !!player && (player.id ?? id) !== hostId).length;
+};
+
+const endedReasonFrom =(reason: string | null | undefined): string => {
   const trimmed = typeof reason === 'string' ? reason.trim() : '';
   return trimmed || HOST_LEFT_REASON;
 };
@@ -77,6 +90,17 @@ export function evaluateRoomClosure(input: RoomClosureInput): RoomClosure {
   }
 
   if (input.status !== 'playing') {
+    return { closed: false };
+  }
+
+  /*
+   * A host who drops off a table that still has two other players is
+   * replaced, not mourned: one of them takes over and deals the next hand
+   * (see hostHandoff.ts). Closing everybody's view here would send them all
+   * home seconds before that happened. With one player left there is nobody
+   * to play against, so that case still closes as it always did.
+   */
+  if (othersAtTable(input.players, input.hostId) >= 2) {
     return { closed: false };
   }
 

@@ -221,6 +221,15 @@ export type NextHandDealInput = {
   hostAskedAt: number | null;
   /** A rebuy window still counting down, which decides on its own clock. */
   rebuyWaiting: boolean;
+  /**
+   * Milliseconds a hand that was just turned over still needs on screen.
+   *
+   * Without it a host who flipped and then tapped Next Hand, with the winner
+   * already ready, dealt in the same second and the flip never reached anyone
+   * (build 67). See `revealHold.ts`. Bounded: each seat can turn its cards
+   * over at most once per card, so this can delay the deal, never stop it.
+   */
+  revealHeldMs?: number;
   now: number;
   timeoutMs?: number;
 };
@@ -253,11 +262,15 @@ export function decideNextHandDeal(input: NextHandDealInput): NextHandDeal {
   // is a player too, and its own countdown is what asks on its behalf.
   if (input.hostAskedAt === null) return idle;
 
+  const held = Math.max(0, input.revealHeldMs ?? 0);
   if (waitingOn.length === 0 && input.readiness.activePlayerIds.length >= 2) {
+    if (held > 0) return { deal: false, reason: null, waitingOn, secondsLeft: Math.ceil(held / 1000) };
     return { deal: true, reason: 'everyone', waitingOn, secondsLeft: null };
   }
 
-  const leftMs = input.hostAskedAt + timeoutMs - input.now;
+  // The deadline waits for a reveal too, but never pushes past it by more
+  // than the reveal's own hold.
+  const leftMs = Math.max(input.hostAskedAt + timeoutMs - input.now, held);
   if (leftMs <= 0) return { deal: true, reason: 'deadline', waitingOn, secondsLeft: 0 };
   return { deal: false, reason: null, waitingOn, secondsLeft: Math.ceil(leftMs / 1000) };
 }

@@ -55,6 +55,8 @@ import {
 } from '../game/holeCardExposure';
 import { playerTapActions } from '../game/playerActions';
 import { botShowsHand, showdownOrder } from '../game/showdownOrder';
+import { isReveal, noteReveal, revealCountdownKey, revealHoldLeftMs, type RevealHold } from '../game/revealHold';
+import { decideHostHandoff } from '../game/hostHandoff';
 import {
   advanceReveal,
   pendingPlayer,
@@ -130,6 +132,8 @@ import {
   subscribeShownHands,
   subscribePrivateView,
   subscribeRoom,
+  claimHost,
+  markPresent,
   type RoomClosureNotice,
   type RoomPrivateView,
   type RoomState,
@@ -182,6 +186,10 @@ const SHOWDOWN_HOLD_SEC = 8;
 
 /** Added to that whenever somebody turns their hand over, so it can be seen. */
 const SHOWDOWN_REVEAL_EXTRA_SEC = 3;
+
+/** How long a refused host claim waits before looking again, and how often it may. */
+const HANDOFF_RETRY_MS = 5_000;
+const HANDOFF_MAX_ATTEMPTS = 6;
 const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 
 const BOT_FOLD_EMOTES: Emote[] = [{ type: 'emoji', value: '😤' }, { type: 'text', value: 'Fold.' }, { type: 'emoji', value: '🙄' }];
@@ -705,7 +713,15 @@ export function TableScreen({ navigation, route }: Props) {
    * left, because the point is a window long enough to be seen and what was
    * left is exactly the part that was too short.
    */
-  const [showdownHold, setShowdownHold] = useState(0);
+  /*
+   * When somebody last turned cards over this hand, rather than a number of
+   * seconds. A constant could not restart anything: the second show set the
+   * same value as the first, and so did the empty event the listener sends
+   * on subscribing, so the restart was spent before a real flip arrived.
+   * See revealHold.ts.
+   */
+  const [revealHold, setRevealHold] = useState<RevealHold>(null);
+  const showdownHold = revealHold?.hand === state.handNumber ? SHOWDOWN_REVEAL_EXTRA_SEC : 0;
 
   /*
    * How long a finished hand is left on screen.
@@ -1285,7 +1301,7 @@ export function TableScreen({ navigation, route }: Props) {
    */
   useEffect(() => {
     setRevealProgress(startReveal());
-    setShowdownHold(0);
+    setRevealHold(null);
     setLocalCardExposure([false, false]);
     /*
      * Here as well as in startNext, which only the dealing device runs. A guest
@@ -1356,7 +1372,7 @@ export function TableScreen({ navigation, route }: Props) {
   const tableBothCards = useCallback(() => {
     setLocalCardExposure([true, true]);
     // Showing is pointless if the hand ends before anybody looks.
-    setShowdownHold(SHOWDOWN_REVEAL_EXTRA_SEC);
+    setRevealHold(noteReveal(stateRef.current.handNumber, Date.now()));
     if (!roomCode || !firebaseOnline) return;
     void revealOwnHand(roomCode);
     void exposeOwnCard(roomCode, 0);
@@ -1755,13 +1771,16 @@ export function TableScreen({ navigation, route }: Props) {
    */
   useEffect(() => {
     if (!roomCode || !firebaseOnline || !isOnlineHost) return undefined;
-    return subscribeShownHands(roomCode, () => {
+    return subscribeShownHands(roomCode, (playerIds) => {
+      // The empty list on subscribing and the clear at a new hand are not
+      // reveals, and must not spend the hold a real one needs.
+      if (!isReveal(playerIds)) return;
       /*
        * A guest tabling their hand has to hold the host's clock too, because
        * the host is the only one who deals the next hand. Without this the
        * reveal arrived and the table moved on anyway.
        */
-      setShowdownHold(SHOWDOWN_REVEAL_EXTRA_SEC);
+      setRevealHold(noteReveal(stateRef.current.handNumber, Date.now()));
       const current = stateToRepublish();
       if (!current || current.street !== 'showdown') return;
       publishHostGameState(roomCode, current)
@@ -1792,6 +1811,96 @@ export function TableScreen({ navigation, route }: Props) {
         });
     });
   }, [roomCode, firebaseOnline, isOnlineHost, noteSync, stateToRepublish]);
+
+  /*
+   * Take the dealer's seat when the host has gone.
+   *
+   * Every guest runs this and they all reach the same answer from the same
+   * roster: the lowest seat claims first and each seat after it waits a
+   * little longer, in case the one ahead has its app suspended. The rules let
+   * exactly one claim through, so a tie costs a refused write, never a second
+   * host. The hand in progress is abandoned and refunded, and the new host
+   * deals the next one (see hostHandoff.ts).
+   *
+   * "Gone since" is when this phone first saw the host's seat empty, because
+   * a host that leaves deletes its seat and leaves no timestamp behind.
+   */
+  const hostGoneSince = useRef<{ hostId: string; at: number } | null>(null);
+  const claimAttempts = useRef<{ hostId: string; count: number }>({ hostId: '', count: 0 });
+  const claimInFlight = useRef(false);
+  const handoffRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [handoffTick, setHandoffTick] = useState(0);
+  useEffect(() => () => { if (handoffRetry.current) clearTimeout(handoffRetry.current); }, []);
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !room || isOnlineHost || !authRoomId) return undefined;
+    const now = Date.now();
+    if (room.players?.[room.hostId]) hostGoneSince.current = null;
+    else if (hostGoneSince.current?.hostId !== room.hostId) hostGoneSince.current = { hostId: room.hostId, at: now };
+
+    const decision = decideHostHandoff({ room, myId: authRoomId, now, hostGoneSince: hostGoneSince.current?.at });
+    if (decision.kind === 'none') return undefined;
+    if (decision.kind === 'wait') {
+      const timer = setTimeout(() => setHandoffTick((t) => t + 1), Math.max(0, decision.checkAt - now) + 50);
+      return () => clearTimeout(timer);
+    }
+    if (claimInFlight.current) return undefined;
+    // Bounded, so a claim the rules keep refusing (a phone whose clock runs
+    // well ahead of the server's) cannot turn into a write loop.
+    if (claimAttempts.current.hostId !== room.hostId) claimAttempts.current = { hostId: room.hostId, count: 0 };
+    if (claimAttempts.current.count >= HANDOFF_MAX_ATTEMPTS) return undefined;
+    claimAttempts.current.count += 1;
+    claimInFlight.current = true;
+    const code = roomCode;
+    claimHost(code)
+      .then((result) => {
+        if (result.ok) {
+          noteSync(true);
+          return;
+        }
+        if (result.state) {
+          // Host now, but the hand did not go out. Try once more before
+          // telling the table it could not be published.
+          publishHostGameState(code, result.state).then((r) => noteSync(r.ok)).catch(() => noteSync(false));
+          return;
+        }
+        // Lost the race, or the host came back. The next room update usually
+        // says which; look again in a while in case nothing changes.
+        if (handoffRetry.current) clearTimeout(handoffRetry.current);
+        handoffRetry.current = setTimeout(() => setHandoffTick((t) => t + 1), HANDOFF_RETRY_MS);
+      })
+      .catch((error: unknown) => {
+        captureError(error, { tags: { area: 'firebase-room-sync', operation: 'claim-host' } });
+      })
+      .finally(() => {
+        claimInFlight.current = false;
+      });
+    return undefined;
+  }, [room, isOnlineHost, authRoomId, roomCode, firebaseOnline, handoffTick, noteSync]);
+
+  /*
+   * Put this seat back on the table after a dropped connection.
+   *
+   * `onDisconnect` marks a seat gone once and nothing marked it back. For the
+   * host that now matters a great deal, because a host still marked away is
+   * one the table will replace. Keyed on what the room says, so it writes
+   * once per stale reading rather than on every update.
+   */
+  const presenceMarked = useRef('');
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !room || !authRoomId || room.status !== 'playing') return;
+    const mine = room.players?.[authRoomId];
+    if (!mine) return;
+    const iAmHost = room.hostId === authRoomId;
+    const stale = mine.connected === false || mine.isHost !== iAmHost || (iAmHost && typeof room.hostAwayAt === 'number');
+    if (!stale) {
+      presenceMarked.current = '';
+      return;
+    }
+    const key = `${String(mine.connected)}:${String(mine.isHost)}:${room.hostId}:${room.hostAwayAt ?? ''}`;
+    if (presenceMarked.current === key) return;
+    presenceMarked.current = key;
+    void markPresent(roomCode);
+  }, [room, authRoomId, roomCode, firebaseOnline]);
 
   /*
    * Give up the seat of anybody who has stopped answering.
@@ -2464,16 +2573,22 @@ export function TableScreen({ navigation, route }: Props) {
       navigation.replace('Home');
       return;
     }
+    // A playing table with two others at it carries on under a new host;
+    // anything smaller closes, as it always did. Mirrors leaveRoom.
+    const handsOver = isOnlineHost && room?.status === 'playing'
+      && Object.keys(room.players ?? {}).filter((id) => id !== authRoomId).length >= 2;
     showAlert(
       'Going back',
-      isOnlineHost
-        ? 'Keep the table open and come back to it, or close it for everyone.'
-        : 'Keep your seat and come back to it, or give it up.',
+      handsOver
+        ? 'Keep the table open and come back to it, or leave and let another player take over as host.'
+        : isOnlineHost
+          ? 'Keep the table open and come back to it, or close it for everyone.'
+          : 'Keep your seat and come back to it, or give it up.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Keep my seat', onPress: () => stepAway() },
         {
-          text: isOnlineHost ? 'Close the table' : 'Give up my seat',
+          text: handsOver ? 'Hand over the table' : isOnlineHost ? 'Close the table' : 'Give up my seat',
           style: 'destructive',
           onPress: () => leaveForGood(),
         },
@@ -2501,13 +2616,14 @@ export function TableScreen({ navigation, route }: Props) {
     navigation.replace('Home');
   };
 
-  /** Actually give the seat up, which for a host closes the room. */
+  /**
+   * Actually give the seat up. For a host, leaveRoom decides: a playing table
+   * with two others at it is handed over, anything smaller is closed.
+   */
   const leaveForGood = () => {
-    const leavePromise = isOnlineHost && roomCode
-      ? endRoom(roomCode, 'Host left the table.')
-      : roomCode
-        ? leaveRoom(roomCode, human.id).then(() => ({ ok: true }))
-        : Promise.resolve({ ok: true });
+    const leavePromise = roomCode
+      ? leaveRoom(roomCode, human.id).then(() => ({ ok: true }))
+      : Promise.resolve({ ok: true });
     leavePromise
       .catch((error) => {
         captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-online-table' } });
@@ -2826,6 +2942,7 @@ export function TableScreen({ navigation, route }: Props) {
     hostId: room?.hostId,
     hostAskedAt: isOnlineHost ? askedAt : null,
     rebuyWaiting: rebuyState.phase === 'waiting',
+    revealHeldMs: revealHoldLeftMs(revealHold, state.handNumber, consentNow),
     now: consentNow,
   });
   consentInputs.current = () => {
@@ -2843,6 +2960,7 @@ export function TableScreen({ navigation, route }: Props) {
       hostId: room?.hostId,
       hostAskedAt: isOnlineHost ? askedAt : null,
       rebuyWaiting: rebuyState.phase === 'waiting',
+      revealHeldMs: revealHoldLeftMs(revealHold, state.handNumber, now),
       now,
     });
     return JSON.stringify([readiness, deal]);
@@ -3022,9 +3140,8 @@ export function TableScreen({ navigation, route }: Props) {
           // a block in any sense the player would recognise, so leaving is
           // part of the action rather than a suggestion afterwards.
           if (roomCode && firebaseOnline) {
-            const away = isOnlineHost
-              ? endRoom(roomCode, 'Host left the table.')
-              : leaveRoom(roomCode, human.id).then(() => ({ ok: true }));
+            // A host leaving hands the table over or closes it; see leaveRoom.
+            const away = leaveRoom(roomCode, human.id).then(() => ({ ok: true }));
             away
               .catch((error) => {
                 captureError(error, { tags: { area: 'firebase-room-sync', operation: 'leave-after-block' } });
@@ -4061,7 +4178,7 @@ export function TableScreen({ navigation, route }: Props) {
                 <TurnTimer
                   seconds={endOfHandSeconds + showdownHold}
                   active
-                  resetKey={`showdown-${state.handNumber}-${showdownHold}`}
+                  resetKey={`showdown-${revealCountdownKey(revealHold, state.handNumber)}`}
                   onExpire={() => { setReveal((r) => (r === 'auto' ? 'muck' : r)); askForNextHand(); }}
                   label="Next hand in"
                 />

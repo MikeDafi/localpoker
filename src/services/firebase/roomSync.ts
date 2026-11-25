@@ -19,7 +19,7 @@ import { sendPush } from './push';
 import type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomRunVote, RoomState, RoomStatus, RoomSummary, RoomVisibility } from './types';
 import { captureError } from '../telemetry';
 import { DEFAULT_GAME_SETTINGS, normalizeSettings, type GameSettings } from '../../game/settings';
-import { blindsForMode, isTournamentMode } from '../../game/gameMode';
+import { blindsForMode, isTournamentMode, tournamentLevelForMode } from '../../game/gameMode';
 import type { HandReadyRecord } from '../../game/handReady';
 import {
   HOST_LEFT_REASON,
@@ -42,6 +42,7 @@ import {
   type PublicGameState,
 } from '../../game/onlineSync';
 import { maskedPublicName } from '../../moderation/contentFilter';
+import { decideHostHandoff, nextHandAfterHandoff } from '../../game/hostHandoff';
 import { createGame, startHand, type GameConfig, type GameState, type PlayerInput } from '../../engine';
 
 export { HOST_DISCONNECTED_REASON, HOST_LEFT_REASON } from '../../game/roomClosure';
@@ -240,6 +241,19 @@ const setCachedHostGame = (code: string, state: GameState, fresh = false): void 
   const cached = hostGameCache.get(roomCode);
   if (cached && !fresh && !atLeastAsFresh(state, cached)) return;
   hostGameCache.set(roomCode, state);
+};
+
+/*
+ * Everything this phone remembers about running a room's game.
+ *
+ * Cleared together: a cache, a last-published copy or a views key left behind
+ * from a stint as host would be compared against the next host's hands, and
+ * a stale `lastPublished` silently drops publishes it thinks are older.
+ */
+const forgetHostedGame = (roomCode: string): void => {
+  hostGameCache.delete(roomCode);
+  lastPublished.delete(roomCode);
+  lastViewsKey.delete(roomCode);
 };
 
 const isRoomAction = (value: unknown): value is RoomAction => {
@@ -1065,7 +1079,12 @@ export const joinRoom = async (code: string, player: RoomPlayer): Promise<Result
     const playerValue = toDbPlayer(player, {
       id: playerId,
       connected: true,
-      ...(seated ? { seatIndex: seated.seatIndex, chips: seated.chips, isHost: seated.isHost } : {}),
+      /*
+       * The role is the room's hostId, not the seat's old flag: a host that
+       * was away long enough to be replaced comes back as a guest, and the
+       * rules only accept a seat whose isHost matches who the host is now.
+       */
+      ...(seated ? { seatIndex: seated.seatIndex, chips: seated.chips, isHost: room?.hostId === playerId } : {}),
     });
     await updateRoot(db, {
       [playerPath(roomCode, playerId)]: playerValue,
@@ -1122,6 +1141,35 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
     await onDisconnect(ref(db, playerConnectedPath(roomCode, cleanPlayerId))).cancel();
     const roomSnapshot = await get(ref(db, roomPath(roomCode)));
     const room = roomSnapshot.exists() ? (roomSnapshot.val() as RoomState) : null;
+    /*
+     * A host leaving a game with at least two other players hands the table
+     * on rather than ending it.
+     *
+     * The host cannot name a successor: the rules only let a uid write
+     * itself into hostId. So it just gets up. Its seat disappearing is the
+     * signal, and the remaining players agree on who takes over from the
+     * roster alone (see hostHandoff.ts). The public state is left behind on
+     * purpose, because the new host deals the next hand from its chip counts.
+     */
+    const othersSeated = Object.keys(room?.players ?? {}).filter((id) => id !== cleanPlayerId).length;
+    if (room?.hostId === cleanPlayerId && room.status === 'playing' && othersSeated >= 2) {
+      // Otherwise this phone dropping later would stamp hostAwayAt onto a
+      // room somebody else is now running.
+      await onDisconnect(ref(db, roomPath(roomCode))).cancel();
+      await updateRoot(db, {
+        [playerPath(roomCode, cleanPlayerId)]: null,
+        [viewPath(roomCode, cleanPlayerId)]: null,
+        [userRoomPath(cleanPlayerId, roomCode)]: null,
+        [`${roomPath(roomCode)}/shown/${cleanPlayerId}`]: null,
+        [`${roomPath(roomCode)}/exposed/${cleanPlayerId}`]: null,
+        [`${roomPath(roomCode)}/handReady/${cleanPlayerId}`]: null,
+        [`${roomPath(roomCode)}/runVotes/${cleanPlayerId}`]: null,
+        [`${roomPath(roomCode)}/hostAwayAt`]: null,
+        ...discoveryTeardown(room, roomCode),
+      });
+      forgetHostedGame(roomCode);
+      return;
+    }
     if (room?.hostId === cleanPlayerId) {
       const updates: Record<string, unknown> = {
         [`${roomPath(roomCode)}/status`]: 'ended',
@@ -1152,7 +1200,7 @@ export const leaveRoom = async (code: string, playerId: string): Promise<void> =
       }
 
       await updateRoot(db, updates);
-      hostGameCache.delete(roomCode);
+      forgetHostedGame(roomCode);
       return;
     }
 
@@ -1338,13 +1386,19 @@ const sortedRoomPlayers = (room: Pick<RoomState, 'hostId' | 'players'>): RoomPla
       return a.seatIndex - b.seatIndex || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     });
 
-const playerMetaFromRoom = (room: Pick<RoomState, 'players'>) =>
+/*
+ * `isHost` is read off the room's hostId, not the seat's own flag. After a
+ * handoff the old host's seat can still say true until its owner comes back
+ * and rewrites it, and only the owner may, so the flag alone would put a host
+ * badge on two seats.
+ */
+const playerMetaFromRoom = (room: Pick<RoomState, 'players'> & Partial<Pick<RoomState, 'hostId'>>) =>
   Object.fromEntries(
     Object.values(room.players ?? {}).map((player) => [
       player.id,
       {
         connected: player.connected,
-        isHost: player.isHost,
+        isHost: room.hostId ? player.id === room.hostId : player.isHost,
         palSeed: player.palSeed,
       },
     ]),
@@ -1629,6 +1683,142 @@ const startRoomGameOnce = async (code: string): Promise<StartRoomGameResult> => 
     reportFirebaseError('start-room-game', error);
     console.warn('Unable to start Firebase room game.', error);
     return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+type ClaimHostResult = Result & { state?: GameState };
+
+/**
+ * Take over as host of a room whose host has gone, and deal the next hand.
+ *
+ * Two writes, in order:
+ *
+ * 1. The claim: hostId, hostName and this seat's isHost, with hostAwayAt
+ *    cleared. The rules accept it only from a seated player, only while the
+ *    current host's seat is empty or it has been away past the threshold and
+ *    is not marked connected. A successful claim leaves a present host behind
+ *    it, so a second claim racing the first is refused. That refusal is what
+ *    makes "two phones both think it is them" safe.
+ * 2. The next hand, published as host through the ordinary path, which also
+ *    clears last hand's actions, reveals, votes and ready flags.
+ *
+ * They cannot be one write, because publicState and the private views are
+ * host-only and the rules judge them against the room as it was before the
+ * claim. If the publish fails it is retried a few times; the claim stands
+ * either way, and this phone holds the dealt game in its cache.
+ */
+export const claimHost = async (code: string): Promise<ClaimHostResult> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return unavailableResult();
+  const me = await authedPlayerId();
+  if (!me) return notSignedInResult();
+
+  try {
+    const snapshot = await get(ref(db, roomPath(roomCode)));
+    if (!snapshot.exists()) return { ok: false, reason: 'Room does not exist.' };
+    const room = snapshot.val() as RoomState;
+    // Rank and stagger are the caller's business; this only asks "may I at all".
+    const decision = decideHostHandoff({ room, myId: me, now: Date.now(), hostGoneSince: 0 });
+    if (decision.kind !== 'claim') return { ok: false, reason: 'The host is still here.' };
+    const mine = room.players?.[me];
+    if (!mine) return { ok: false, reason: 'Not seated at this table.' };
+
+    const settings = settingsFromRoom(room);
+    const nextHandNumber = (room.publicState?.handNumber ?? 0) + 1;
+    /*
+     * The tournament clock is the room's, not the old host's: the level comes
+     * from tournamentStartedAt and the hand number, both published, so the new
+     * host lands on the level everybody else would compute.
+     */
+    const level = tournamentLevelForMode({
+      mode: settings.gameMode,
+      startedAt: room.tournamentStartedAt ?? null,
+      now: Date.now(),
+      handNumber: nextHandNumber,
+      levelLengthHands: settings.blindLevelLengthHands,
+      startSmallBlind: settings.smallBlind,
+    })?.level ?? null;
+    const seated = Object.values(room.players ?? {}).filter((player) => player.id !== room.hostId);
+    const state = room.publicState
+      ? nextHandAfterHandoff({ publicState: room.publicState, seated, seed: `${roomCode}:${me}:${Date.now()}`, level })
+      : null;
+
+    /*
+     * Cached before the claim lands. The claim's own room event makes this
+     * phone the host on screen, and a host with no cache rebuilds itself from
+     * the abandoned hand's public state, which has no deck, and could act on
+     * a stale queued action against it before the new hand is published.
+     */
+    forgetHostedGame(roomCode);
+    if (state) setCachedHostGame(roomCode, state, true);
+    try {
+      await updateRoot(db, {
+        [`${roomPath(roomCode)}/hostId`]: me,
+        [`${roomPath(roomCode)}/hostName`]: (mine.name ?? '').slice(0, 64),
+        [`${roomPath(roomCode)}/hostAwayAt`]: null,
+        [`${playerPath(roomCode, me)}/isHost`]: true,
+        [`${playerPath(roomCode, me)}/connected`]: true,
+      });
+    } catch (error) {
+      forgetHostedGame(roomCode);
+      throw error;
+    }
+    await registerDisconnect(db, roomCode, me, true);
+
+    if (!state) {
+      // Fewer than two stacks left to play with: the table is over, and as
+      // host this phone is now the one allowed to say so.
+      await endRoom(roomCode, TOO_FEW_PLAYERS_REASON);
+      return { ok: false, reason: TOO_FEW_PLAYERS_REASON };
+    }
+
+    let published: Result = { ok: false };
+    for (let attempt = 0; attempt < 3 && !published.ok; attempt += 1) {
+      // Full jitter, so a flaky connection is not hammered in lockstep.
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, Math.random() * 500 * 2 ** attempt));
+      published = await publishHostGameState(roomCode, state);
+    }
+    return published.ok ? { ok: true, state } : { ...published, state };
+  } catch (error) {
+    // A refused claim is the ordinary outcome of losing the race.
+    if (!isPermissionDenied(error)) reportFirebaseError('claim-host', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
+/**
+ * Tell the room this phone is here, after a dropped connection.
+ *
+ * `onDisconnect` fires once. Nothing used to put `connected` back to true or
+ * clear `hostAwayAt` when a phone came back, so a host who blinked looked
+ * away for good, which now means somebody else takes the table over. The
+ * seat's `isHost` is rewritten from the room as well: a host replaced while
+ * away still says true, and the rules refuse every write to that seat that
+ * does not correct it.
+ */
+export const markPresent = async (code: string): Promise<void> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return;
+  const me = await authedPlayerId();
+  if (!me) return;
+  try {
+    const snapshot = await get(ref(db, roomPath(roomCode)));
+    if (!snapshot.exists()) return;
+    const room = snapshot.val() as RoomState;
+    if (room.status === 'ended' || !room.players?.[me]) return;
+    const isHost = room.hostId === me;
+    // A host replaced while away is a guest now. Its old game must not be
+    // mistaken for the table's on the next mount or a later claim.
+    if (!isHost) forgetHostedGame(roomCode);
+    await updateRoot(db, {
+      [`${playerPath(roomCode, me)}/connected`]: true,
+      [`${playerPath(roomCode, me)}/isHost`]: isHost,
+    });
+    await registerDisconnect(db, roomCode, me, isHost);
+  } catch (error) {
+    reportFirebaseError('mark-present', error);
   }
 };
 

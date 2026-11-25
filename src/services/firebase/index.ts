@@ -74,6 +74,8 @@ export {
   isRoomCodeTaken,
   subscribeRoom,
   startRoomGame,
+  claimHost,
+  markPresent,
 } from './roomSync';
 export type { RoomClosureNotice } from './roomSync';
 export type { RoomAction, RoomPlayer, RoomPrivateView, RoomRebuyRequest, RoomState, RoomStatus } from './types';
