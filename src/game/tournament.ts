@@ -125,10 +125,12 @@ export function tournamentWinner(
 /**
  * Whether somebody is out for good.
  *
- * In a tournament, no chips means no seat: there is no rebuy to come back on,
- * which is the entire difference from a cash game. Kept as a function so the
- * rebuy window has one place to ask rather than testing the mode itself in
- * several.
+ * In a tournament, no chips means no more hands: there is no rebuy to come
+ * back on, which is the entire difference from a cash game. It does not mean
+ * no seat. An eliminated player stays at the table as a spectator, dealt out
+ * of every hand by the engine and offered nothing to press, until they leave
+ * or somebody holds every chip. Kept as a function so the rebuy window and
+ * the table have one place to ask rather than testing the mode themselves.
  */
 export function isEliminated(player: { chips: number }, tournament: boolean): boolean {
   return tournament && player.chips <= 0;

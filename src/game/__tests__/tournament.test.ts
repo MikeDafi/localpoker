@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { applyAction, canStartHand, createGame, legalActions, startHand } from '../../engine/holdem';
+import type { GameState } from '../../engine/types';
 import {
   applyBlindLevel,
   blindsDue,
@@ -128,6 +130,51 @@ describe('isEliminated', () => {
 
   it('does not eliminate anybody who still has chips', () => {
     expect(isEliminated({ chips: 1 }, true)).toBe(false);
+  });
+});
+
+/*
+ * An eliminated player stays seated as a spectator (build 67). That is only
+ * safe because the engine deals a zero stack out of every hand and never
+ * hands it the turn, and because a seat holding nothing does not stop the
+ * tournament ending. Both are pinned here against the real engine.
+ */
+describe('an eliminated player left seated', () => {
+  const config = { smallBlind: 10, bigBlind: 20, startingStack: 1000, maxPlayers: 6, turnTimerSec: 30 };
+  const seated = () => createGame(config, [
+    { id: 'you', name: 'You', seatIndex: 0 },
+    { id: 'b', name: 'B', seatIndex: 1, isBot: true },
+    { id: 'c', name: 'C', seatIndex: 2, isBot: true },
+  ], 67);
+  const bust = (state: GameState, ...ids: string[]): GameState => ({
+    ...state,
+    players: state.players.map((pl) => (ids.includes(pl.id) ? { ...pl, chips: 0 } : pl)),
+  });
+
+  it('is dealt out of every hand and never given the turn', () => {
+    let state = startHand(bust(seated(), 'you'));
+    for (let hand = 0; hand < 6; hand += 1) {
+      const you = state.players.find((pl) => pl.id === 'you')!;
+      expect(you.folded).toBe(true);
+      expect(you.holeCards).toEqual([]);
+      for (let step = 0; step < 60 && state.street !== 'showdown'; step += 1) {
+        const actor = state.players[state.currentPlayerIndex]!;
+        expect(actor.id).not.toBe('you');
+        const legal = legalActions(state, actor.id);
+        const res = applyAction(state, actor.id, legal.actions.includes('check') ? 'check' : 'call');
+        expect(res.ok).toBe(true);
+        if (res.ok) state = res.state;
+      }
+      expect(state.street).toBe('showdown');
+      if (!canStartHand(state)) break;
+      state = startHand(state);
+    }
+  });
+
+  it('does not keep the tournament going once one other player holds every chip', () => {
+    const state = bust(seated(), 'you', 'c');
+    expect(tournamentWinner(state.players)).toBe('b');
+    expect(canStartHand(state)).toBe(false);
   });
 });
 
