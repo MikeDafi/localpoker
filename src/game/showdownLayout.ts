@@ -241,6 +241,54 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
   return ordered(rows);
 }
 
+/**
+ * The options `selectShowdownHands` gets for whatever phase the table is in.
+ *
+ * Kept here rather than spelled out in the screen because the phases have to
+ * agree with each other, and the one time they did not is a bug a tester saw.
+ * Two all-in players had their hands face up under the board for the whole
+ * run-out, and the moment the result opened the run-out flags went false and
+ * the row started filtering on the showdown walk's `shownIds`. The walk had
+ * only just begun, so that list was empty: every hand left the row in one
+ * frame, went back to its seat, and then came back to the felt one at a time
+ * as the walk reached it. Worse, a beaten hand the walk then mucked stayed
+ * off the felt entirely, as if a tabled hand could be taken back.
+ *
+ * A hand that was tabled for a run-out is public until the next deal, so for
+ * the rest of the hand nothing filters it: the row is the same hands in the
+ * same seat order, and only the verdict on each one changes.
+ */
+export function showdownRowOptions(phase: {
+  /** The run-out is still being dealt with the hands face up. */
+  runoutTabling: boolean;
+  /** The board under way is complete, so it has a verdict. */
+  runShowdown: boolean;
+  /** The hands were turned up for a run-out at some point this hand. */
+  handsTabled: boolean;
+  /** Whether the local player has shown, for an ordinary showdown. */
+  localCardsShown: boolean;
+  /** Whether the pot was contested, for an ordinary showdown. */
+  contested: boolean;
+  /** Who the showdown walk has turned over so far, for an ordinary showdown. */
+  shownIds?: readonly string[];
+}): Pick<
+  Parameters<typeof selectShowdownHands>[2],
+  'localCardsShown' | 'contested' | 'shownIds' | 'undecided' | 'seatOrder'
+> {
+  const tabled = phase.runoutTabling || phase.handsTabled;
+  return {
+    localCardsShown: tabled ? true : phase.localCardsShown,
+    contested: tabled ? true : phase.contested,
+    shownIds: tabled ? undefined : phase.shownIds,
+    // Face up but nothing decided yet: the board under way has not finished.
+    undecided: phase.runoutTabling && !phase.runShowdown,
+    // The row outlives the board when a hand was turned up for a run-out, so
+    // promoting whoever won the board that just landed would shuffle the
+    // hands sideways under a board that is still changing.
+    seatOrder: phase.handsTabled,
+  };
+}
+
 export interface RevealHand {
   playerId: string;
   /** Centre of each of the two cards, in table-area coordinates. */

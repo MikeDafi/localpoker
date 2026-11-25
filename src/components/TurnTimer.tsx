@@ -10,7 +10,16 @@ export interface TurnTimerProps {
   active: boolean;
   resetKey: string;
   onExpire?: () => void;
-  label?: string;
+  /**
+   * Text beside the seconds. Null draws no label at all, for a timer whose
+   * subject is already named by the line under it.
+   */
+  label?: string | null;
+  /**
+   * A thicker bar and bigger seconds, for the timer that is the main thing on
+   * screen while you wait on somebody else.
+   */
+  size?: 'regular' | 'large';
   /** play a countdown tick during the final seconds (use for the human's turn) */
   warn?: boolean;
   /** wall-clock origin for the countdown; defaults to mount time. Lets a resumed
@@ -25,7 +34,7 @@ export interface TurnTimerProps {
  * second changes. It used to set state ten times a second and resize the bar
  * by width, a re-render and a layout pass every 100 ms of every turn.
  */
-export function TurnTimer({ seconds, active, resetKey, onExpire, label, warn, startedAt }: TurnTimerProps) {
+export function TurnTimer({ seconds, active, resetKey, onExpire, label, warn, startedAt, size = 'regular' }: TurnTimerProps) {
   const [left, setLeft] = useState(Math.ceil(seconds));
   const fill = useSharedValue(1);
   const expired = useRef(false);
@@ -76,13 +85,16 @@ export function TurnTimer({ seconds, active, resetKey, onExpire, label, warn, st
   const pct = Math.max(0, Math.min(1, left / seconds));
   const color = pct > 0.5 ? colors.green : pct > 0.25 ? colors.amber : colors.red;
 
+  const large = size === 'large';
   return (
     <View style={styles.wrap}>
-      <View style={styles.row}>
-        <Text style={styles.label}>{label ?? 'Your turn'}</Text>
-        <Text style={[styles.secs, { color }]}>{left}s</Text>
+      {/* Space-between with one child would pin the seconds to the left, so a
+          label-less row is pushed to the right edge, over the bar's end. */}
+      <View style={[styles.row, label === null && styles.rowSecsOnly]}>
+        {label !== null && <Text style={styles.label}>{label ?? 'Your turn'}</Text>}
+        <Text style={[styles.secs, large && styles.secsLarge, { color }]}>{left}s</Text>
       </View>
-      <View style={styles.track}>
+      <View style={[styles.track, large && styles.trackLarge]}>
         <Animated.View style={[styles.fill, { backgroundColor: color }, barStyle]} />
       </View>
     </View>
@@ -95,7 +107,12 @@ const styles = StyleSheet.create({
   // text, which otherwise jams the label straight into the seconds.
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   label: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDarkSoft },
+  rowSecsOnly: { justifyContent: 'flex-end' },
   secs: { fontFamily: fonts.bold, fontSize: 13, ...numeric },
+  secsLarge: { fontSize: 15 },
   track: { height: 4, borderRadius: radii.pill, backgroundColor: colors.surfaceBorder, overflow: 'hidden' },
+  // Thick enough to read at a glance from arm's length, which a 4pt hairline
+  // under somebody else's name was not.
+  trackLarge: { height: 7 },
   fill: { width: '100%', height: '100%', borderRadius: radii.pill, transformOrigin: 'left' },
 });

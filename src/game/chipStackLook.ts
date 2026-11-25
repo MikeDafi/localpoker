@@ -241,31 +241,59 @@ function parseHex(hex: string): [number, number, number] | null {
  * quite the same size twice, which reads as drift rather than as meaning, and
  * it would reflow the pill on nearly every bet.
  *
- * Measured in big blinds, not in chips, because 1,000 is a monster at 5/10
- * and a limp at 500/1000. A pot is big or small relative to the stakes.
+ * Measured against the stacks in the hand, not in chips or big blinds. Chips
+ * fail because 1,000 is a monster at 5/10 and a limp at 500/1000. Big blinds
+ * were the next attempt and fail more quietly: 60bb is a huge pot for players
+ * who started with 40bb and a routine one for players who started with 400bb,
+ * and testers read the size as "how much of what we have is in there". So the
+ * yardstick is the average stack the players dealt in started the hand with
+ * (`averageStartingStack`), and a pot the size of that stack is as loud as the
+ * number gets.
  */
 export const POT_SIZE_TIERS = [
-  { bigBlinds: 0, fontSize: 22 },
-  { bigBlinds: 8, fontSize: 26 },
-  { bigBlinds: 25, fontSize: 31 },
-  { bigBlinds: 60, fontSize: 36 },
-  { bigBlinds: 150, fontSize: 42 },
+  { stackShare: 0, fontSize: 22 },
+  { stackShare: 0.1, fontSize: 26 },
+  { stackShare: 0.3, fontSize: 31 },
+  { stackShare: 0.6, fontSize: 36 },
+  { stackShare: 1, fontSize: 42 },
 ] as const;
 
 const POT_NARROW_WIDTH = 375;
 const POT_FULL_WIDTH = 430;
 
-export function potFontSize(amount: number, bigBlind: number, screenWidth?: number): number {
+/**
+ * The average stack the players dealt into this hand started it with.
+ *
+ * Chips behind plus chips already committed this hand, which is what each
+ * stack was before the first blind went in, so it does not drift down as the
+ * pot grows (the pot growing is the thing being measured). Folded players are
+ * counted on purpose: they were dealt in, and dropping them would make the pot
+ * change size when somebody folds, which says nothing about the pot. Only read
+ * mid-hand: once a hand is settled `chips` already includes what was won, but
+ * the centre pot is not drawn then either.
+ */
+export function averageStartingStack(
+  players: readonly { id: string; chips: number; holeCards: readonly unknown[]; sittingOut?: boolean }[],
+  contributions: Readonly<Record<string, number>>,
+): number {
+  const dealt = players.filter((p) => p.holeCards.length > 0 && !p.sittingOut);
+  if (dealt.length === 0) return 0;
+  const total = dealt.reduce((sum, p) => sum + Math.max(0, p.chips || 0) + Math.max(0, contributions[p.id] || 0), 0);
+  return total / dealt.length;
+}
+
+export function potFontSize(amount: number, referenceStack: number, screenWidth?: number): number {
   const base: number = POT_SIZE_TIERS[0].fontSize;
   if (!Number.isFinite(amount) || amount <= 0) return base;
-  // A nonsense big blind must not turn the pot into a screenful of digits.
-  const bb = Number.isFinite(bigBlind) && bigBlind > 0 ? bigBlind : 1;
-  const inBigBlinds = amount / bb;
+  // Nothing to measure against, so nothing to say: the smallest size rather
+  // than a division by zero blowing the figure up to the largest one.
+  if (!Number.isFinite(referenceStack) || referenceStack <= 0) return base;
+  const share = amount / referenceStack;
   let size = base;
   let tierIndex = 0;
   let i = 0;
   for (const tier of POT_SIZE_TIERS) {
-    if (inBigBlinds >= tier.bigBlinds) {
+    if (share >= tier.stackShare) {
       size = tier.fontSize;
       tierIndex = i;
     }

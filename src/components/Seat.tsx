@@ -457,6 +457,7 @@ function EmoteBubble({ emote, pal, mine }: { emote: Emote; pal: PalConfig; mine:
   const entering = isText || isGif
     ? FadeInDown.duration(motion.fast).easing(Easing.bezier(...easings.out))
     : ZoomIn.duration(motion.fast).easing(Easing.bezier(...easings.out));
+  const isEmoji = emote.type === 'emoji';
   const textStyle = isText ? [styles.emoteText, styles.messageText] : emote.type === 'sticker' ? styles.emoteSticker : styles.emoteEmoji;
 
   /*
@@ -471,12 +472,23 @@ function EmoteBubble({ emote, pal, mine }: { emote: Emote; pal: PalConfig; mine:
 
   return (
     <View style={[styles.emoteAnchor, isText && (mine ? styles.emoteAnchorMine : styles.emoteAnchorTheirs)]} pointerEvents="none">
-      <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)} style={[styles.emoteBubble, isText && styles.messageBubble, isText && (mine ? styles.messageBubbleMine : styles.messageBubbleTheirs), emote.type === 'sticker' && styles.emoteBubbleSticker, isGif && styles.emoteBubbleGif, shadows.soft]}>
-        {isGif ? (
-          <Image source={{ uri: emote.value }} style={styles.emoteGif} resizeMode="cover" />
-        ) : (
-          <Animated.Text style={[textStyle, animStyle]} numberOfLines={2}>{emote.value}</Animated.Text>
-        )}
+      {/*
+        * The entrance and the loop live on two views. A layout animation and an
+        * animated transform on the same view fight over `transform`.
+        *
+        * The loop moves the whole bubble, not the glyph inside it. On the
+        * glyph, a bounce lifted the emoji 12pt out through the top of the
+        * bubble and a pulse grew it 35% past the sides, which is the emoji
+        * "cut off by the border" a tester reported.
+        */}
+      <Animated.View entering={entering} exiting={FadeOut.duration(motion.instant)}>
+        <Animated.View style={[styles.emoteBubble, isEmoji && styles.emoteBubbleEmoji, isText && styles.messageBubble, isText && (mine ? styles.messageBubbleMine : styles.messageBubbleTheirs), emote.type === 'sticker' && styles.emoteBubbleSticker, isGif && styles.emoteBubbleGif, shadows.soft, animStyle]}>
+          {isGif ? (
+            <Image source={{ uri: emote.value }} style={styles.emoteGif} resizeMode="cover" />
+          ) : (
+            <Text style={textStyle} numberOfLines={2}>{emote.value}</Text>
+          )}
+        </Animated.View>
       </Animated.View>
     </View>
   );
@@ -490,17 +502,35 @@ const styles = StyleSheet.create({
   emoteBubble: {
     backgroundColor: colors.surface, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.surfaceBorderStrong,
     paddingHorizontal: spacing.md, paddingVertical: 5, maxWidth: 150,
+    // Centred both ways, so whatever is inside sits in the middle of the
+    // bubble rather than at the top left of a box sized by somebody else.
+    alignItems: 'center', justifyContent: 'center',
   },
+  /*
+   * A round bubble sized from the emoji's line, not a pill sized by padding.
+   *
+   * iOS draws emoji from Apple Color Emoji, whose glyphs sit higher and run
+   * wider than the line box a 30pt system font reserves, so with no line
+   * height the top of the glyph met the border and the glyph sat off centre.
+   * The line height below gives the glyph its full box, and the minimum size
+   * is that box plus the padding, so a single emoji is a circle with it in
+   * the middle. Two emoji just make it a wider pill.
+   */
+  emoteBubbleEmoji: { minWidth: 50, minHeight: 50, paddingHorizontal: spacing.sm, paddingVertical: 6 },
   messageBubble: { borderWidth: 0, paddingVertical: spacing.sm },
   messageBubbleMine: { backgroundColor: colors.green },
   messageBubbleTheirs: { backgroundColor: colors.panelAlt },
   emoteBubbleSticker: { backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0 },
   emoteBubbleGif: { padding: 3, paddingHorizontal: 3, paddingVertical: 3, borderRadius: radii.md, maxWidth: 120 },
   emoteGif: { width: 96, height: 72, borderRadius: radii.sm },
-  emoteEmoji: { fontSize: 30 },
-  emoteSticker: { fontSize: 44 },
-  emoteText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDark, textAlign: 'center' },
-  messageText: { color: colors.ink, textAlign: 'left' },
+  // Line heights at least 1.2x the size, for the reason on `emoteBubbleEmoji`.
+  emoteEmoji: { fontSize: 28, lineHeight: 36, textAlign: 'center' },
+  emoteSticker: { fontSize: 44, lineHeight: 54, textAlign: 'center' },
+  emoteText: { fontFamily: fonts.semibold, fontSize: 13, lineHeight: 17, color: colors.onDark, textAlign: 'center' },
+  // Centred like every other reaction. These are one or two word quick
+  // reactions capped at 40 characters, not paragraphs, so a ragged left edge
+  // only made a short word look as if it had slid to one side of its bubble.
+  messageText: { color: colors.ink },
   cards: { flexDirection: 'row', marginBottom: 3 },
   podWrap: { alignItems: 'center', justifyContent: 'center' },
   glow: {

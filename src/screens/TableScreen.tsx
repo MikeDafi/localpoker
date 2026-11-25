@@ -11,9 +11,9 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { useTableCoach } from '../components/TableCoach';
 import { tutorialBotDecision } from '../game/tutorial';
 import { ShowdownReveal } from '../components/ShowdownReveal';
-import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands } from '../game/showdownLayout';
+import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdown, selectShowdownHands, showdownRowOptions } from '../game/showdownLayout';
 import { SEAT_GAP, podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
-import { potFontSize } from '../game/chipStackLook';
+import { averageStartingStack, potFontSize } from '../game/chipStackLook';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
 import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
 import {
@@ -981,6 +981,12 @@ export function TableScreen({ navigation, route }: Props) {
   const legal = useMemo(() => (isHumanTurn && human ? legalActions(state, human.id) : null), [state, isHumanTurn, human]);
   const displayedPot = displayedPotAmount(felt);
   const wageringPot = totalCommittedChips(felt);
+  // What the centre pot's size is measured against. From the felt, so during a
+  // run-out it is the stacks as they stood with the chips in the middle.
+  const potReferenceStack = useMemo(
+    () => averageStartingStack(felt.players, felt.contributions ?? {}),
+    [felt.players, felt.contributions],
+  );
 
   // Track when the current turn's countdown began so leaving/resuming carries
   // over the remaining time instead of resetting the timer to full.
@@ -1257,22 +1263,23 @@ export function TableScreen({ navigation, route }: Props) {
     if (!isShowdown && !runoutTabling && !runShowdown) return [];
     return selectShowdownHands(felt.winners, felt.players, {
       localPlayerId: human.id,
-      /*
-       * Everything is face up for a run-out. Nobody folds once the chips are
-       * in, so there is no decision left to respect and no reveal order to
-       * walk: every hand still in the pot is laid out for every board.
-       */
-      localCardsShown: runoutTabling ? true : humanCardsShown,
       label: (w) => handName(w.hand!.category),
-      contested: runoutTabling ? true : contestedShowdown,
-      shownIds: runoutTabling ? undefined : revealShown,
       cardExposure: cardExposureForPlayer,
-      // Face up but nothing decided yet: the board under way has not finished.
-      undecided: runoutTabling && !runShowdown,
-      // The row outlives the board when a hand was turned up for a run-out, so
-      // promoting whoever won the board that just landed would shuffle the
-      // hands sideways under a board that is still changing.
-      seatOrder: handsTabled,
+      /*
+       * Everything is face up for a run-out, and stays face up once its result
+       * opens. Nobody folds once the chips are in, so there is no decision left
+       * to respect and no reveal order to walk. Keyed on `runoutTabling` alone,
+       * the row emptied the frame the result opened and the hands flew back out
+       * from their seats; see `showdownRowOptions`.
+       */
+      ...showdownRowOptions({
+        runoutTabling,
+        runShowdown,
+        handsTabled,
+        localCardsShown: humanCardsShown,
+        contested: contestedShowdown,
+        shownIds: revealShown,
+      }),
     });
   }, [isShowdown, multiRunVerdict, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
@@ -1424,7 +1431,13 @@ export function TableScreen({ navigation, route }: Props) {
    * showdown rather than as a reveal.
    */
   useEffect(() => {
-    if (!isShowdown || !contestedShowdown) return undefined;
+    /*
+     * Not after a run-out. Those hands have been face up since before the
+     * board was dealt, so there is nobody left to ask and nothing left to
+     * muck, and walking it anyway held the result back a beat per player for
+     * a reveal that had already happened.
+     */
+    if (!isShowdown || !contestedShowdown || handsTabled) return undefined;
     if (revealComplete(revealOrder, revealProgress)) return undefined;
     const pending = pendingPlayer(revealOrder, revealProgress);
     if (pending === null) return undefined;
@@ -1450,6 +1463,7 @@ export function TableScreen({ navigation, route }: Props) {
   }, [
     isShowdown,
     contestedShowdown,
+    handsTabled,
     revealOrder,
     revealProgress,
     human.id,
@@ -1867,12 +1881,6 @@ export function TableScreen({ navigation, route }: Props) {
         });
     }
   }, [handOver, state, legal, botDiff, settings.difficulty, step, isOnlineHost, roomCode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const currentActorName = current?.id === human.id
-    ? 'You'
-    : current
-      ? isBlocked(current.id) ? 'Blocked player' : current.name
-      : undefined;
 
   const rebuy = () => {
     if (tournament) {
@@ -2687,7 +2695,9 @@ export function TableScreen({ navigation, route }: Props) {
    * playing" up while the run-out was still being dealt and told the player
    * they had lost before the river landed.
    */
-  const resultShown = isShowdown && (!contestedShowdown || revealComplete(revealOrder, revealProgress));
+  // A run-out's hands were tabled before the board, so its walk is skipped
+  // above and there is nothing to wait for.
+  const resultShown = isShowdown && (!contestedShowdown || handsTabled || revealComplete(revealOrder, revealProgress));
   /*
    * Bots never buy back in, so a bots game that only a bot busted out of is
    * over, not waiting: it used to sit on "Waiting for Ravi to rebuy" for the
@@ -2723,6 +2733,14 @@ export function TableScreen({ navigation, route }: Props) {
     [state.players, rebuyOpenedAt, rebuyTick, tournament, tableBlocked],
   );
   const rebuyMessage = rebuyNotice(rebuyState, human.id);
+  /*
+   * Whether the line under the turn timer is naming the player everyone is
+   * waiting on, which is the line that gets the larger type. Mirrors the
+   * branches of that line's text so a rebuy notice or run-out status keeps its
+   * own style.
+   */
+  const waitingOnPlayer = !!current && !humanEliminated && !actionSending && !(isHumanTurn && !boardOnFelt)
+    && !rebuyMessage && !runoutStatus;
   const mustRebuy = rebuyState.phase === 'waiting' && rebuyState.players.some((p) => p.id === human.id);
 
   /*
@@ -3644,13 +3662,16 @@ export function TableScreen({ navigation, route }: Props) {
               pot, and a number showing through between cards read as clutter. */}
           {displayedPot > 0 && revealHands.length === 0 && (
             <View style={styles.potWrap}>
-              <View style={styles.potCenter}>
-                <Text style={styles.potCenterLabel}>Pot</Text>
-                {/* Sized by how big the pot is in big blinds, so the number
-                    says "this hand matters" before it is read. */}
+              {/* No "Pot" label: the pill in the middle of the felt is the pot,
+                  and the word only took width from the number. VoiceOver
+                  still hears it, and hears the settled figure rather than
+                  whatever the count-up is passing through. */}
+              <View style={styles.potCenter} accessible accessibilityLabel={`Pot ${displayedPot.toLocaleString()}`}>
+                {/* Sized by how much of the stacks in play the pot holds, so
+                    the number says "this hand matters" before it is read. */}
                 <AnimatedNumber
                   value={displayedPot}
-                  style={[styles.potCenterValue, { fontSize: potFontSize(displayedPot, settings.bigBlind, width) }]}
+                  style={[styles.potCenterValue, { fontSize: potFontSize(displayedPot, potReferenceStack, width) }]}
                 />
               </View>
             </View>
@@ -4202,17 +4223,34 @@ export function TableScreen({ navigation, route }: Props) {
               * the truth is "you already did". The clock goes with it, since
               * it is still your seat's clock until the host moves play on.
               */}
+            {/*
+              * No "<name>'s turn" over the bar: the line under it already says
+              * "Waiting for <name>…", and the tester read the pair as the same
+              * sentence twice. The bar runs most of the column's width rather
+              * than shrinking to its seconds, which is all that is left in the
+              * centred column once the label is gone.
+              */}
             {current && !isShowdown && actorCanAct && !actionSending ? (
-              <TurnTimer
-                seconds={settings.turnTimerSec}
-                active
-                resetKey={turnKey}
-                startedAt={turnStartedAt}
-                onExpire={onTimerExpire}
-                label={`${currentActorName}'s turn`}
-              />
+              <View style={styles.waitingTimer}>
+                <TurnTimer
+                  seconds={settings.turnTimerSec}
+                  active
+                  resetKey={turnKey}
+                  startedAt={turnStartedAt}
+                  onExpire={onTimerExpire}
+                  label={null}
+                  size="large"
+                />
+              </View>
             ) : null}
-            <Text style={[styles.waitingText, !!runoutStatus && styles.runoutText, !!rebuyMessage && styles.rebuyNotice]}>
+            <Text
+              style={[
+                styles.waitingText,
+                waitingOnPlayer && styles.waitingOnPlayer,
+                !!runoutStatus && styles.runoutText,
+                !!rebuyMessage && styles.rebuyNotice,
+              ]}
+            >
               {humanEliminated
                 ? 'You are out of the tournament.'
                 : actionSending || (isHumanTurn && !boardOnFelt)
@@ -4755,7 +4793,6 @@ const styles = StyleSheet.create({
   safetyBtnText: { fontFamily: fonts.bold, fontSize: 22, color: colors.onDark },
   potWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm },
   potCenter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.lg, paddingVertical: 6 },
-  potCenterLabel: { ...type.label, color: colors.onDarkMuted },
   potCenterValue: { fontFamily: fonts.bold, fontSize: 26, color: colors.onDark, ...numeric },
   roomPill: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 44, alignItems: 'center' },
   // Slimmer than the room pill so it overlaps the top seat's head as little as
@@ -4911,6 +4948,12 @@ const styles = StyleSheet.create({
   rebuyNotice: { fontFamily: fonts.semibold, fontSize: 14, color: colors.gold, textAlign: 'center', marginTop: spacing.xs },
   rebuyNoticeUrgent: { color: colors.red },
   waitingText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onDarkSoft },
+  // The theme's subheading, one step up from the 15pt status lines, so who the
+  // table is waiting on reads at a glance. 18pt leaves "Waiting for " plus a
+  // 16 character name inside an iPhone SE's 343pt column.
+  waitingOnPlayer: { ...type.subheading, color: colors.onDark, textAlign: 'center' },
+  // Most of the controls column, centred, rather than the width of "12s".
+  waitingTimer: { alignSelf: 'stretch', paddingHorizontal: spacing.xl },
   // A run-out is the loudest moment in the hand, so its status line is the one
   // thing in this row that is allowed to shout.
   runoutText: { fontFamily: fonts.bold, fontSize: 17, color: colors.onDark, letterSpacing: 0.3 },
