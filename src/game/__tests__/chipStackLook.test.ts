@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  averageStartingStack,
   chipStackGeometry,
   compactChipCount,
   MAX_COMPACT_CHIPS,
@@ -54,10 +55,12 @@ describe('compactChipCount', () => {
 });
 
 describe('potFontSize', () => {
-  const BB = 20;
+  // A table where everybody started the hand with 2,000.
+  const STACK = 2000;
+  const share = (fraction: number) => fraction * STACK;
 
   it('grows with the pot', () => {
-    const sizes = [1, 10, 25, 60, 150, 400].map((bb) => potFontSize(bb * BB, BB));
+    const sizes = [0.01, 0.1, 0.3, 0.6, 1, 3].map((f) => potFontSize(share(f), STACK));
     for (let i = 1; i < sizes.length; i += 1) {
       expect(sizes[i]).toBeGreaterThanOrEqual(sizes[i - 1]);
     }
@@ -65,57 +68,93 @@ describe('potFontSize', () => {
   });
 
   /*
-   * The point of measuring in big blinds. 1,000 is a monster at 5/10 and a
-   * limp at 500/1000, so the same chip count must not read the same way.
+   * The tester's point. The same 60bb pot is most of the table for players
+   * who sat down with 40bb and a routine pot for players with 400bb, so it
+   * must not read the same way.
    */
-  it('judges a pot against the stakes, not against a chip count', () => {
-    expect(potFontSize(1000, 10)).toBeGreaterThan(potFontSize(1000, 1000));
+  it('judges a pot against the stacks in play, not against the blinds', () => {
+    const BB = 20;
+    expect(potFontSize(60 * BB, 40 * BB)).toBeGreaterThan(potFontSize(60 * BB, 400 * BB));
+  });
+
+  it('is as loud as it gets once the pot is worth a whole stack', () => {
+    const top = POT_SIZE_TIERS[POT_SIZE_TIERS.length - 1].fontSize;
+    expect(potFontSize(share(1), STACK)).toBe(top);
+    expect(potFontSize(share(0.4), STACK)).toBeLessThan(top);
   });
 
   it('is stable inside a tier, so the pill does not reflow on every bet', () => {
-    expect(potFontSize(30 * BB, BB)).toBe(potFontSize(40 * BB, BB));
+    expect(potFontSize(share(0.35), STACK)).toBe(potFontSize(share(0.5), STACK));
   });
 
   it('falls back to the smallest size for an empty or nonsense pot', () => {
     for (const amount of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(potFontSize(amount, BB)).toBe(POT_SIZE_TIERS[0].fontSize);
+      expect(potFontSize(amount, STACK)).toBe(POT_SIZE_TIERS[0].fontSize);
     }
   });
 
-  it('survives a nonsense big blind rather than exploding the type size', () => {
-    for (const bb of [0, -10, Number.NaN]) {
-      const size = potFontSize(500, bb);
-      expect(Number.isFinite(size)).toBe(true);
-      expect(size).toBeLessThanOrEqual(POT_SIZE_TIERS[POT_SIZE_TIERS.length - 1].fontSize);
+  it('stays at the smallest size with nothing to measure against', () => {
+    for (const stack of [0, -10, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(potFontSize(500, stack)).toBe(POT_SIZE_TIERS[0].fontSize);
     }
   });
 
   it('never exceeds the largest tier', () => {
-    expect(potFontSize(10_000_000, BB)).toBe(POT_SIZE_TIERS[POT_SIZE_TIERS.length - 1].fontSize);
-  });
-
-  it('keeps the old two-argument signature unchanged', () => {
-    expect(potFontSize(70 * BB, BB)).toBe(36);
-    expect(potFontSize(200 * BB, BB)).toBe(42);
+    expect(potFontSize(10_000_000, STACK)).toBe(POT_SIZE_TIERS[POT_SIZE_TIERS.length - 1].fontSize);
   });
 
   it('leaves top-tier pot text unchanged on a large phone', () => {
-    expect(potFontSize(70 * BB, BB, 440)).toBe(36);
-    expect(potFontSize(200 * BB, BB, 440)).toBe(42);
+    expect(potFontSize(share(0.7), STACK, 440)).toBe(36);
+    expect(potFontSize(share(2), STACK, 440)).toBe(42);
   });
 
   it('shrinks only the top tiers on a narrow phone', () => {
-    expect(potFontSize(30 * BB, BB, 375)).toBe(31);
-    expect(potFontSize(70 * BB, BB, 375)).toBeLessThan(36);
-    expect(potFontSize(200 * BB, BB, 375)).toBeLessThan(42);
+    expect(potFontSize(share(0.4), STACK, 375)).toBe(31);
+    expect(potFontSize(share(0.7), STACK, 375)).toBeLessThan(36);
+    expect(potFontSize(share(2), STACK, 375)).toBeLessThan(42);
   });
 
   it('scales the narrow-phone shrink between SE and Pro Max widths', () => {
-    const se = potFontSize(200 * BB, BB, 375);
-    const regular = potFontSize(200 * BB, BB, 393);
-    const max = potFontSize(200 * BB, BB, 440);
+    const se = potFontSize(share(2), STACK, 375);
+    const regular = potFontSize(share(2), STACK, 393);
+    const max = potFontSize(share(2), STACK, 440);
     expect(se).toBeLessThan(regular);
     expect(regular).toBeLessThan(max);
+  });
+});
+
+describe('averageStartingStack', () => {
+  const seat = (id: string, chips: number, extra: { folded?: boolean; sittingOut?: boolean; dealt?: boolean } = {}) => ({
+    id,
+    chips,
+    holeCards: extra.dealt === false ? [] : [1, 2],
+    folded: extra.folded,
+    sittingOut: extra.sittingOut,
+  });
+
+  it('adds back what each player has already put in, so it does not shrink as the pot grows', () => {
+    const before = averageStartingStack([seat('a', 1000), seat('b', 3000)], {});
+    const after = averageStartingStack([seat('a', 600), seat('b', 2600)], { a: 400, b: 400 });
+    expect(before).toBe(2000);
+    expect(after).toBe(before);
+  });
+
+  it('keeps a folded player, so a fold does not resize the pot', () => {
+    const live = averageStartingStack([seat('a', 900), seat('b', 900), seat('c', 1000)], { a: 100, b: 100 });
+    const folded = averageStartingStack([seat('a', 900), seat('b', 900), seat('c', 1000, { folded: true })], { a: 100, b: 100 });
+    expect(folded).toBe(live);
+  });
+
+  it('ignores seats that were not dealt in', () => {
+    expect(averageStartingStack([
+      seat('a', 1000),
+      seat('b', 50_000, { sittingOut: true }),
+      seat('c', 50_000, { dealt: false }),
+    ], {})).toBe(1000);
+  });
+
+  it('is zero for an empty table rather than a division by zero', () => {
+    expect(averageStartingStack([], {})).toBe(0);
   });
 });
 

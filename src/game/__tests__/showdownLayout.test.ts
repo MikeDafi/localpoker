@@ -12,6 +12,7 @@ import {
   feltWidthAt,
   fitBoardCard,
   selectShowdownHands,
+  showdownRowOptions,
   showdownLabel,
   lostAtShowdown,
 } from '../showdownLayout';
@@ -665,5 +666,57 @@ describe('a hand being run out', () => {
       undecided: true,
     });
     expect(hands.map((h) => h.playerId)).toEqual(['bob']);
+  });
+});
+
+/*
+ * Tester report, build 67: two players all in preflop had their hands on the
+ * felt for the whole run-out, then watched them fly from the seats to the
+ * felt again when the result opened. The row emptied for that frame because
+ * the result's showdown walk starts with nobody shown.
+ */
+describe('showdownRowOptions across a tabled run-out', () => {
+  const alice = player('alice', [card(14, 's'), card(13, 's')]);
+  const bob = player('bob', [card(9, 'h'), card(9, 'd')]);
+  const me = player('me', [card(2, 'c'), card(7, 'd')]);
+  const players = [alice, bob, me];
+  const won = [winner('bob', 'Pair')];
+
+  const row = (
+    winners: ReturnType<typeof winner>[],
+    phase: Parameters<typeof showdownRowOptions>[0],
+  ) =>
+    selectShowdownHands(winners, players, {
+      localPlayerId: 'me',
+      label: (w) => w.label,
+      ...showdownRowOptions(phase),
+    }).map((h) => [h.playerId, h.outcome]);
+
+  // What the screen passes for an ordinary showdown whose walk has just begun.
+  const walkJustStarted = { localCardsShown: false, contested: true, shownIds: [] as string[] };
+  const ids = (r: string[][]) => r.map(([id]) => id);
+
+  it('keeps the same hands in the same seats from the run-out to the result', () => {
+    const dealing = row([], { ...walkJustStarted, runoutTabling: true, runShowdown: false, handsTabled: true });
+    const riverLanded = row(won, { ...walkJustStarted, runoutTabling: true, runShowdown: true, handsTabled: true });
+    const resultOpen = row(won, { ...walkJustStarted, runoutTabling: false, runShowdown: false, handsTabled: true });
+
+    expect(ids(dealing)).toEqual(['alice', 'bob', 'me']);
+    expect(ids(riverLanded)).toEqual(ids(dealing));
+    // The regression: this was [] until the walk reached each player.
+    expect(ids(resultOpen)).toEqual(ids(dealing));
+  });
+
+  it('changes only the verdict on each hand', () => {
+    expect(row([], { ...walkJustStarted, runoutTabling: true, runShowdown: false, handsTabled: true }))
+      .toEqual([['alice', 'pending'], ['bob', 'pending'], ['me', 'pending']]);
+    expect(row(won, { ...walkJustStarted, runoutTabling: false, runShowdown: false, handsTabled: true }))
+      .toEqual([['alice', 'lost'], ['bob', 'won'], ['me', 'lost']]);
+  });
+
+  it('still walks an ordinary showdown, which nobody tabled early', () => {
+    const phase = { ...walkJustStarted, runoutTabling: false, runShowdown: false, handsTabled: false };
+    expect(row(won, phase)).toEqual([]);
+    expect(row(won, { ...phase, shownIds: ['bob'] })).toEqual([['bob', 'won']]);
   });
 });
