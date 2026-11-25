@@ -6,7 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { colors, radii, shadows, fonts, springs } from '../theme/theme';
 import { sound } from '../services/sound';
 
-type Variant = 'blue' | 'green' | 'gold' | 'white' | 'red';
+type Variant = 'blue' | 'green' | 'gold' | 'white' | 'red' | 'felt';
 type Size = 'sm' | 'md' | 'lg';
 
 const GRADIENTS: Record<Variant, [string, string, string]> = {
@@ -15,6 +15,15 @@ const GRADIENTS: Record<Variant, [string, string, string]> = {
   gold: ['#FFD866', '#F5C518', '#D9A400'],
   white: ['#FFFFFF', '#F3F8FB', '#DCE7EE'],
   red: ['#F58170', '#E8503A', '#C63A26'],
+  /*
+   * A quiet button for the felt, built from the on-felt surface tokens.
+   *
+   * For a secondary control that sits on the table, like Skip to the end.
+   * Brand blue there read as a menu button dropped onto the felt and pulled
+   * the eye harder than the betting actions it sits beside, which is the
+   * wrong way round for something optional.
+   */
+  felt: [colors.feltRailEdge, colors.surfaceAlt, colors.surface],
 };
 
 const TEXT_COLOR: Record<Variant, string> = {
@@ -23,6 +32,7 @@ const TEXT_COLOR: Record<Variant, string> = {
   gold: '#5A4700',
   white: colors.ink,
   red: '#FFFFFF',
+  felt: colors.onDark,
 };
 
 const SIZES: Record<Size, { h: number; px: number; font: number }> = {

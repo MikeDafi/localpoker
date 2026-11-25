@@ -186,9 +186,28 @@ describe('eviction', () => {
     expect(playersToEvict(table).map((p) => p.id)).toEqual(['cara']);
   });
 
-  it('evicts tournament eliminations immediately when a caller asks for them', () => {
-    const table = [seat('alice', 500), seat('bob', 0)];
-    expect(playersToEvict(table, true).map((p) => p.id)).toEqual(['bob']);
+  // Build 67: a player knocked out of a tournament was removed from the table.
+  // Out of the tournament is out of the betting, not out of the room.
+  it('never evicts anybody from a tournament, eliminated or not', () => {
+    const table = [seat('alice', 500), seat('bob', 0), seat('cara', 0)];
+    expect(playersToEvict(table, true)).toEqual([]);
+  });
+
+  it('never navigates an eliminated tournament player off the table', () => {
+    // Even handed a phase that names them, which the window itself never does.
+    const expired = { phase: 'expired' as const, players: [seat('bob', 0)] };
+    expect(localPlayerEvicted(expired, 'bob', true)).toBe(false);
+
+    // And the window never names them in the first place, long after it shut.
+    const phase = rebuyPhase({ players: [seat('alice', 500), seat('bob', 0)], openedAt: 0, now: REBUY_WINDOW_MS * 10, tournament: true });
+    expect(phase).toEqual({ phase: 'none' });
+    expect(localPlayerEvicted(phase, 'bob', true)).toBe(false);
+  });
+
+  it('still evicts a cash player who let the window run out', () => {
+    const phase = rebuyPhase({ players: [seat('alice', 500), seat('bob', 0)], openedAt: 0, now: REBUY_WINDOW_MS + 1 });
+    expect(localPlayerEvicted(phase, 'bob')).toBe(true);
+    expect(localPlayerEvicted(phase, 'bob', false)).toBe(true);
   });
 
   it('tells the local player apart from everyone else', () => {

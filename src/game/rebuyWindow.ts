@@ -126,9 +126,18 @@ export function rebuyNotice(phase: RebuyPhase, localPlayerId: string): string | 
  *
  * Everyone still holding nothing. A player who rebought is no longer busted,
  * so they simply are not in this list.
+ *
+ * Nobody, in a tournament. This used to return the eliminated players, on the
+ * reasoning that out is out, and a tester on build 67 busted and was thrown
+ * off the table they had just been playing at. Out of a tournament means out
+ * of the *betting*, not out of the room: the engine already deals a stack of
+ * zero out of every hand (`startHand` folds it), so a seat with no chips costs
+ * the table nothing and the player gets to watch the rest of it, the way a
+ * real tournament lets you rail the final table. They leave when they choose
+ * to. Do not put the eliminated players back in here.
  */
 export function playersToEvict(players: readonly SeatedPlayer[], tournament = false): SeatedPlayer[] {
-  return tournament ? eliminatedPlayers(players, tournament) : bustedPlayers(players);
+  return tournament ? [] : bustedPlayers(players);
 }
 
 export type RebuyRequestDecision<T extends SeatedPlayer = SeatedPlayer> =
@@ -202,6 +211,11 @@ export function applyRebuyRequest<T extends SeatedPlayer>(input: {
  * and the two must not be confused or a spectator gets thrown out of a table
  * they were still playing at.
  */
-export function localPlayerEvicted(phase: RebuyPhase, localPlayerId: string): boolean {
+export function localPlayerEvicted(phase: RebuyPhase, localPlayerId: string, tournament = false): boolean {
+  // Same rule as `playersToEvict`: a tournament shows nobody the door. The
+  // phase cannot normally name an eliminated player, since `bustedPlayers`
+  // leaves them out, but this is the call that navigates somebody off the
+  // table, so it does not lean on that.
+  if (tournament) return false;
   return phase.phase === 'expired' && phase.players.some((p) => p.id === localPlayerId);
 }

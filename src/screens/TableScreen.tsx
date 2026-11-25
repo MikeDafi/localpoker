@@ -2376,7 +2376,7 @@ export function TableScreen({ navigation, route }: Props) {
      * alert on top of that one, and iOS would queue both, so the player
      * dismisses "you ran out of time" only to be told "table over" as well.
      */
-    if (localPlayerEvicted(rebuyState, human.id)) return;
+    if (localPlayerEvicted(rebuyState, human.id, tournament)) return;
 
     const active = state.players.filter((p) => p.chips > 0 && !p.sittingOut);
     const roomSeated = Object.keys(room?.players ?? {}).length;
@@ -2406,12 +2406,18 @@ export function TableScreen({ navigation, route }: Props) {
       );
       return;
     }
-    if (humanEliminated && !isOnlineHost) {
-      showAlert('Out of tournament', 'You are out of chips, so your tournament is over.', [
-        { text: 'Back to menu', onPress: () => { clearSavedGameForClosedTable(); navigation.replace('Home'); } },
-      ]);
-      return;
-    }
+    /*
+     * No "Out of tournament, Back to menu" here any more.
+     *
+     * That alert had a single button, so busting was being shown the door:
+     * the build 67 report was exactly this, a player knocked out and then
+     * kicked off the table they had been watching. An eliminated player now
+     * stays as a spectator. The engine deals a zero stack out of every hand,
+     * the bar is never offered to them, the result panel says they are out,
+     * and the back arrow is how they leave. The checks below still end the
+     * table once fewer than two stacks are left, which is what actually
+     * finishes a tournament.
+     */
     if (active.length < 2 && (!roomCode || roomSeated < 2)) {
       /*
        * Who actually ran out matters. This said "Everyone else is out" to a
@@ -2972,8 +2978,21 @@ export function TableScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnlineHost, consentRequired, isShowdown, nextHandDeal.deal, state.handNumber]);
 
-  /** Ask for the next hand: mine alone offline, everybody's at a live table. */
-  const askForNextHand = useCallback(() => {
+  /**
+   * Ask for the next hand: mine alone offline, everybody's at a live table.
+   *
+   * A plain function on purpose, not a useCallback. It was memoised on the
+   * hand number, which pinned the `nextHand` from the first render of the
+   * hand, before anybody had busted. Every check in there, the tournament
+   * winner, an eliminated player, the rebuy window, was then read from that
+   * stale render: a player who busted was silently dealt into the next hand
+   * with a zero stack and offered Skip to the end, and only shown the door a
+   * hand later, which is the build 67 report. Nothing takes this as a
+   * dependency, and TurnTimer reads its onExpire through a ref, so the
+   * memoisation bought nothing. Do not wrap it again without a ref to the
+   * current nextHand.
+   */
+  const askForNextHand = () => {
     if (!consentRequired || !roomCode) {
       nextHand();
       return;
@@ -2982,9 +3001,7 @@ export function TableScreen({ navigation, route }: Props) {
     void markHandReady(roomCode, state.handNumber).then((result) => {
       if (!result.ok) noteSync(false);
     });
-    // Same reason as the effect above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consentRequired, roomCode, state.handNumber, noteSync]);
+  };
 
   useEffect(() => {
     if (!roomCode || !firebaseOnline || !isOnlineHost) {
@@ -3051,7 +3068,7 @@ export function TableScreen({ navigation, route }: Props) {
     if (evictionHandled.current === state.handNumber) return;
     evictionHandled.current = state.handNumber;
 
-    if (localPlayerEvicted(rebuyState, human.id)) {
+    if (localPlayerEvicted(rebuyState, human.id, tournament)) {
       sound.play('lose');
       showAlert(
         'Out of chips',
@@ -3900,8 +3917,21 @@ export function TableScreen({ navigation, route }: Props) {
          * started a peel instead of turning the wheel or pressing Confirm.
          * During the vote every all-in hand is already face up for the run-out,
          * so there is nothing to peel and the touches belong to the panel.
+         *
+         * Outside the vote it is 'box-none', never 'auto': the cards and the
+         * buttons in this row take touches, the row itself does not. The row
+         * is full width and draws above the controls (zIndex 41), and on a
+         * 6.1" phone the betting bar is taller than the slot left for it. By
+         * this file's own numbers the clock, the sizing panel and the action
+         * row come to roughly 210pt against roughly 165pt of room, and the
+         * controls' `justifyContent: 'flex-end'` pushes the excess up under
+         * this row. Its empty band below and either side of the cards then
+         * swallowed any tap on the top of the sizing pills: the press went to
+         * a plain View with no handler and simply vanished, so the player had
+         * to tap again, usually a little lower, and it worked. Do not put
+         * this back to 'auto'.
          */
-        pointerEvents={runVotingActive ? 'none' : 'auto'}
+        pointerEvents={runVotingActive ? 'none' : 'box-none'}
       >
         {handHint && !human.folded ? (
           <View style={styles.handChipSlot} pointerEvents="none">
@@ -4360,14 +4390,23 @@ export function TableScreen({ navigation, route }: Props) {
                 from in front of you, and the note only restated that. */}
             {/* Bots only: online, the other players are people, and their
                 hand is theirs to play at their own pace. */}
-            {human.folded && !handOver && !skipping && !(roomCode && firebaseOnline) ? (
+            {/* Never to somebody knocked out of a tournament. The engine deals
+                a zero stack out of every hand, so they always look folded,
+                and this button was what build 67 called being able to "skip a
+                turn" with no chips. A spectator is offered nothing to press;
+                the table plays at its own pace and the back arrow leaves. */}
+            {human.folded && !handOver && !skipping && !(roomCode && firebaseOnline) && !isEliminated(human, tournament) ? (
               <View style={{ marginTop: spacing.sm }}>
+                {/* The felt variant rather than brand blue: an optional
+                    pacing control on the table, not a menu action, so it
+                    should sit quieter than the betting buttons. WiiButton
+                    plays the tap itself, so it is not played twice here. */}
                 <WiiButton
                   label="⏩  Skip to the end"
-                  variant="blue"
+                  variant="felt"
                   size="md"
                   fullWidth
-                  onPress={() => { sound.play('tap'); setSkipHand(state.handNumber); }}
+                  onPress={() => setSkipHand(state.handNumber)}
                 />
               </View>
             ) : null}
