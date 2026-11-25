@@ -118,4 +118,24 @@ describe('evaluateRoomClosure', () => {
 
     expect(result).toEqual({ closed: false });
   });
+
+  it('keeps the table open for a host who dropped while two others can carry on', () => {
+    // One of them takes the dealer's seat (hostHandoff.ts), so sending
+    // everybody home after the grace window would end a game that continues.
+    const players = { host: host({ connected: false }), guest: guest(), other: { id: 'other', connected: true } };
+    expect(evaluateRoomClosure({
+      status: 'playing', hostId: 'host', players, hostAwayAt: T, now: T + DISCONNECT_GRACE_MS * 10,
+    })).toEqual({ closed: false });
+    // And for a host that left outright.
+    expect(evaluateRoomClosure({
+      status: 'playing', hostId: 'host', players: { guest: guest(), other: { id: 'other', connected: true } }, now: T,
+    })).toEqual({ closed: false });
+  });
+
+  it('still closes a two-seat table when its host drops, because nobody is left to play', () => {
+    expect(evaluateRoomClosure({
+      status: 'playing', hostId: 'host', players: { host: host({ connected: false }), guest: guest() },
+      hostAwayAt: T, now: T + DISCONNECT_GRACE_MS + 1,
+    })).toMatchObject({ closed: true, source: 'hostDisconnected', reason: HOST_DISCONNECTED_REASON });
+  });
 });
