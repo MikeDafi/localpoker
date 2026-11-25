@@ -517,6 +517,14 @@ function logOk(message) {
     }));
     logOk('someone not seated cannot act at the table');
 
+    // Editing your Pal from the table menu republishes just the palJson child
+    // of your own seat mid game. The seat rule is evaluated against the merged
+    // record, so this passes without rewriting the rest, and only for you.
+    await assertSucceeds(set(ref(playerDb, 'localpoker/rooms/PLAY1/players/player/palJson'), JSON.stringify({ version: 1, skinTone: 2 })));
+    logOk('a seated player can republish their own Pal mid game');
+    await assertFails(set(ref(playerDb, 'localpoker/rooms/PLAY1/players/host/palJson'), JSON.stringify({ version: 1, skinTone: 2 })));
+    logOk('but not anyone else\'s');
+
     // The counter is gated on a seat, but the action node used to be gated on
     // auth alone, so writing only the action slipped a stranger's fold into
     // the queue for the host to read.

@@ -60,6 +60,7 @@ export {
   requestRebuy,
   voteRunItTwice,
   setPlayerConnected,
+  setPlayerPal,
   subscribeActions,
   subscribeRebuyRequests,
   sendEmoteToRoom,

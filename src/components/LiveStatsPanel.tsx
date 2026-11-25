@@ -7,11 +7,26 @@ import { InfoDot, InfoNote } from './InfoDot';
 import { LIVE_STAT_KEYS, OPPONENT_STAT_KEYS, STAT_HELP, statHelpText, type StatKey } from '../game/statHelp';
 import { observedStats, emptyCounters, type ObservedTable, type ObservedCounters } from '../game/observedStats';
 import { isDurableOpponentKey } from '../game/opponentHistory';
+import { PalAvatar } from './PalAvatar';
+import type { PalConfig } from '../avatar/palConfig';
 
 export interface LiveStatsOpponent {
   id: string;
   name: string;
+  /** Their Pal, as their seat draws it. Without one the tab is name only. */
+  pal?: PalConfig;
 }
+
+/**
+ * The face on each player tab.
+ *
+ * 26pt keeps a tab at least 58pt wide and about 50pt tall. A full table of
+ * eight is "You" plus seven opponents, and a 375pt phone shows about five of
+ * those across the sheet; the row already scrolls, and the tab cut off at
+ * the edge is what says so. A face is quicker to find than a name, which is
+ * the point of putting it there.
+ */
+const TAB_FACE = 26;
 
 export interface LiveStatsPanelProps {
   visible: boolean;
@@ -27,6 +42,8 @@ export interface LiveStatsPanelProps {
   history?: Record<string, ObservedCounters>;
   /** Open straight onto this player, set by tapping their seat. */
   focusPlayerId?: string | null;
+  /** Your own Pal, for the "You" tab. */
+  youPal?: PalConfig;
 }
 
 /** 'you', or an opponent id. One tab per person, rather than one shared list. */
@@ -52,6 +69,7 @@ export function LiveStatsPanel({
   observed,
   history = {},
   focusPlayerId = null,
+  youPal,
 }: LiveStatsPanelProps) {
   const { stats } = useApp();
   const d = derivedStats(stats);
@@ -105,15 +123,21 @@ export function LiveStatsPanel({
              supposed to do for you. Scrolls, because a full table does not
              fit across the sheet. */
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-            {[{ id: 'you', name: 'You' }, ...opponents].map((t) => (
+            {[{ id: 'you', name: 'You', pal: youPal } as LiveStatsOpponent, ...opponents].map((t) => (
               <Pressable
                 key={t.id}
                 onPress={() => { setTab(t.id); setOpenHelp(null); }}
                 accessibilityRole="button"
+                accessibilityLabel={t.name}
                 accessibilityState={{ selected: activeTab === t.id }}
-                style={[styles.tab, activeTab === t.id && styles.tabActive]}
+                style={[styles.tab, t.pal && styles.tabWithFace, activeTab === t.id && styles.tabActive]}
               >
-                <Text numberOfLines={1} style={[styles.tabText, activeTab === t.id && styles.tabTextActive]}>
+                {t.pal ? (
+                  <View style={styles.tabFace} accessible={false}>
+                    <PalAvatar config={t.pal} size={TAB_FACE} />
+                  </View>
+                ) : null}
+                <Text numberOfLines={1} style={[styles.tabText, t.pal && styles.tabTextSmall, activeTab === t.id && styles.tabTextActive]}>
                   {t.name}
                 </Text>
               </Pressable>
@@ -274,8 +298,16 @@ const styles = StyleSheet.create({
   spanText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onDarkSoft },
   spanTextActive: { color: colors.onDark },
   tab: { minWidth: 92, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.pill, alignItems: 'center', backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.surfaceBorder },
+  /*
+   * With a face the tab is a small card rather than a pill: a pill's fully
+   * round ends cut into a face stacked above the name. Narrower than the
+   * name-only minimum too, since the face, not the name, now sets the width.
+   */
+  tabWithFace: { minWidth: 58, maxWidth: 84, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radii.md },
+  tabFace: { width: TAB_FACE, height: TAB_FACE, borderRadius: TAB_FACE / 2, overflow: 'hidden', marginBottom: 2 },
   tabActive: { backgroundColor: colors.blue, borderColor: colors.blueLight },
   tabText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onDarkSoft },
+  tabTextSmall: { fontSize: 12 },
   tabTextActive: { color: colors.onBlue },
   hintRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   hintPill: { flex: 1, borderRadius: radii.md, padding: spacing.md, alignItems: 'center' },
