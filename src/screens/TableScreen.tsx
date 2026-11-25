@@ -15,7 +15,7 @@ import { CARD_ASPECT, feltWidthAt, fitBoardCard, layoutRevealHands, lostAtShowdo
 import { SEAT_GAP, podWidthForOneArc, seatRingBottom, seatRingSlot } from '../game/seatRing';
 import { potFontSize } from '../game/chipStackLook';
 import { isMidGameSafe, pickDeviceOnly, pickMidGameSafe } from '../game/hostControls';
-import { BOT_REACTION_INITIAL_MEMORY, maybeBotReaction } from '../game/botReactions';
+import { BOT_REACTION_INITIAL_MEMORY, botReactionTankThresholdMs, maybeBotReaction } from '../game/botReactions';
 import {
   CHIP_SOUND_OPTIONS, SETTINGS_SCHEMA, availableSettingOptions, bigBlindFor, formatBlinds, normalizeSettings,
   roomSettingsJson, tableMenuRuleFields, withPairedBlinds,
@@ -125,6 +125,7 @@ import {
   TOO_FEW_PLAYERS_REASON,
   markHandReady,
   publishRoomSettings,
+  setPlayerPal,
   subscribeHandReady,
   subscribeRoomClosure,
   subscribeShownHands,
@@ -313,6 +314,32 @@ export function TableScreen({ navigation, route }: Props) {
     });
     return map;
   }, [profile.pal, cosmetics.equippedByCategory.outfits, settings.numOpponents, seed, localPlayerId, room?.players]);
+
+  /*
+   * Your Pal, as everyone else at the table should see it.
+   *
+   * The room's player record is written when you join and was never touched
+   * again, so editing your Pal from the table menu changed it on your phone
+   * and nowhere else. This republishes it whenever the dressed Pal and the
+   * room's copy differ, which covers coming back from the designer and a
+   * new outfit alike. Comparing against the room rather than remembering
+   * "dirty" means a join that already wrote the same JSON costs no write.
+   *
+   * `lastPalSent` stops a refused or queued write from being retried on every
+   * room update while the room still shows the old value.
+   */
+  const myDressedPal = pals[localPlayerId];
+  const myRoomPalJson = room?.players?.[localPlayerId]?.palJson;
+  const mySeatInRoom = !!room?.players?.[localPlayerId];
+  const lastPalSent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!roomCode || !firebaseOnline || !mySeatInRoom || !myDressedPal) return;
+    if (room?.status === 'ended') return;
+    const json = JSON.stringify(myDressedPal);
+    if (json === myRoomPalJson || json === lastPalSent.current) return;
+    lastPalSent.current = json;
+    void setPlayerPal(roomCode, json);
+  }, [roomCode, firebaseOnline, mySeatInRoom, myDressedPal, myRoomPalJson, room?.status]);
 
   const botDiff = useMemo<Record<string, Difficulty>>(() => {
     const map: Record<string, Difficulty> = {};
@@ -931,11 +958,15 @@ export function TableScreen({ navigation, route }: Props) {
    * are real people who send their own, and a local phone puppeting them
    * would be inventing messages nobody wrote.
    *
-   * `humanActionElapsedMs` is deliberately not passed, so the "human is
-   * tanking" situation never fires. It would need a timer ticking every
-   * second purely to decide whether to post a shrug, which is a re-render a
-   * second for a joke. Everything that happens at a showdown works from the
-   * state transition alone.
+   * `humanActionElapsedMs` is not passed here: this effect runs on state
+   * transitions, and a tank is the absence of one. The effect after the
+   * turn clock below handles it with a single timeout per turn, rather than
+   * a timer ticking every second, which would be a re-render a second for a
+   * joke.
+   *
+   * `fullCatalog`: bots draw from every reaction in the catalogue, paid ones
+   * included. Limited to the free tray they had three emoji and a few GIFs,
+   * which is what testers meant by the reactions being slim.
    */
   const botReactionMemory = useRef(BOT_REACTION_INITIAL_MEMORY);
   const botReactionFrom = useRef<GameState | null>(null);
@@ -956,6 +987,7 @@ export function TableScreen({ navigation, route }: Props) {
           humanPlayerId: human.id,
           botDifficulty: botDiff[player.id],
           includeFreeReactions: true,
+          fullCatalog: true,
         },
         botReactionMemory.current,
       );
@@ -1024,6 +1056,50 @@ export function TableScreen({ navigation, route }: Props) {
     setTurnStart({ key: turnKey, at: Date.now() });
   }, [turnKey, turnStart.key]);
   const turnStartedAt = turnStart.key === turnKey ? turnStart.at : Date.now();
+
+  /*
+   * A bot needling a long tank.
+   *
+   * One timeout per human turn, set for the moment the tank threshold is
+   * crossed, measured from the same turn start the clock uses so a resumed
+   * turn is not given a fresh allowance. Nothing ticks. The decision still
+   * goes through `maybeBotReaction`, so the same cooldowns, per-hand cap and
+   * odds apply, and most tanks pass without a word.
+   */
+  const humanTurnStartAt = isHumanTurn && turnStart.key === turnKey ? turnStart.at : null;
+  useEffect(() => {
+    if (animsOff || humanTurnStartAt === null || (roomCode && firebaseOnline)) return undefined;
+    const threshold = botReactionTankThresholdMs(state.config.turnTimerSec);
+    const wait = Math.max(0, humanTurnStartAt + threshold - Date.now());
+    const timer = setTimeout(() => {
+      const latest = botReactionFrom.current ?? state;
+      const nowMs = Date.now();
+      for (const player of latest.players) {
+        if (!player.id.startsWith('bot-')) continue;
+        const decision = maybeBotReaction(
+          {
+            state: latest,
+            botId: player.id,
+            nowMs,
+            humanPlayerId: human.id,
+            humanActionElapsedMs: nowMs - humanTurnStartAt,
+            botDifficulty: botDiff[player.id],
+            includeFreeReactions: true,
+            fullCatalog: true,
+          },
+          botReactionMemory.current,
+        );
+        botReactionMemory.current = decision.memory;
+        if (decision.emote) {
+          showEmote(player.id, decision.emote as Emote);
+          break;
+        }
+      }
+    }, wait);
+    return () => clearTimeout(timer);
+    // `state` is read through the ref when the timeout fires; listing it here
+    // would restart the wait on every render of the same turn.
+  }, [humanTurnStartAt, animsOff, roomCode, firebaseOnline, human.id, botDiff, showEmote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const humanWon = isShowdown && felt.winners.some((w) => w.playerId === human.id && w.amount > 0);
   const remainingAtEnd = felt.players.filter((p) => !p.folded && !p.sittingOut).length;
@@ -4267,7 +4343,10 @@ export function TableScreen({ navigation, route }: Props) {
         focusPlayerId={statsFocus}
         sessionHands={sessionHands}
         handHint={handHint}
-        opponents={opponents.map((p) => ({ id: p.id, name: visiblePlayer(p).name }))}
+        // The same faces the seats draw, from the same map and fallback, so a
+        // tab and the seat it stands for always match.
+        opponents={opponents.map((p) => ({ id: p.id, name: visiblePlayer(p).name, pal: pals[p.id] ?? palFromSeed(p.id) }))}
+        youPal={pals[human.id] ?? profile.pal}
         observed={observed}
         history={opponentHistory}
       />
@@ -4275,6 +4354,17 @@ export function TableScreen({ navigation, route }: Props) {
       <TableMenu
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
+        /*
+         * Pushed over the table rather than replacing it, so Save (which goes
+         * back) lands here with the hand still running. The table stays
+         * mounted underneath: no unmount save, no leave, and the app is still
+         * in the foreground, so the room still sees you as connected. The
+         * clock does keep running, exactly as it does on the Profile screen
+         * the hero seat already opens, so a turn left too long is acted on by
+         * the timer. Not offered in the tutorial, whose steps drive the
+         * designer themselves.
+         */
+        onEditPal={tutorial ? undefined : () => { setMenuOpen(false); navigation.push('PalDesigner'); }}
         roomCode={roomCode}
         isHost={!roomCode || isOnlineHost}
         settings={{ ...settings, ...pendingSettings }}
@@ -4329,6 +4419,7 @@ function TableMenu({
   pendingKeys,
   ownedCosmeticIds,
   onChange,
+  onEditPal,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -4339,6 +4430,8 @@ function TableMenu({
   pendingKeys: readonly string[];
   ownedCosmeticIds: readonly string[];
   onChange: (patch: Partial<GameSettings>) => void;
+  /** Opens the Pal designer over the table. Absent where it should not be offered. */
+  onEditPal?: () => void;
 }) {
   /*
    * Only the rules this mode uses, and only the ones a live table can
@@ -4415,6 +4508,23 @@ function TableMenu({
                 */}
               <Text style={styles.menuRowValue}>#{roomCode}</Text>
             </View>
+          ) : null}
+
+          {/*
+            * Your own Pal, for everyone at the table and in every mode. It is
+            * yours rather than the table's, so it is not a host control.
+            */}
+          {onEditPal ? (
+            <Pressable
+              style={styles.menuRow}
+              onPress={onEditPal}
+              accessibilityRole="button"
+              accessibilityLabel="Edit Pal"
+              accessibilityHint="Opens the Pal designer. Saving brings you back to this table."
+            >
+              <Text style={styles.menuRowLabel}>Edit Pal</Text>
+              <MenuValue text="Open" />
+            </Pressable>
           ) : null}
 
           {isHost ? (

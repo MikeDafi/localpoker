@@ -2257,6 +2257,38 @@ export const publishRoomSettings = async (code: string, settingsJson: string): P
   }
 };
 
+/**
+ * Republish your own Pal to a room you are seated at, after editing it mid game.
+ *
+ * The room's player record is where everyone else reads your face from, and it
+ * was only ever written on joining, so a Pal changed at the table stayed the
+ * old one on every other phone until the next game.
+ *
+ * Only the one child is written. The rules let a seated player rewrite their
+ * own record on a room that has not ended as long as the seat, the stack and
+ * the role are unchanged, and evaluate that against the merged record, so a
+ * single-field write passes without carrying the rest along. Callers do not
+ * await it: like any Realtime Database write it can sit queued while offline,
+ * and nobody is waiting on a face to arrive.
+ */
+export const setPlayerPal = async (code: string, palJson: string): Promise<Result> => {
+  const db = getConfiguredDb();
+  const roomCode = cleanKey(code);
+  if (!db || !roomCode) return unavailableResult();
+  // Over the rules' 600 character cap the write would be refused anyway, and
+  // `toDbPlayer` truncating it would publish JSON that no longer parses.
+  if (palJson.length > 600) return { ok: false, reason: 'Pal is too large to publish.' };
+  try {
+    const playerId = await authedPlayerId();
+    if (!playerId) return { ok: false, reason: 'Not signed in.' };
+    await set(ref(db, `${playerPath(roomCode, playerId)}/palJson`), palJson);
+    return { ok: true };
+  } catch (error) {
+    reportFirebaseError('set-player-pal', error);
+    return { ok: false, reason: getErrorMessage(error) };
+  }
+};
+
 export const setPlayerConnected = async (
   code: string,
   playerId: string,

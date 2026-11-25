@@ -6,12 +6,18 @@ import {
   BOT_REACTION_GLOBAL_COOLDOWN_MS,
   BOT_REACTION_INITIAL_MEMORY,
   BOT_REACTION_MAX_PER_HAND,
+  BOT_REACTION_PROBABILITY_BY_SITUATION,
+  botReactionTankThresholdMs,
   createBotReactionMemory,
+  detectBotReactionSituations,
   getBotReactionCandidates,
   maybeBotReaction,
   type BotReactionInput,
+  type BotReactionMemory,
+  type BotReactionSituation,
 } from '../botReactions';
-import { GIF_EMOTES } from '../cosmetics';
+import { EMOJI_EMOTES, GIF_EMOTES, STICKER_EMOTES } from '../cosmetics';
+import { gifUrl } from '../../services/gifs';
 import { evaluateHand } from '../../engine/handEvaluator';
 import type { Card, Rank, Suit } from '../../engine/cards';
 import type { GameState, Player, Winner } from '../../engine/types';
@@ -200,5 +206,183 @@ describe('bot reactions', () => {
 
     expect(decision.situation).toBe('badBeatLoss');
     expect(decision.emote).not.toBeNull();
+  });
+
+  describe('variety', () => {
+    const ALL_SITUATIONS = Object.keys(BOT_REACTION_PROBABILITY_BY_SITUATION) as BotReactionSituation[];
+    const catalogueGifUrls = new Set(Object.values(GIF_EMOTES).map((gif) => gifUrl(gif.gifId)));
+    const catalogueEmoji = new Set(Object.values(EMOJI_EMOTES).map((emoji) => emoji.emoji));
+    const catalogueStickers = new Set(Object.values(STICKER_EMOTES).map((sticker) => sticker.sticker));
+
+    it('gives every situation a wide pool once the full catalogue is open', () => {
+      for (const situation of ALL_SITUATIONS) {
+        const candidates = getBotReactionCandidates(situation, { fullCatalog: true });
+        // Was three free emoji and a few GIFs for most situations.
+        expect(candidates.length, situation).toBeGreaterThanOrEqual(8);
+        const kinds = new Set(candidates.map((candidate) => candidate.kind));
+        expect(kinds.has('text'), situation).toBe(true);
+        expect(kinds.has('emoji'), situation).toBe(true);
+      }
+    });
+
+    it('only uses GIFs, emoji and stickers that exist in the catalogue', () => {
+      for (const situation of ALL_SITUATIONS) {
+        for (const candidate of getBotReactionCandidates(situation, { fullCatalog: true })) {
+          if (candidate.kind === 'gif') expect(catalogueGifUrls.has(candidate.emote.value), candidate.sourceId).toBe(true);
+          if (candidate.kind === 'emoji') expect(catalogueEmoji.has(candidate.emote.value), candidate.sourceId).toBe(true);
+          if (candidate.kind === 'sticker') expect(catalogueStickers.has(candidate.emote.value), candidate.sourceId).toBe(true);
+          // The bubble is 150pt and two lines; longer lines get cut off.
+          if (candidate.kind === 'text') expect(candidate.emote.value.length, candidate.emote.value).toBeLessThanOrEqual(16);
+        }
+      }
+    });
+
+    it('keeps every losing situation free of celebration even with the full catalogue', () => {
+      const blocked = new Set<string>(BAD_BEAT_BLOCKED_GIF_TAGS);
+      for (const situation of ['badBeatLoss', 'coolerLoss', 'foldedToPressure'] as const) {
+        for (const candidate of getBotReactionCandidates(situation, { fullCatalog: true })) {
+          if (candidate.kind !== 'gif') continue;
+          expect(candidate.tags.some((tag) => blocked.has(tag)), `${situation} ${candidate.sourceId}`).toBe(false);
+          expect(['🎉', '🙌', '🔥']).not.toContain(candidate.emote.value);
+        }
+      }
+    });
+
+    it('never repeats the same reaction back to back for one bot', () => {
+      // Pinned to the first candidate every time, which is the worst case for
+      // repeats: without the rule it would pick the same item forever.
+      let memory: BotReactionMemory = createBotReactionMemory();
+      let previous: string | null = null;
+      for (let i = 0; i < 12; i++) {
+        const decision = maybeBotReaction(
+          { ...bigShowdown(), fullCatalog: true, nowMs: 100_000 + i * BOT_REACTION_BOT_COOLDOWN_MS, state: { ...bigShowdown().state, handNumber: 100 + i } },
+          memory,
+          () => 0,
+        );
+        expect(decision.emote).not.toBeNull();
+        const key = `${decision.emote!.type}:${decision.emote!.value}`;
+        expect(key).not.toBe(previous);
+        previous = key;
+        memory = decision.memory;
+      }
+    });
+
+    it('still reacts when the only thing a bot owns is what it said last', () => {
+      const owned = { ownedCosmeticIds: ['emoji-party'], includeFreeReactions: false };
+      const first = maybeBotReaction({ ...bigShowdown(), ...owned }, createBotReactionMemory(), () => 0);
+      expect(first.emote?.value).toBe('🎉');
+      const second = maybeBotReaction(
+        { ...bigShowdown(), ...owned, nowMs: 50_000 + BOT_REACTION_BOT_COOLDOWN_MS, state: { ...bigShowdown().state, handNumber: 8 } },
+        first.memory,
+        () => 0,
+      );
+      expect(second.emote?.value).toBe('🎉');
+    });
+
+    it('spreads picks across kinds and items under a seeded RNG', () => {
+      let seed = 42;
+      const rng = () => {
+        seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+        return seed / 2_147_483_648;
+      };
+      const seen = new Set<string>();
+      const kinds = new Set<string>();
+      let memory: BotReactionMemory = createBotReactionMemory();
+      for (let i = 0; i < 300; i++) {
+        const decision = maybeBotReaction(
+          { ...bigShowdown(), fullCatalog: true, nowMs: 100_000 + i * BOT_REACTION_BOT_COOLDOWN_MS, state: { ...bigShowdown().state, handNumber: 100 + i } },
+          memory,
+          rng,
+        );
+        memory = decision.memory;
+        if (!decision.emote) continue;
+        seen.add(`${decision.emote.type}:${decision.emote.value}`);
+        kinds.add(decision.emote.type);
+      }
+      expect(kinds).toEqual(new Set(['emoji', 'gif', 'sticker', 'text']));
+      expect(seen.size).toBeGreaterThanOrEqual(12);
+    });
+  });
+
+  describe('situations', () => {
+    it('reads a bot moving all in, and the other bots facing it', () => {
+      const previous = state({ street: 'turn', board: [card(2, 's'), card(7, 'd'), card(9, 'h'), card(13, 'c')] });
+      const current = state({
+        ...previous,
+        players: previous.players.map((p) => (p.id === 'bot-1' ? { ...p, allIn: true, chips: 0, currentBet: 1_000 } : p)),
+      });
+      expect(detectBotReactionSituations({ previousState: previous, state: current, botId: 'bot-1', nowMs: 0 }))
+        .toContain('botAllIn');
+      expect(detectBotReactionSituations({ previousState: previous, state: current, botId: 'bot-2', nowMs: 0 }))
+        .toEqual(['facedShove']);
+    });
+
+    it('reads a human tabling air after betting as a bluff shown', () => {
+      const board = [card(14, 'c'), card(10, 'h'), card(7, 'd'), card(4, 's'), card(2, 'c')];
+      const previous = state({
+        board: board.slice(0, 4),
+        players: [
+          player('human', { isBot: false, holeCards: [card(9, 's'), card(8, 'h')] }),
+          player('bot-1', { holeCards: [card(14, 'd'), card(12, 'd')] }),
+        ],
+      });
+      const current = state({
+        ...previous,
+        board,
+        street: 'showdown',
+        winners: [winner('bot-1', 160, board, [card(14, 'd'), card(12, 'd')])],
+      });
+      // A big pot too, but catching the bluff is the more particular line.
+      const situations = detectBotReactionSituations({ previousState: previous, state: current, botId: 'bot-1', nowMs: 0 });
+      expect(situations[0]).toBe('bluffShown');
+    });
+
+    it('reads a lost flush over flush as a cooler', () => {
+      const board = [card(14, 'h'), card(10, 'h'), card(7, 'h'), card(4, 's'), card(2, 'c')];
+      const humanCards = [card(13, 'h'), card(3, 'h')];
+      const previous = state({
+        board,
+        street: 'river',
+        players: [
+          player('human', { isBot: false, holeCards: humanCards }),
+          player('bot-1', { holeCards: [card(9, 'h'), card(8, 'h')] }),
+        ],
+      });
+      const current = state({ ...previous, street: 'showdown', winners: [winner('human', 400, board, humanCards)] });
+      expect(detectBotReactionSituations({ previousState: previous, state: current, botId: 'bot-1', nowMs: 0 }))
+        .toEqual(['coolerLoss']);
+    });
+
+    it('reads a chop and a pot won without a showdown', () => {
+      const board = [card(14, 'h'), card(13, 'd'), card(12, 'c'), card(11, 's'), card(10, 'h')];
+      const previous = state({ board, street: 'river' });
+      const chop = state({
+        ...previous,
+        street: 'showdown',
+        winners: [winner('bot-1', 120, board, [card(2, 'c'), card(3, 'd')]), winner('human', 120, board, [card(2, 'c'), card(3, 'd')])],
+      });
+      expect(detectBotReactionSituations({ previousState: previous, state: chop, botId: 'bot-1', nowMs: 0 })).toContain('splitPot');
+
+      const folded = state({ ...state({ street: 'flop' }), street: 'showdown', winners: [{ playerId: 'bot-2', amount: 60 }] });
+      expect(detectBotReactionSituations({ previousState: state({ street: 'flop' }), state: folded, botId: 'bot-2', nowMs: 0 }))
+        .toEqual(['wonUncontested']);
+    });
+
+    it('needles a long tank only past the threshold', () => {
+      const s = state({ street: 'flop', currentPlayerIndex: 0 });
+      const threshold = botReactionTankThresholdMs(s.config.turnTimerSec);
+      expect(threshold).toBe(19_500);
+      expect(botReactionTankThresholdMs(5)).toBe(10_000);
+      const base = { state: s, botId: 'bot-1', nowMs: 0, humanPlayerId: 'human' };
+      expect(detectBotReactionSituations({ ...base, humanActionElapsedMs: threshold - 1 })).toEqual([]);
+      expect(detectBotReactionSituations({ ...base, humanActionElapsedMs: threshold })).toEqual(['humanTank']);
+    });
+
+    it('keeps every situation rare enough not to spam', () => {
+      for (const chance of Object.values(BOT_REACTION_PROBABILITY_BY_SITUATION)) {
+        expect(chance).toBeGreaterThan(0);
+        expect(chance).toBeLessThanOrEqual(0.25);
+      }
+    });
   });
 });
