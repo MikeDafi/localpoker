@@ -1267,6 +1267,7 @@ export function TableScreen({ navigation, route }: Props) {
       contested: runoutTabling ? true : contestedShowdown,
       shownIds: runoutTabling ? undefined : revealShown,
       cardExposure: cardExposureForPlayer,
+      exposedCards: (id) => displayHoleCards([], exposedCardsForPlayer(id)),
       // Face up but nothing decided yet: the board under way has not finished.
       undecided: runoutTabling && !runShowdown,
       // The row outlives the board when a hand was turned up for a run-out, so
@@ -1274,7 +1275,7 @@ export function TableScreen({ navigation, route }: Props) {
       // hands sideways under a board that is still changing.
       seatOrder: handsTabled,
     });
-  }, [isShowdown, multiRunVerdict, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer]);
+  }, [isShowdown, multiRunVerdict, runShowdown, runoutTabling, handsTabled, felt.winners, felt.players, human.id, humanCardsShown, contestedShowdown, revealShown, cardExposureForPlayer, exposedCardsForPlayer]);
   /** The first hand laid out, which is what drives the single-winner layout. */
   const showdownHand = showdownHands[0] ?? null;
 
@@ -3616,12 +3617,6 @@ export function TableScreen({ navigation, route }: Props) {
               const highlighted = verdictShown && winningCardKeys.has(`${card.rank}${card.suit}`);
               return (
                 <View key={`card-${i}-${card.rank}${card.suit}`} style={styles.boardCardWrap}>
-                  {/* Drawn at the card's own size rather than as the wrapper's
-                      border, so the ring hugs the card. As a border it took
-                      the wrapper's height and left a band above and below. */}
-                  {highlighted ? (
-                    <View pointerEvents="none" style={[styles.winRing, { width: sdCardSize + 6, height: sdCardSize * CARD_ASPECT + 6 }]} />
-                  ) : null}
                   <DealtCard
                     rank={card.rank}
                     suit={card.suit as any}
@@ -3635,6 +3630,13 @@ export function TableScreen({ navigation, route }: Props) {
                     fromY={boardThrowFrom(i).y}
                     dimmed={verdictShown && !highlighted}
                   />
+                  {/* Drawn over the card, not behind it: behind (zIndex -1) it
+                      could end up under the card entirely and the board showed
+                      no ring at all. Border only, sized to the card so it
+                      touches every edge. */}
+                  {highlighted ? (
+                    <View pointerEvents="none" style={[styles.winRing, { width: sdCardSize + 4, height: sdCardSize * CARD_ASPECT + 4, borderRadius: sdCardSize * 0.085 + 2 }]} />
+                  ) : null}
                 </View>
               );
             })}
@@ -4785,7 +4787,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold, fontSize: 16, color: colors.onDark, textAlign: 'center', marginTop: 2,
   },
   boardCardWrap: { marginHorizontal: 0, borderRadius: radii.sm + 2, borderWidth: 2, borderColor: 'transparent' },
-  winRing: { position: 'absolute', top: -1, left: -1, borderWidth: 2, borderColor: colors.gold, borderRadius: radii.sm + 2, backgroundColor: 'rgba(214,180,92,0.16)', zIndex: -1 },
+  winRing: { position: 'absolute', top: -2, left: -2, borderWidth: 2, borderColor: colors.gold, borderRadius: radii.sm + 2 },
   /*
    * Out of the flow, so the cards stay on the table's centre line.
    *

@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing, SharedValue, WithTimingConfig } from 'react-native-reanimated';
 import { PlayingCard, Suit } from './PlayingCard';
 import { REVEAL_BEATS } from '../game/showdownLayout';
-import { colors, radii, motion, easings } from '../theme/theme';
+import { colors, motion, easings } from '../theme/theme';
 
 export interface RevealCard {
   rank: number;
@@ -253,7 +253,7 @@ function RevealedCard({
     <Animated.View style={[styles.card, { width: bigSize, height: h }, moveStyle]}>
       <Animated.View style={[{ width: bigSize, height: h }, flipStyle]}>
         <Animated.View
-          style={[styles.ring, lost && styles.ringLost, { borderRadius: radii.sm + 2 }, ringStyle]}
+          style={[styles.ring, lost && styles.ringLost, { borderRadius: bigSize * 0.085 + 2 }, ringStyle]}
           pointerEvents="none"
         />
         <Animated.View style={[styles.stack, backStyle]}>
@@ -273,10 +273,10 @@ const styles = StyleSheet.create({
   stack: { position: 'absolute', top: 0, left: 0 },
   ring: {
     position: 'absolute',
-    top: -3,
-    left: -3,
-    right: -3,
-    bottom: -3,
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
     borderWidth: 2,
     borderColor: colors.gold,
     backgroundColor: 'rgba(214,180,92,0.16)',

@@ -65,11 +65,11 @@ export const MAX_REVEAL_HANDS = 6;
  * and it is the only way the pacing can be checked without a device.
  */
 export const REVEAL_BEATS = {
-  flip: 260,
-  grow: 700,
-  move: 1350,
-  travelMs: 560,
-  ring: 2100,
+  flip: 200,
+  grow: 480,
+  move: 900,
+  travelMs: 480,
+  ring: 1450,
   perCard: 150,
   /** Duration of the ring landing. Matches `motion.base` in the theme. */
   ringMs: 220,
@@ -157,6 +157,13 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
      */
     cardExposure?: (playerId: string) => HoleCardExposure | undefined;
     /**
+     * The exposed cards themselves, from the public state.
+     *
+     * A guest never holds another player's private cards, so an exposed card
+     * has to come from what the host published, or it is drawn face down.
+     */
+    exposedCards?: (playerId: string) => readonly (Card | null)[] | undefined;
+    /**
      * Lay out every hand still in the pot even though nothing has won yet.
      *
      * A run-out turns all the remaining hands face up before a card of the
@@ -200,7 +207,11 @@ export function selectShowdownHands<T extends { playerId: string; hand?: { cards
   const visibleHole = (p: { id: string; holeCards: Card[] }, fullyTabled: boolean): (Card | null)[] => {
     if (fullyTabled) return p.holeCards.slice(0, 2);
     const exposure = exposureFor(p.id);
-    return [exposure[0] ? p.holeCards[0] ?? null : null, exposure[1] ? p.holeCards[1] ?? null : null];
+    const published = options.exposedCards?.(p.id);
+    return [
+      exposure[0] ? p.holeCards[0] ?? published?.[0] ?? null : null,
+      exposure[1] ? p.holeCards[1] ?? published?.[1] ?? null : null,
+    ];
   };
 
   if (options.undecided) {

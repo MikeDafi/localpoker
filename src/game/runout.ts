@@ -77,7 +77,7 @@ export const SHOWDOWN_SETTLE_MS = 1000;
  * decision is supposed to be a reaction to it, and short enough that a
  * four-way showdown does not become a wait.
  */
-export const SHOWDOWN_STEP_MS = 850;
+export const SHOWDOWN_STEP_MS = 450;
 
 /**
  * Sound played as a street is waited on, not as it lands.
