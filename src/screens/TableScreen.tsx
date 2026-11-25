@@ -23,7 +23,7 @@ import {
 } from '../game/settings';
 import { applyOutfit } from '../game/outfits';
 import { calledThisStreet } from '../game/betLabel';
-import { applyRebuyRequest, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
+import { applyRebuyRequest, applyTopUp, canDealHand, localPlayerEvicted, playersToEvict, rebuyNotice, rebuyPhase } from '../game/rebuyWindow';
 import { applyBlindLevel, blindsDue, isEliminated, tournamentWinner } from '../game/tournament';
 import { blindsForMode, formatBlindLevel, formatTournamentStatus, isTournamentMode, tournamentLevelForMode, tournamentTableStatus } from '../game/gameMode';
 import { FeltSurface } from '../components/FeltSurface';
@@ -1959,6 +1959,72 @@ export function TableScreen({ navigation, route }: Props) {
     }
   }, [handOver, state, legal, botDiff, settings.difficulty, step, isOnlineHost, roomCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /*
+   * Cash-game top-ups waiting for the hand to finish.
+   *
+   * Held by whoever owns the chips: the host for an online room, this device
+   * for a bots table. A guest's request arrives through the rebuy request node
+   * and lands here on the host. Kept in memory: if the host's app dies the
+   * request is lost and the player taps again, which is cheaper than another
+   * room node and another rule.
+   */
+  const pendingTopUps = useRef<Set<string>>(new Set());
+  const [topUpTick, setTopUpTick] = useState(0);
+  const ownsChips = !roomCode || !firebaseOnline || isOnlineHost;
+  useEffect(() => {
+    if (!ownsChips || pendingTopUps.current.size === 0) return;
+    const base = (roomCode ? getCachedHostGame(roomCode) : null) ?? stateRef.current ?? state;
+    if (base.street !== 'showdown') return;
+    let players = base.players;
+    for (const id of [...pendingTopUps.current]) {
+      const decision = applyTopUp({ players, playerId: id, startingStack: base.config.startingStack, handOver: true, tournament });
+      if (decision.status === 'deferred') continue;
+      pendingTopUps.current.delete(id);
+      if (decision.status === 'applied') players = decision.players;
+    }
+    if (players === base.players) return;
+    const next = { ...base, players };
+    stateRef.current = next;
+    setState(next);
+    if (roomCode && firebaseOnline) {
+      publishHostGameState(roomCode, next)
+        .then((r) => noteSync(r.ok))
+        .catch((error) => {
+          noteSync(false);
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'publish-after-top-up' } });
+        });
+    }
+  }, [ownsChips, state, topUpTick, roomCode, firebaseOnline, tournament, noteSync]);
+
+  const canTopUp = !tournament && human.chips > 0 && human.chips < settings.startingStack;
+  const topUp = () => {
+    setMenuOpen(false);
+    if (!canTopUp) return;
+    const note = handOver
+      ? null
+      : `You'll be back to ${settings.startingStack.toLocaleString()} when this hand ends.`;
+    if (roomCode && firebaseOnline && !isOnlineHost) {
+      requestRebuy(roomCode)
+        .then((result) => {
+          if (!result.ok) {
+            showAlert('Top up not sent', result.reason ?? 'Check your connection and try again.');
+            return;
+          }
+          sound.play('coins');
+          if (note) showAlert('Topping up', note);
+        })
+        .catch((error) => {
+          captureError(error, { tags: { area: 'firebase-room-sync', operation: 'request-top-up' } });
+          showAlert('Top up not sent', 'Check your connection and try again.');
+        });
+      return;
+    }
+    sound.play('coins');
+    pendingTopUps.current.add(human.id);
+    setTopUpTick((t) => t + 1);
+    if (note) showAlert('Topping up', note);
+  };
+
   const rebuy = () => {
     if (tournament) {
       showAlert('No rebuy', 'Tournament players are eliminated when they run out of chips.');
@@ -3026,6 +3092,15 @@ export function TableScreen({ navigation, route }: Props) {
         now: Date.now(),
         tournament,
       });
+
+      if (decision.status === 'rejected' && decision.reason === 'not-in-rebuy-window' && !tournament) {
+        // Not a bust: a cash-game top-up. Applied now if the hand is over,
+        // otherwise held until it is (see the pending top-up effect).
+        pendingTopUps.current.add(request.playerId);
+        setTopUpTick((t) => t + 1);
+        clearHandledRequest();
+        return;
+      }
 
       if (decision.status === 'applied') {
         const next = { ...currentState, players: decision.players };
@@ -4444,6 +4519,8 @@ export function TableScreen({ navigation, route }: Props) {
          * designer themselves.
          */
         onEditPal={tutorial ? undefined : () => { setMenuOpen(false); navigation.push('PalDesigner'); }}
+        topUpTo={canTopUp && !tutorial ? settings.startingStack : undefined}
+        onTopUp={topUp}
         roomCode={roomCode}
         isHost={!roomCode || isOnlineHost}
         settings={{ ...settings, ...pendingSettings }}
@@ -4499,6 +4576,8 @@ function TableMenu({
   ownedCosmeticIds,
   onChange,
   onEditPal,
+  topUpTo,
+  onTopUp,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -4511,6 +4590,9 @@ function TableMenu({
   onChange: (patch: Partial<GameSettings>) => void;
   /** Opens the Pal designer over the table. Absent where it should not be offered. */
   onEditPal?: () => void;
+  /** The stack a cash-game top-up restores, when one is on offer. */
+  topUpTo?: number;
+  onTopUp?: () => void;
 }) {
   /*
    * Only the rules this mode uses, and only the ones a live table can
@@ -4603,6 +4685,19 @@ function TableMenu({
             >
               <Text style={styles.menuRowLabel}>Edit Pal</Text>
               <MenuValue text="Open" />
+            </Pressable>
+          ) : null}
+
+          {topUpTo && onTopUp ? (
+            <Pressable
+              style={styles.menuRow}
+              onPress={onTopUp}
+              accessibilityRole="button"
+              accessibilityLabel={`Top up to ${topUpTo.toLocaleString()}`}
+              accessibilityHint="Restores your starting stack before the next hand"
+            >
+              <Text style={styles.menuRowLabel}>Top up</Text>
+              <MenuValue text={topUpTo.toLocaleString()} />
             </Pressable>
           ) : null}
 

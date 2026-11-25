@@ -219,3 +219,42 @@ export function localPlayerEvicted(phase: RebuyPhase, localPlayerId: string, tou
   if (tournament) return false;
   return phase.phase === 'expired' && phase.players.some((p) => p.id === localPlayerId);
 }
+
+/**
+ * Topping a stack back up in a cash game, by choice rather than because it ran out.
+ *
+ * Play money, so a top-up is free and simply restores the starting stack. It
+ * only ever lands between hands: chips appearing in front of somebody while a
+ * pot is being contested would change what every bet so far meant, so a
+ * request made mid-hand waits (`deferred`) until the hand is over.
+ * Tournaments have no top-ups, the same as no rebuys.
+ */
+export type TopUpDecision<T extends SeatedPlayer> =
+  | { status: 'applied'; players: T[]; chips: number }
+  | { status: 'deferred' }
+  | { status: 'not-needed' }
+  | { status: 'rejected'; reason: 'tournament' | 'unknown-player' | 'invalid-starting-stack' };
+
+export function applyTopUp<T extends SeatedPlayer>(input: {
+  players: readonly T[];
+  playerId: string;
+  startingStack: number;
+  handOver: boolean;
+  tournament?: boolean;
+}): TopUpDecision<T> {
+  if (input.tournament) return { status: 'rejected', reason: 'tournament' };
+  const player = input.players.find((p) => p.id === input.playerId);
+  if (!player) return { status: 'rejected', reason: 'unknown-player' };
+  if (!Number.isFinite(input.startingStack) || input.startingStack <= 0) {
+    return { status: 'rejected', reason: 'invalid-starting-stack' };
+  }
+  if (player.chips >= input.startingStack) return { status: 'not-needed' };
+  if (!input.handOver) return { status: 'deferred' };
+  return {
+    status: 'applied',
+    chips: input.startingStack,
+    players: input.players.map((p) => (
+      p.id === input.playerId ? { ...p, chips: input.startingStack, sittingOut: false } as T : p
+    )),
+  };
+}
