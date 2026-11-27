@@ -42,6 +42,7 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
     "firebase-tools": "^13.35.1",
+    "patch-package": "^8.0.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.1"
   },
@@ -54,7 +55,8 @@
     "test:rules": "node scripts/run-rules-tests.cjs",
     "test:watch": "vitest",
     "lint": "expo lint",
-    "deploy:rules": "firebase deploy --only database --project localpoker"
+    "deploy:rules": "firebase deploy --only database --project localpoker",
+    "postinstall": "patch-package"
   },
   "private": true,
   "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531",

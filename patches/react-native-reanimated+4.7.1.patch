@@ -1,0 +1,19 @@
+diff --git a/node_modules/react-native-reanimated/apple/reanimated/apple/READisplayLink.h b/node_modules/react-native-reanimated/apple/reanimated/apple/READisplayLink.h
+index 2f5ef44..45e4b52 100644
+--- a/node_modules/react-native-reanimated/apple/reanimated/apple/READisplayLink.h
++++ b/node_modules/react-native-reanimated/apple/reanimated/apple/READisplayLink.h
+@@ -29,7 +29,13 @@ static inline READisplayLink *REAMakeDisplayLink(id target, SEL selector)
+ {
+   READisplayLink *displayLink = [READisplayLink displayLinkWithTarget:target selector:selector];
+ #if !TARGET_OS_OSX
+-  displayLink.preferredFramesPerSecond = 120; // will fallback to 60 fps for devices without Pro Motion display
++  // LocalPoker: animations capped at 30fps to save battery (owner's call, 2026-11-27).
++  // Timing stays wall-clock based, so durations are unchanged; only frames are fewer.
++  if (@available(iOS 15.0, *)) {
++    displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 30, 30);
++  } else {
++    displayLink.preferredFramesPerSecond = 30;
++  }
+ #endif // TARGET_OS_OSX
+   [displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+   return displayLink;
