@@ -125,7 +125,13 @@ function RootNavigator() {
       onJoin={(code) => navigationRef.navigate('Lobby', { roomCode: code, host: false })}
     />
     <Stack.Navigator
-      initialRouteName={tutorialTable ? 'Table' : 'Home'}
+      /*
+       * Signed out, Login is the only screen registered, so naming Home here
+       * threw "Couldn't find a screen named 'Home'" and every fresh install
+       * hit the error screen right after the age gate. This is what App
+       * Review kept rejecting as "an error loading content".
+       */
+      initialRouteName={!auth.loggedIn ? 'Login' : tutorialTable ? 'Table' : 'Home'}
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
