@@ -59,7 +59,17 @@ export function TurnTimer({ seconds, active, resetKey, onExpire, label, warn, st
       onExpireRef.current?.();
       return;
     }
-    const id = setInterval(() => {
+    /*
+     * Woken once per whole second, just after it turns over.
+     *
+     * The number shown only changes on the second, and the bar is driven on
+     * the UI thread, so polling every 100ms woke JavaScript ten times a second
+     * on every phone at the table to find nine times out of ten that nothing
+     * had changed. Scheduling each tick for the next boundary shows the same
+     * number at the same moment and fires the countdown sound on time.
+     */
+    let id: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
       const elapsed = (Date.now() - started) / 1000;
       const remaining = Math.max(0, seconds - elapsed);
       setLeft(Math.ceil(remaining));
@@ -71,13 +81,22 @@ export function TurnTimer({ seconds, active, resetKey, onExpire, label, warn, st
           sound.play(whole <= 3 ? 'tickUrgent' : 'tick');
         }
       }
-      if (remaining <= 0 && !expired.current) {
-        expired.current = true;
-        clearInterval(id);
-        onExpireRef.current?.();
+      if (remaining <= 0) {
+        if (!expired.current) {
+          expired.current = true;
+          onExpireRef.current?.();
+        }
+        return;
       }
-    }, 100);
-    return () => clearInterval(id);
+      // Time until `remaining` next crosses a whole second, plus a little so
+      // the tick lands just after the boundary rather than just before it.
+      const untilBoundary = (remaining - Math.floor(remaining)) * 1000 || 1000;
+      id = setTimeout(tick, untilBoundary + 15);
+    };
+    tick();
+    return () => {
+      if (id) clearTimeout(id);
+    };
   }, [resetKey, active, seconds, warn, startedAt, fill]);
   useEffect(() => () => cancelAnimation(fill), [fill]);
 
