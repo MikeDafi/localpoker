@@ -6,6 +6,7 @@ import Animated, {
 import { PalAvatar, PalAvatarProps, PalExpression } from './PalAvatar';
 import { getAppReduceMotion, subscribeAppReduceMotion } from '../theme/motionPreference';
 import { propsEqual } from './propsEqual';
+import { useScreenActive } from './useScreenActive';
 
 export interface AnimatedPalProps extends PalAvatarProps {
   /** enable organic idle motion + natural blinking */
@@ -13,7 +14,25 @@ export interface AnimatedPalProps extends PalAvatarProps {
   /** transient reaction expression; falls back to expression/idle/blink when not set */
   reaction?: PalExpression;
   ring?: boolean;
+  /**
+   * How much idle motion. `calm`, the default, fidgets in short bursts with
+   * rests between; `full` is the continuous breathe, bob and sway, kept for
+   * whoever the table is waiting on.
+   */
+  energy?: 'calm' | 'full';
 }
+
+/**
+ * Below this a Pal does not idle at all, only blinks.
+ *
+ * The bob is under 2pt and the breath under 2% of the size, so on the 22-30pt
+ * faces in the room list and friend search the motion is about a pixel:
+ * invisible, and every frame of it still cost a full redraw.
+ */
+const MIN_MOTION_SIZE = 32;
+
+/** One fidget lasts about this long; the rest between them is 4-8s. */
+const BURST_MS = 3300;
 
 const sinEase = Easing.inOut(Easing.sin);
 const quickEase = Easing.out(Easing.cubic);
@@ -29,6 +48,7 @@ function AnimatedPalInner({
   size = 72,
   expression: baseExpression = 'idle',
   clip,
+  energy = 'calm',
   ...props
 }: AnimatedPalProps) {
   const breath = useSharedValue(1);
@@ -46,6 +66,15 @@ function AnimatedPalInner({
   const appReduceMotion = useSyncExternalStore(subscribeAppReduceMotion, getAppReduceMotion, getAppReduceMotion);
   const reduceMotion = osReduceMotion || appReduceMotion;
   const blinkTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const blinkProgress = useSharedValue(0);
+  // Nothing animates where it cannot be seen: a screen under the table, or the
+  // app in the background. See useScreenActive.
+  const screenActive = useScreenActive();
+  const blinkOn = alive && !reduceMotion && screenActive;
+  const moving = blinkOn && size >= MIN_MOTION_SIZE;
+  // Idle blinks run on the UI thread through `blinkProgress`; only a Pal held
+  // on another expression still blinks by swapping the whole drawing.
+  const uiThreadBlink = baseExpression === 'idle';
 
   useEffect(() => {
     let mounted = true;
@@ -63,7 +92,7 @@ function AnimatedPalInner({
   }, []);
 
   useEffect(() => {
-    if (!alive || reduceMotion) {
+    if (!moving) {
       cancelAnimation(breath);
       cancelAnimation(bob);
       cancelAnimation(sway);
@@ -74,6 +103,47 @@ function AnimatedPalInner({
       bob.value = settle ? withTiming(0, { duration: settle }) : 0;
       sway.value = settle ? withTiming(0, { duration: settle }) : 0;
       return;
+    }
+
+    if (energy === 'calm') {
+      /*
+       * Fidget, rest, fidget.
+       *
+       * Three loops that never stopped kept every Pal drawing at the display
+       * rate forever. One breath and a small bob and lean, then stillness,
+       * is how a person sitting at a table actually moves, and between
+       * bursts there is nothing to draw. The rest is timed in JS rather than
+       * with withDelay, because a delayed animation still runs every frame
+       * while it waits. A random first wait keeps a table of Pals out of
+       * step with each other.
+       */
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const burst = () => {
+        breath.value = withSequence(
+          withTiming(1.018, { duration: 1400, easing: sinEase }),
+          withTiming(0.997, { duration: 1300, easing: sinEase }),
+          withTiming(1, { duration: 600, easing: sinEase }),
+        );
+        bob.value = withSequence(
+          withTiming(-1.9, { duration: 1200, easing: sinEase }),
+          withTiming(0.35, { duration: 1400, easing: sinEase }),
+          withTiming(0, { duration: 700, easing: sinEase }),
+        );
+        const lean = Math.random() < 0.5 ? -1 : 1;
+        sway.value = withSequence(
+          withTiming(1.1 * lean, { duration: 1500, easing: sinEase }),
+          withTiming(-0.4 * lean, { duration: 1100, easing: sinEase }),
+          withTiming(0, { duration: 700, easing: sinEase }),
+        );
+        timer = setTimeout(burst, BURST_MS + 4000 + Math.random() * 4000);
+      };
+      timer = setTimeout(burst, Math.random() * 3000);
+      return () => {
+        if (timer) clearTimeout(timer);
+        cancelAnimation(breath);
+        cancelAnimation(bob);
+        cancelAnimation(sway);
+      };
     }
 
     breath.value = withRepeat(withSequence(
@@ -97,14 +167,15 @@ function AnimatedPalInner({
       cancelAnimation(bob);
       cancelAnimation(sway);
     };
-  }, [alive, reduceMotion, breath, bob, sway]);
+  }, [moving, energy, reduceMotion, breath, bob, sway]);
 
   useEffect(() => {
     blinkTimers.current.forEach(clearTimeout);
     blinkTimers.current = [];
     setBlinking(false);
 
-    if (!alive || reduceMotion) return;
+    blinkProgress.value = 0;
+    if (!blinkOn) return;
 
     const queueTimer = (fn: () => void, delay: number) => {
       const timer = setTimeout(fn, delay);
@@ -113,6 +184,15 @@ function AnimatedPalInner({
     };
 
     const blinkOnce = (duration = 105) => {
+      if (uiThreadBlink) {
+        // Same shut-hold-open as before, without a React render.
+        blinkProgress.value = withSequence(
+          withTiming(1, { duration: 30 }),
+          withTiming(1, { duration: duration - 60 }),
+          withTiming(0, { duration: 30 }),
+        );
+        return;
+      }
       setBlinking(true);
       queueTimer(() => setBlinking(false), duration);
     };
@@ -133,7 +213,7 @@ function AnimatedPalInner({
       blinkTimers.current.forEach(clearTimeout);
       blinkTimers.current = [];
     };
-  }, [alive, reduceMotion]);
+  }, [blinkOn, uiThreadBlink, blinkProgress]);
 
   useEffect(() => {
     cancelAnimation(reactionY);
@@ -251,7 +331,15 @@ function AnimatedPalInner({
   }));
 
   const expression: PalExpression = reaction ?? (blinking ? 'blink' : baseExpression);
-  const inner = <PalAvatar {...props} size={size} expression={expression} clip={clip} />;
+  const inner = (
+    <PalAvatar
+      {...props}
+      size={size}
+      expression={expression}
+      clip={clip}
+      blinkProgress={uiThreadBlink ? blinkProgress : undefined}
+    />
+  );
 
   return (
     <Animated.View style={style}>

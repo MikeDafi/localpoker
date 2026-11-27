@@ -135,10 +135,23 @@ function SeatInner({ player, pal, isCurrent, isDealer, isHuman, showCards, shown
 
   useEffect(() => {
     if (isCurrent) {
-      pulse.value = withRepeat(withSequence(
-        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0.35, { duration: 700, easing: Easing.inOut(Easing.quad) }),
-      ), -1, true);
+      /*
+       * Three beats to catch the eye, then a steady ring.
+       *
+       * It used to pulse for the whole turn, and measured on the simulator
+       * that one ring was the single most expensive thing on the table:
+       * about 13% CPU with it against 8% without, for a whole 20-60 second
+       * turn, every turn. The cue that matters is the change of turn, which
+       * the beats still give; after that a lit ring says the same thing
+       * without asking for a new frame sixty times a second.
+       */
+      pulse.value = withSequence(
+        withRepeat(withSequence(
+          withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.35, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+        ), 3, false),
+        withTiming(1, { duration: 500, easing: Easing.inOut(Easing.quad) }),
+      );
     } else {
       cancelAnimation(pulse);
       pulse.value = 0;
@@ -208,7 +221,17 @@ function SeatInner({ player, pal, isCurrent, isDealer, isHuman, showCards, shown
   const renderPal = (size: number) => (
     motionEmote
       ? <PalMotion config={pal} motionId={motionEmote.value} size={size} replayKey={motionReplayKey} />
-      : <AnimatedPal config={pal} size={size} alive={idleMotion && !dimmed} reaction={palReaction} />
+      : (
+        <AnimatedPal
+          config={pal}
+          size={size}
+          alive={idleMotion && !dimmed}
+          reaction={palReaction}
+          // Whoever the table is waiting on, or who just reacted, gets the
+          // full idle; everyone else fidgets in bursts.
+          energy={isCurrent || emote ? 'full' : 'calm'}
+        />
+      )
   );
 
   // The ring is the avatar plus a fixed border allowance.

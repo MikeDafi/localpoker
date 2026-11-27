@@ -1,4 +1,5 @@
 import React from 'react';
+import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 import Svg, {
   Circle, Path, Ellipse, Rect, G, Defs, ClipPath, LinearGradient, RadialGradient, Stop,
 } from 'react-native-svg';
@@ -15,6 +16,30 @@ export interface PalAvatarProps {
   size?: number;
   expression?: PalExpression;
   clip?: boolean;
+  /**
+   * 0 eyes open, 1 closed. When given, a blink is an opacity change on the
+   * eye layer driven on the UI thread instead of a new `expression`, which
+   * re-rendered the whole drawing through React a few times a minute per Pal.
+   */
+  blinkProgress?: SharedValue<number>;
+}
+
+const AnimatedG = Animated.createAnimatedComponent(G);
+
+/** Open eyes and closed eyes stacked, crossfaded by `progress`. */
+function BlinkingEyes({ style, color, id, progress }: { style: string; color: string; id: string; progress: SharedValue<number> }) {
+  const openProps = useAnimatedProps(() => ({ opacity: 1 - progress.value }));
+  const closedProps = useAnimatedProps(() => ({ opacity: progress.value }));
+  return (
+    <>
+      <AnimatedG animatedProps={openProps}>
+        <Eyes style={style} color={color} id={id} expression="idle" />
+      </AnimatedG>
+      <AnimatedG animatedProps={closedProps}>
+        <Eyes style={style} color={color} id={id} expression="blink" />
+      </AnimatedG>
+    </>
+  );
 }
 
 const INK = '#243141';
@@ -23,7 +48,7 @@ const MOUTH_INK = '#74342F';
 let uid = 0;
 
 /** Pure SVG renderer for a Pal. Draws every configured feature. */
-export function PalAvatar({ config, size = 72, expression = 'idle', clip = true }: PalAvatarProps) {
+export function PalAvatar({ config, size = 72, expression = 'idle', clip = true, blinkProgress }: PalAvatarProps) {
   const c = normalizePal(config);
   const id = React.useMemo(() => `pal${uid++}`, []);
   const skin = SKIN_TONES[c.skinTone % SKIN_TONES.length];
@@ -131,7 +156,11 @@ export function PalAvatar({ config, size = 72, expression = 'idle', clip = true 
         <Head shape={headShape} skin={skin} id={id} />
         <Cheeks style={blushStyle} skin={skin} id={id} expression={expression} />
         <Brows style={browStyle} color={hair} expression={expression} />
-        <Eyes style={eyeStyle} color={eyeC} id={id} expression={expression} />
+        {blinkProgress && expression === 'idle' && eyeStyle !== 'sleepy' ? (
+          <BlinkingEyes style={eyeStyle} color={eyeC} id={id} progress={blinkProgress} />
+        ) : (
+          <Eyes style={eyeStyle} color={eyeC} id={id} expression={expression} />
+        )}
         <Nose style={noseStyle} skin={skin} />
         <Freckles style={freckleStyle} skin={skin} />
         <FacialHairPart style={facialHair} color={hair} id={id} />
